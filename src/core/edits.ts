@@ -1,10 +1,16 @@
 /**
- * Commands and undo.
+ * Edits and undo.
  *
- * Every edit in the editor is a list of patches applied to the document. The
- * applier reads the previous value of each address it touches and builds the
- * inverse as it goes, so a tool gets undo and redo by describing what it wants
- * to change and nothing else. No tool writes an `undo()` method.
+ * An `Edit` is one entry on the undo stack: a completed change to the document
+ * together with its exact inverse. It is the *output* of an interaction, where
+ * a command — the named, remappable thing a keybinding or a test invokes — is
+ * the input to one. Commands live elsewhere; nothing in this file knows about
+ * them.
+ *
+ * Every edit is a list of patches applied to the document. The applier reads
+ * the previous value of each address it touches and builds the inverse as it
+ * goes, so a tool gets undo and redo by describing what it wants to change and
+ * nothing else. No tool writes an `undo()` method.
  *
  * Patches are intentionally addressed at the same granularity as the document:
  * one cell field, one paint key, one object. That keeps the inverse exact and
@@ -24,7 +30,7 @@ export type Patch =
   | { t: 'objectOrder'; value: string[] }
   | { t: 'doc'; field: DocField; value: unknown }
 
-export interface Command {
+export interface Edit {
   label: string
   patches: Patch[]
   inverse: Patch[]
@@ -98,16 +104,16 @@ export function pruneNoops(doc: MapDoc, patches: Patch[]): Patch[] {
 }
 
 export class History {
-  private undoStack: Command[] = []
-  private redoStack: Command[] = []
+  private undoStack: Edit[] = []
+  private redoStack: Edit[] = []
   private limit: number
 
   constructor(limit = 200) {
     this.limit = limit
   }
 
-  push(command: Command): void {
-    this.undoStack.push(command)
+  push(edit: Edit): void {
+    this.undoStack.push(edit)
     if (this.undoStack.length > this.limit) this.undoStack.shift()
     this.redoStack.length = 0
   }
@@ -128,20 +134,20 @@ export class History {
     return this.redoStack.at(-1)?.label ?? null
   }
 
-  undo(doc: MapDoc): Command | null {
-    const command = this.undoStack.pop()
-    if (!command) return null
-    applyPatches(doc, command.inverse)
-    this.redoStack.push(command)
-    return command
+  undo(doc: MapDoc): Edit | null {
+    const edit = this.undoStack.pop()
+    if (!edit) return null
+    applyPatches(doc, edit.inverse)
+    this.redoStack.push(edit)
+    return edit
   }
 
-  redo(doc: MapDoc): Command | null {
-    const command = this.redoStack.pop()
-    if (!command) return null
-    applyPatches(doc, command.patches)
-    this.undoStack.push(command)
-    return command
+  redo(doc: MapDoc): Edit | null {
+    const edit = this.redoStack.pop()
+    if (!edit) return null
+    applyPatches(doc, edit.patches)
+    this.undoStack.push(edit)
+    return edit
   }
 
   clear(): void {

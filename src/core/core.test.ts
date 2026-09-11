@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { autotileMask, MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST } from './autotile'
-import { applyPatches, History } from './commands'
+import { applyPatches, History } from './edits'
 import { cellIndex, createMap, NO_RAMP, type MapDoc } from './document'
 import { deserialize, LoadError, serialize } from './io'
 import { meshTerrainChunk } from './mesher/terrain'
@@ -15,7 +15,7 @@ function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
   doc.terrain.height[cellIndex(doc.size, x, y)] = h
 }
 
-describe('commands', () => {
+describe('edits', () => {
   it('derives an exact inverse without the tool writing one', () => {
     const doc = createMap(4, 4)
     const before = doc.terrain.height.slice()

@@ -86,7 +86,7 @@ Each entry:
   | Decision | Choice | Where |
   |---|---|---|
   | Document model | Normalised, serializable, mutated in place behind a revision counter | `core/document.ts`, `core/store.ts` |
-  | Undo | Patches with an automatically derived inverse; tools never write `undo()` | `core/commands.ts` |
+  | Undo | Patches with an automatically derived inverse; tools never write `undo()` | `core/edits.ts` |
   | Paint addressing | Stable grid coordinates; cliff faces keyed by **absolute half-tile level** | `core/paint.ts` |
   | Height units | Integer half-tiles (`height: 3` is 1.5 tiles) | `core/document.ts` |
   | World scale | One tile is one world unit, always; texel density is texture detail only | `core/document.ts` |

@@ -16,9 +16,9 @@ import {
   applyPatches,
   pruneNoops,
   History,
-  type Command,
+  type Edit,
   type Patch,
-} from './commands'
+} from './edits'
 import type { MapDoc } from './document'
 import { CHUNK_SIZE, chunkKey } from './chunks'
 
@@ -156,7 +156,7 @@ export class EditorStore {
     const stroke = this.stroke
     this.stroke = null
     if (!stroke || stroke.patches.length === 0) return
-    this.history.push(stroke as Command)
+    this.history.push(stroke as Edit)
     this.emit()
   }
 

@@ -12,7 +12,7 @@
  * paint here.
  */
 
-import type { Patch } from './commands'
+import type { Patch } from './edits'
 import {
   NO_RAMP,
   NO_WATER,
