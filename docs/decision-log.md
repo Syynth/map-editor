@@ -101,3 +101,27 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** Four choices were consciously left open rather than guessed at. **Electron vs Tauri** — the prototype stayed a plain Vite web app, which keeps HMR and defers the choice until there is a heavy scene to smoke-test both with. **Meshing in a worker** — not done; benchmarked instead. **WebGL2 vs WebGPU** — WebGL2, since nothing in the slice needs compute. **Terrain as a voxel view** (brief §7) — closed as "no, not now"; terrain stays a heightfield. Relatedly, the tool layer was left as a switch statement over three tools rather than a plugin API.
 - **WHY:** Each deferral was cheap to hold open and expensive to get wrong. The mesher is a pure function with no three.js import, so moving it into a worker stays a wiring change rather than a rewrite — and the benchmark said it is not needed: a brush tick costs about 1 ms once neighbour dirtying is restricted to cells actually on a chunk border, against 6.9 ms for the naive 3x3 neighbourhood. Coupling the heightfield to a voxel grid without evidence is an expensive decision made blind, and blocks are not in the slice. The tool layer stayed concrete for the same reason the rest did: brief section 4's generality waits until a second template kind exists to generalise from, because a plugin API invented before its second consumer is an API designed against one example.
+
+## Build on the XState v6 alpha, pinned
+- **WHEN:** 2026-09-11
+- **PROJECT:** map-editor
+- **SYSTEM:** cross-system (actor layer)
+- **SCOPE:** architectural
+- **WHAT:** Adopt `xstate@6.0.0-alpha.53` pinned exactly (no caret), with `@xstate/react@7.0.0-alpha.2`, rather than v5.32.6. Prove it on the [#8](https://github.com/Syynth/map-editor/issues/8) dispatch prototype first. Fall back to v5.32.6 with an `enqueueActions`-only dialect if that slice cannot be implemented satisfactorily, or if it is an obvious downgrade against a v5 implementation of the same slice.
+- **WHY:** v5's action-creator model is deleted in v6, not deprecated — `assign` / `sendTo` / `spawnChild` / `stopChild` / `enqueueActions` / `emit` / `raise` do not exist anywhere in the v6 declarations; transitions take an `enq` object and return a context patch. So v5 code is written in a dialect upstream has already removed. v6 also solves this map's central routing problem structurally: measured on alpha.53, routing to a stopped child leaves the router `active`, commits the transition, and emits `@xstate.deadletter` with `reason: 'stopped'` — where v5 flips the *sending* actor to `status: 'error'` and silently ignores every later event. An exact pin makes alpha churn opt-in rather than daily. The missing v6 inspector does not bind, because the Stately inspector is not used here.
+
+## Rules that matter are machine-checked, not documented
+- **WHEN:** 2026-09-11
+- **PROJECT:** map-editor
+- **SYSTEM:** cross-system (process)
+- **SCOPE:** architectural
+- **WHAT:** A constraint that matters gets a mechanical check. Prose-only constraints are advisory and should be marked as such. Lands as a standing constraint on map [#2](https://github.com/Syynth/map-editor/issues/2), plus its own ticket for the checking infrastructure — extending `scripts/check-boundaries.mjs` versus standing up ESLint versus typed rules is that ticket's call, not this one's.
+- **WHY:** Agents write most of the code and drift off prose constraints. Part of getting the codebase to where it can be safely developed. The map already carries prose constraints an agent can silently violate — "address child actors by `ActorRef`, never by string id" and "command arguments are plain serialisable data" — and [#12](https://github.com/Syynth/map-editor/issues/12) already carries a lint rule without anything stating why that is the default.
+
+## Prototypes are judged by comparison and taste, not a pass/fail rubric
+- **WHEN:** 2026-09-11
+- **PROJECT:** map-editor
+- **SYSTEM:** cross-system (process)
+- **SCOPE:** moderate
+- **WHAT:** When a prototype exists to choose between two options, build the slice and compare implementations. Accept or reject on whether the result is satisfactory and whether the alternative is an obvious downgrade — not against falsifiable criteria fixed before either implementation exists.
+- **WHY:** A rubric fixed in advance measures proxies, and a prototype can pass every proxy while the resulting code reads badly. What is actually being judged is the ergonomics of the implementation, which only becomes visible once there is one to look at.
