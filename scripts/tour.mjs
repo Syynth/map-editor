@@ -1,0 +1,472 @@
+/**
+ * Guided tour.
+ *
+ * Drives the editor through a scripted session in a headless browser and
+ * captures a screenshot at each step, so the tool can be reviewed without
+ * running it. Where possible it clicks the real UI rather than reaching into
+ * the app, so the captures show authentic interaction.
+ *
+ *   node scripts/tour.mjs [outputDir]
+ *
+ * Writes numbered PNGs plus tour.json, which pairs each shot with its caption
+ * for downstream use.
+ */
+import { chromium } from 'playwright'
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { setTimeout as sleep } from 'node:timers/promises'
+
+const OUT = process.argv[2] ?? 'shots/tour'
+mkdirSync(OUT, { recursive: true })
+
+console.log('Building...')
+const build = spawnSync('npx', ['vite', 'build'], { stdio: ['ignore', 'ignore', 'inherit'] })
+if (build.status !== 0) process.exit(build.status ?? 1)
+
+const PORT = 4900 + Math.floor(Math.random() * 90)
+const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+  stdio: ['ignore', 'ignore', 'inherit'],
+})
+
+for (let i = 0; i < 80; i++) {
+  try {
+    const response = await fetch(`http://localhost:${PORT}/`, { signal: AbortSignal.timeout(1500) })
+    if (response.ok) break
+  } catch {
+    /* not up yet */
+  }
+  await sleep(250)
+}
+
+const problems = []
+const steps = []
+let index = 0
+
+const browser = await chromium.launch({
+  executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+  args: ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader'],
+})
+const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
+await page.addInitScript(() => window.localStorage.clear())
+page.on('console', (m) => {
+  if (m.type() === 'error') problems.push(m.text())
+})
+page.on('pageerror', (e) => problems.push(e.message))
+
+await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' })
+await sleep(5000)
+
+const stage = await page.$('.stage canvas')
+const box = await stage.boundingBox()
+const cx = box.x + box.width / 2
+const cy = box.y + box.height / 2
+
+/** Capture a numbered screenshot with a caption. */
+async function shot(name, caption, { settle = 900, viewportOnly = false } = {}) {
+  await sleep(settle)
+  index += 1
+  const file = `${String(index).padStart(2, '0')}-${name}.png`
+  await page.screenshot({
+    path: `${OUT}/${file}`,
+    ...(viewportOnly ? { clip: box } : {}),
+  })
+  steps.push({ file, caption })
+  console.log(`  ${file}  ${caption}`)
+}
+
+/** Click a button by its visible text, scoped to a panel side. */
+async function clickText(text, scope = '') {
+  const target = page.locator(`${scope} button`, { hasText: new RegExp(`^${text}$`) }).first()
+  await target.click()
+  await sleep(400)
+}
+
+async function camera(state) {
+  await page.evaluate((s) => window.__viewport.setCameraForProbe(s), state)
+}
+
+async function focus(x, y, distance) {
+  await page.evaluate(
+    ([fx, fy, d]) => window.__viewport.focusCellForProbe(fx, fy, d),
+    [x, y, distance],
+  )
+}
+
+async function readout() {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('.readout')].map((p) => p.textContent.replace(/\s+/g, ' ').trim()),
+  )
+}
+
+async function statusBar() {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('.status span')].map((s) => s.textContent.trim()),
+  )
+}
+
+/**
+ * Assert that a step actually did what its caption says.
+ *
+ * Every caption here is a claim about a screenshot, and a screenshot of a
+ * no-op looks a lot like a screenshot of the real thing. Three captions in an
+ * early run were wrong — a ramp click that landed on water, cliff painting
+ * that landed on a terrain top, a coverage readout that never recomputed —
+ * and all three looked plausible until the image was read closely. So each
+ * step states a measurable consequence and the tour fails loudly without it.
+ */
+async function expect(label, fn) {
+  const value = await page.evaluate(fn)
+  if (!value) throw new Error(`tour step failed its own check: ${label}`)
+  return value
+}
+
+/** Counts the tour asserts against. */
+async function counts() {
+  return page.evaluate(() => {
+    const doc = window.__store.doc
+    return {
+      ramps: doc.terrain.ramp.filter((r) => r !== -1).length,
+      topPaint: Object.keys(doc.paint.top).length,
+      cliffPaint: Object.keys(doc.paint.cliff).length,
+      tint: Object.keys(doc.paint.tint).length,
+      objects: doc.objectOrder.length,
+      heightSum: doc.terrain.height.reduce((a, b) => a + b, 0),
+    }
+  })
+}
+
+console.log('\nCapturing tour...\n')
+
+// ---------------------------------------------------------------- 1. opening
+await shot('opening', 'First run opens the sample map, not an empty plane.')
+
+// ---------------------------------------------------------------- 2. sculpt
+await clickText('Terrain', '.left')
+await page.keyboard.press(']')
+await page.keyboard.press(']')
+await page.keyboard.press(']')
+await page.keyboard.press(']')
+await clickText('Circle', '.left')
+await page.mouse.move(cx - 60, cy + 40)
+await shot('brush-preview', 'Brush preview: a round 5-cell brush, drawn on the terrain surface it will affect.')
+
+const beforeSculpt = await counts()
+await page.mouse.down()
+for (let i = 0; i < 10; i++) {
+  await page.mouse.move(cx - 60 + i * 14, cy + 40 - i * 6)
+  await sleep(40)
+}
+await page.mouse.up()
+const raised = (await counts()).heightSum - beforeSculpt.heightSum
+await expect('raise changed the terrain', () => window.__store.history.canUndo())
+await shot(
+  'sculpt-raise',
+  `Dragging with Raise — ${raised} half-tiles of terrain moved. The whole stroke is one undo entry, not ten.`,
+)
+
+await page.keyboard.press('Control+z')
+await expect(
+  'one undo reverted the whole stroke',
+  () => !window.__store.history.canUndo() && window.__store.history.canRedo(),
+)
+await shot('sculpt-undo', 'One Ctrl+Z takes the entire stroke back — the whole drag was a single entry.')
+
+// ---------------------------------------------------------------- 3. ramps
+// Aim squarely at a cliff face. "Ramp faces: click a cliff" means clicking
+// anything else is a no-op — an earlier run clicked water and captured two
+// identical screenshots captioned as a before and after.
+async function faceCamera(distance = 10, pitch = 10) {
+  const face = await page.evaluate(() => {
+    const doc = window.__store.doc
+    let best = { x: 0, y: 0, drop: -1, top: 0, bottom: 0 }
+    for (let y = 2; y < doc.size.height - 2; y++) {
+      for (let x = 2; x < doc.size.width - 2; x++) {
+        const top = doc.terrain.height[y * doc.size.width + x]
+        const bottom = doc.terrain.height[(y + 1) * doc.size.width + x]
+        if (top - bottom > best.drop) best = { x, y, drop: top - bottom, top, bottom }
+      }
+    }
+    return best
+  })
+  await page.evaluate(
+    ([x, y, z, d]) => window.__viewport.setTargetForProbe(x, y, z, d),
+    [face.x + 0.5, ((face.top + face.bottom) / 2) * 0.5, face.y + 1, distance],
+  )
+  await camera({ pitch, yaw: 0 })
+  return face
+}
+
+/**
+ * Find a screen pixel that is actually over a cliff face.
+ *
+ * Aiming the camera at a face is not the same as knowing where it landed on
+ * screen, and a click that misses produces a screenshot of nothing happening.
+ * So ask the editor: hover a spiral of candidate points and read the status
+ * bar, which reports the picked surface. Searching outward from the centre
+ * usually settles in a handful of probes.
+ */
+async function findSurfacePixel(kind, radius = 200, step = 25) {
+  const candidates = []
+  for (let dy = -radius; dy <= radius; dy += step) {
+    for (let dx = -radius; dx <= radius; dx += step) {
+      candidates.push({ dx, dy, d: Math.hypot(dx, dy) })
+    }
+  }
+  candidates.sort((a, b) => a.d - b.d)
+
+  for (const { dx, dy } of candidates) {
+    await page.mouse.move(cx + dx, cy + dy)
+    await sleep(70)
+    const label = (await statusBar())[0]
+    if (label.startsWith(kind)) return { x: cx + dx, y: cy + dy, label }
+  }
+  return null
+}
+
+const findCliffPixel = (radius, step) => findSurfacePixel('cliff', radius, step)
+/** Terrain top with no object in front of it: picking reports objects as no surface. */
+const findTopPixel = (radius, step) => findSurfacePixel('top', radius, step)
+
+await clickText('Ramp', '.left')
+for (let i = 0; i < 6; i++) await page.keyboard.press('[')
+const rampFace = await faceCamera(11, 12)
+const beforeRamps = (await counts()).ramps
+
+const rampPixel = await findCliffPixel()
+if (!rampPixel) throw new Error('no cliff face visible to put a ramp on')
+await shot(
+  'ramp-before',
+  `The Ramp verb, hovering a cliff face. Picking resolves to a surface and a cell on it, not just a point in space — the status bar names it: "${rampPixel.label}".`,
+  { settle: 1200 },
+)
+
+await page.mouse.move(rampPixel.x, rampPixel.y)
+await page.mouse.down()
+await page.mouse.up()
+const afterRamps = (await counts()).ramps
+if (afterRamps <= beforeRamps) {
+  throw new Error('ramp click did not create a ramp — it missed the cliff face')
+}
+await shot(
+  'ramp-after',
+  'Clicking the cliff face turns that edge into a ramp. No direction had to be chosen — picking already resolved which side was clicked.',
+)
+
+// Same ramp from above, where the slope actually reads.
+await page.evaluate(
+  ([x, y, z, d]) => window.__viewport.setTargetForProbe(x, y, z, d),
+  [rampFace.x + 0.5, ((rampFace.top + rampFace.bottom) / 2) * 0.5, rampFace.y + 1, 15],
+)
+await camera({ pitch: 38, yaw: 20 })
+await shot(
+  'ramp-above',
+  'The same ramp from above. It drops exactly one tile, so it only reads correctly where the neighbour is one tile lower — the main limitation of the tool as it stands.',
+  { settle: 1500 },
+)
+
+// ---------------------------------------------------------------- 4. paint
+await focus(18, 18, 22)
+await camera({ pitch: 36, yaw: 35 })
+await page.keyboard.press('Tab')
+await shot('paint-palette', 'Tab switches to Paint. The template sheet is the palette; each material owns four columns.')
+
+// Pick a stone tile from the sheet, then brush it on.
+const palette = await page.$('.palette-sheet')
+const pbox = await palette.boundingBox()
+await page.mouse.click(pbox.x + pbox.width * 0.66, pbox.y + pbox.height * 0.4)
+await page.keyboard.press('[')
+await page.keyboard.press('[')
+await page.mouse.move(cx - 40, cy + 20)
+await page.mouse.down()
+for (let i = 0; i < 9; i++) {
+  await page.mouse.move(cx - 40 + i * 16, cy + 20 + Math.sin(i / 2) * 14)
+  await sleep(40)
+}
+await page.mouse.up()
+const topPainted = (await counts()).topPaint
+await expect('tile painting landed', () => Object.keys(window.__store.doc.paint.top).length > 0)
+await shot(
+  'paint-tile',
+  `Painting a tile over the terrain — ${topPainted} cells carry a painted override. The cell keeps its material underneath; this is a layer on top of what the template picks automatically.`,
+)
+
+// ---------------------------------------------------------------- 5. tint
+await clickText('Tint', '.left')
+await page.mouse.move(cx + 30, cy - 20)
+await page.mouse.down()
+for (let i = 0; i < 7; i++) {
+  await page.mouse.move(cx + 30 + i * 15, cy - 20 + i * 8)
+  await sleep(40)
+}
+await page.mouse.up()
+await expect('tint painting landed', () => Object.keys(window.__store.doc.paint.tint).length > 0)
+await shot(
+  'paint-tint',
+  'The tint brush, quantised per cell — deliberately not smooth splatting, which looks mushy next to pixel art.',
+)
+
+// ------------------------------------------- 6. paint survives sculpt (the point)
+const cliff = await faceCamera(9, 8)
+await clickText('Tile', '.left')
+await shot(
+  'cliff-before',
+  `A cliff face seen head on, ${cliff.drop} half-tiles tall, with the tile brush selected.`,
+  { settle: 1600 },
+)
+
+// Paint bands of that face through the UI. Find the face first, then walk up
+// and down from it, checking the status bar still reports a cliff before each
+// click so no stroke lands on a terrain top by accident.
+const cliffPixel = await findCliffPixel()
+if (!cliffPixel) throw new Error('no cliff face visible to paint')
+for (const dy of [-30, -10, 0, 10, 30]) {
+  await page.mouse.move(cliffPixel.x, cliffPixel.y + dy)
+  await sleep(120)
+  const label = (await statusBar())[0]
+  if (!label.startsWith('cliff')) continue
+  await page.mouse.down()
+  await page.mouse.up()
+  await sleep(200)
+}
+
+const painted = (await counts()).cliffPaint
+if (painted === 0) {
+  throw new Error('cliff painting did not land on any cliff face — captions would be wrong')
+}
+await shot(
+  'cliff-painted',
+  `Cliff bands painted one at a time — ${painted} painted faces. Each is keyed by cell, side and absolute half-tile level, never by a triangle.`,
+)
+
+// Now sculpt the cliff away.
+await page.evaluate((c) => {
+  const store = window.__store
+  const { flatten } = window.__ops
+  store.apply('Lower cliff', flatten(store.doc, [[c.x, c.y]], c.bottom))
+}, cliff)
+const dormantLine = (await statusBar())[2]
+const dormantCount = Number(dormantLine.replace(/\D+/g, ''))
+if (dormantCount === 0) {
+  throw new Error(`expected dormant paint after lowering, status bar said "${dormantLine}"`)
+}
+await shot(
+  'cliff-lowered',
+  `Sculpting the cliff down. The bands are gone from the mesh, and the status bar counts them as dormant rather than deleted — "${dormantLine}".`,
+)
+
+await page.evaluate(() => window.__store.undo())
+await expect(
+  'paint came back with the geometry',
+  () => Object.keys(window.__store.doc.paint.cliff).length > 0,
+)
+await shot(
+  'cliff-restored',
+  'Raising it back brings every painted band with it, because nothing ever garbage-collected the paint.',
+)
+
+// ---------------------------------------------------------------- 7. objects
+await focus(18, 18, 20)
+await camera({ pitch: 34, yaw: 35 })
+await page.keyboard.press('2')
+await shot('objects-tool', 'The Objects tool. Sprite picker on the left, properties on the right.')
+
+const beforeObjects = (await counts()).objects
+// Clicking an existing object selects it rather than placing a new one, so
+// find bare terrain first.
+const placePixel = await findTopPixel()
+if (!placePixel) throw new Error('no bare terrain visible to place an object on')
+await page.mouse.click(placePixel.x, placePixel.y)
+const afterObjects = (await counts()).objects
+if (afterObjects <= beforeObjects) throw new Error('object placement did not add an object')
+await shot(
+  'object-placed',
+  'Placing drops the object onto the surface under the cursor and anchors it to that cell, so later sculpting carries it rather than burying it.',
+)
+
+// Show the facing/flip configuration on a four-facing object.
+await expect('a four-facing statue exists to inspect', () => {
+  const store = window.__store
+  const id = store.doc.objectOrder.find((i) => store.doc.objects[i].sprite === 'statue')
+  if (!id) return false
+  window.__selectObject(id)
+  return true
+})
+await shot('facing-config', 'Facing and flip: 1/2/4/8 directional images, mirroring, back side, transition and hinge.')
+
+// ---------------------------------------------------------------- 8. camera
+await page.keyboard.press('3')
+await shot('camera-free', 'The Camera tab. Yaw range is free 360°, and the coverage readout prices that.')
+
+const freeCoverage = await readout()
+
+await camera({ yaw: 140, pitch: 62 })
+await shot(
+  'camera-envelope',
+  'Free orbit is always available while editing, but the viewport tints and warns when the view leaves the game’s envelope.',
+)
+
+await camera({ yaw: 35, pitch: 34 })
+await clickText('Narrow', '.right')
+const narrowCoverage = await readout()
+if (narrowCoverage.join() === freeCoverage.join()) {
+  throw new Error('coverage readout did not change with the bounds — it is stale')
+}
+await shot(
+  'camera-narrow',
+  'The same map with a narrow yaw range. Half the cliff faces become invisible from every permitted angle, so they never need painting — but the flat planes still read wrong, because narrowing the camera cannot fix an object that faces the wrong way.',
+)
+
+await clickText('Free', '.right')
+await sleep(600)
+
+// ---------------------------------------------------------------- 9. atmosphere
+await page.locator('.right .tabs button', { hasText: 'atmosphere' }).click()
+await sleep(500)
+await focus(18, 18, 20)
+await camera({ pitch: 30, yaw: 35 })
+await shot('atmosphere', 'Atmosphere presets move fog, sky, lighting and post-processing together.')
+
+await page.selectOption('.right select', 'Night festival')
+await shot('atmosphere-night', 'Night festival: the lamp props carry their own point lights, so they light the ground.')
+
+await page.selectOption('.right select', 'Misty dusk')
+await shot('atmosphere-dusk', 'Misty dusk. Backdrop cards give distant scenery without anyone modelling a mountain.')
+
+await page.selectOption('.right select', 'Clear noon')
+await sleep(600)
+
+// ---------------------------------------------------------------- 10. play mode
+await page.keyboard.press('p')
+await sleep(1500)
+await page.keyboard.down('w')
+await sleep(1200)
+await page.keyboard.up('w')
+await shot('play-mode', 'Play mode: WASD walks the map using the same runtime code the viewport renders through.', {
+  settle: 700,
+})
+await page.keyboard.press('p')
+await sleep(600)
+
+// ---------------------------------------------------------------- 11. outliner
+await page.locator('.right .tabs button', { hasText: 'outliner' }).click()
+await shot('outliner', 'The outliner, with per-object hide and lock.')
+
+writeFileSync(
+  `${OUT}/tour.json`,
+  JSON.stringify({ steps, freeCoverage, narrowCoverage }, null, 2),
+)
+
+console.log('\nCoverage, free rotation:')
+for (const line of freeCoverage) console.log('  ' + line)
+console.log('\nCoverage, narrow bounds:')
+for (const line of narrowCoverage) console.log('  ' + line)
+
+await browser.close()
+server.kill()
+
+if (problems.length > 0) {
+  console.error('\nConsole errors:')
+  for (const p of [...new Set(problems)]) console.error('  ' + p)
+  process.exit(1)
+}
+console.log(`\n${steps.length} screenshots in ${OUT}/`)
