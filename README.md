@@ -13,7 +13,7 @@ decisions and their reasoning.
 ```bash
 pnpm install
 pnpm dev           # http://localhost:5173
-pnpm test          # layer boundaries + unit tests
+pnpm test          # unit tests
 pnpm lint          # type-aware ESLint; no inline suppressions exist
 pnpm bench         # mesher throughput
 pnpm shoot         # drive it headless and save screenshots to shots/
@@ -63,16 +63,27 @@ pnpm probe         # measure whether post-processing survives on this GPU
 
 ## Layout
 
+A pnpm workspace, orchestrated by Turborepo.
+
 ```
-src/core/     document, commands, undo, meshers, ops  — no three.js, no React
-src/runtime/  the reference runtime: scene, billboards, camera, export
-src/editor/   React panels and the imperative viewport
+packages/document/  document, commands, undo, ops, paint  — no three.js, no React
+packages/geometry/  meshers and the autotile template     — no three.js, no React
+packages/runtime/   the reference runtime: scene, billboards, camera, export
+packages/viewport/  the imperative GL shell the editor drives
+packages/ui/        the editor's design vocabulary (Mantine primitives)
+packages/fixtures/  generated sample documents
+apps/editor/        React panels, tools and the app shell
 ```
 
-The import direction `core <- runtime <- editor` is enforced by
-`scripts/check-boundaries.mjs`, which runs as part of `pnpm test`. The runtime is
-the package a game would consume; the editor renders through it, so the preview
-and the game cannot drift apart.
+The import direction `document <- geometry <- runtime <- viewport <- editor` is
+enforced by dependency resolution rather than by a lint script: pnpm's strict
+`node_modules` means a package can only import what its own `package.json`
+declares, so `packages/document` cannot reach three.js or React at all — the
+import fails to resolve. `scripts/check-boundaries.mjs`, which policed the old
+`src/{core,runtime,editor}` tree, now inspects nothing and says so; it is kept
+wired up for whoever rewrites it against the workspace, and proves nothing until
+they do. The runtime is the package a game would consume; the editor renders
+through it, so the preview and the game cannot drift apart.
 
 ## Two things worth knowing before reading the code
 
@@ -80,8 +91,8 @@ and the game cannot drift apart.
 cell, side and *absolute half-tile level* — never by mesh face, and never by a
 row index into a swept profile. Sculpt operations never write to the paint
 layers, which is the entire mechanism behind painted work surviving geometry
-edits. `src/core/paint.ts` explains it properly, and there is a test that lowers
-a cliff and raises it back.
+edits. `packages/document/src/paint.ts` explains it properly, and there is a
+test that lowers a cliff and raises it back.
 
 **Assets are generated, not vendored.** The placeholder tile sheet and sprites
 are drawn procedurally at runtime, so nothing in this repository carries a

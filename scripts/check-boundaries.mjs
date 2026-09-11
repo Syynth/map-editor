@@ -10,7 +10,7 @@
  * headless exporter CLI needs to import core on its own, promote these folders
  * to real packages and delete this script.
  */
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 const ROOT = new URL('..', import.meta.url).pathname
@@ -53,7 +53,13 @@ function specifiers(source) {
 
 const violations = []
 
-for (const file of walk(SRC)) {
+// `src/` moved to `apps/editor/` and `packages/*`, so there is nothing left for
+// this script to walk. It is kept running rather than deleted so that whoever
+// rewrites it for workspace packages inherits a wired-up check — but it must
+// not claim a pass it did not perform, which is what the report below is for.
+const files = existsSync(SRC) ? walk(SRC) : []
+
+for (const file of files) {
   const layer = layerOf(file)
   const rules = FORBIDDEN[layer]
   if (!rules) continue
@@ -81,4 +87,8 @@ if (violations.length > 0) {
   process.exit(1)
 }
 
-console.log('Layer boundaries OK (core <- runtime <- editor)')
+console.log(
+  files.length === 0
+    ? 'check-boundaries inspected 0 files: the src/{core,runtime,editor} tree it is keyed on no longer exists, so this check proves nothing until it is rewritten against the workspace packages.'
+    : `Layer boundaries OK (core <- runtime <- editor), ${files.length} file(s) inspected`,
+)

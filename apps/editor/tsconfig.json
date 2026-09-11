@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+
+    // No ambient `@types`, matching every package. Vite's client types reach
+    // `import.meta.env` through `src/vite-env.d.ts`'s reference directive, so
+    // nothing here needs Node's globals: this app is browser code plus a config
+    // file, and the day either reaches for `process` the compiler says so.
+    "types": []
+  },
+
+  // `vite.config.ts` is listed so the app's own config is typechecked here
+  // rather than by the repo root, which no longer compiles any application
+  // code. No `references`, for the reason spelled out in `geometry`'s tsconfig:
+  // a referenced project must be `composite`, and `composite` forbids `noEmit`.
+  "include": ["src", "vite.config.ts"]
+}

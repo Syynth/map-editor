@@ -27,7 +27,17 @@ export default tseslint.config(
     // `dist` and `.turbo` are build output. `.claude` holds vendored skills and
     // live agent worktrees — full checkouts of this repo, so linting it would
     // report every violation once per worktree.
-    ignores: ['dist/**', '.turbo/**', '.claude/**'],
+    //
+    // `**/` matters on the first two, for the same reason it does on the
+    // `*.config.{ts,js}` glob below: a flat-config pattern with no leading `**/`
+    // is anchored at the config's own directory, and build output now lands in
+    // `apps/editor/dist` and `<pkg>/.turbo`, not at the root. Without it
+    // `eslint .` lints the app's minified bundle — thousands of `no-undef`s —
+    // but only on a machine that has built, which is why the gate can pass in a
+    // fresh checkout and fail everywhere else. `.gitignore`'s `dist/` matches at
+    // any depth (gitignore semantics differ), so `git status` stays clean and
+    // hides it.
+    ignores: ['**/dist/**', '**/.turbo/**', '.claude/**'],
   },
 
   {
@@ -96,9 +106,12 @@ export default tseslint.config(
     rules: {},
   },
 
-  { files: ['src/**'], languageOptions: { globals: globals.browser } },
+  { files: ['apps/editor/src/**'], languageOptions: { globals: globals.browser } },
   {
-    files: ['*.config.{ts,js}', 'eslint.config.js'],
+    // `**/` matters: a flat-config pattern with no slash matches only at the
+    // config's own directory, and the app's Vite config now sits in
+    // `apps/editor/`.
+    files: ['**/*.config.{ts,js}', 'eslint.config.js'],
     languageOptions: { globals: globals.node },
   },
   {

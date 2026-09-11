@@ -8,9 +8,7 @@
   "globalDependencies": [".nvmrc"],
 
   "tasks": {
-    // Per-package tasks. `packages/*` and `apps/*` are still empty globs, so
-    // nothing implements these yet — they are declared now so the ordering rule
-    // lands with the tool rather than being retrofitted once packages exist.
+    // Per-package tasks, implemented by `packages/*` and `apps/editor`.
     // `^build` is the whole point: a consumer's test/typecheck/lint must not run
     // until its dependencies have been built, or it typechecks against stale
     // (or absent) emit.
@@ -25,26 +23,24 @@
     "lint": { "dependsOn": ["^build"] },
 
     // Root tasks. Turbo only runs a root-package script when it is declared
-    // with the `//#` prefix, and today the root package IS the whole editor, so
-    // these are what `turbo run test typecheck` actually executes.
+    // with the `//#` prefix. The root no longer holds any application code, so
+    // what is left here is repo-wide: the whole vitest run (every test lives in
+    // a `packages/*` package and one root invocation collects them), the
+    // typecheck of the tooling configs, and one `eslint .` over everything.
+    // There is no `//#build` any more — building is `apps/editor`'s own task.
     //
-    // This is also why `package.json`'s `test`/`typecheck`/`build` stay the real
-    // commands instead of becoming `turbo run …` aliases: turbo invokes the
-    // same-named root script, so an alias would re-enter turbo forever. The
-    // turbo-fronted entry points are `gate` and `gate:full`, named distinctly
-    // for exactly that reason. `ci` was the obvious name for the second and is
-    // unusable: `pnpm ci` is a pnpm builtin and silently runs a clean install
-    // instead of the script.
+    // `package.json`'s `test`/`typecheck` stay the real commands instead of
+    // becoming `turbo run …` aliases: turbo invokes the same-named root script,
+    // so an alias would re-enter turbo forever. The turbo-fronted entry points
+    // are `gate` and `gate:full`, named distinctly for exactly that reason.
+    // `ci` was the obvious name for the second and is unusable: `pnpm ci` is a
+    // pnpm builtin and silently runs a clean install instead of the script.
     //
     // Inputs start from turbo's default (every git-tracked file in the package,
     // which for the root package is the repo) and subtract only what provably
     // cannot change a tsc or vitest result. Subtracting rather than listing
     // keeps a new source directory cache-correct by default; a missed entry in
     // a hand-written allowlist would serve a stale hit instead.
-    "//#build": {
-      "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"],
-      "outputs": ["dist/**"]
-    },
     "//#test": {
       "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
     },
