@@ -51,18 +51,28 @@ than retrofitted.
 
 ## Milestones
 
-- [ ] **Spikes** — pixel art in perspective, meshing throughput
-- [ ] **M0** Skeleton: Vite + React + three.js, terrain rendered from data
+- [x] **Spikes** — meshing throughput measured; pixel-art-in-perspective needs a real GPU
+- [x] **M0** Skeleton: Vite + React + three.js, terrain rendered from data
 - [x] **M1** Spine: document, commands, undo, versioned save/load
-- [ ] **M2** Terrain sculpt: picking to `(surface, cell)`, strokes, dirty chunks
-- [ ] **M3** Terrain paint: autotiling, cliff paint, tint
-- [ ] **M4** Image objects, display modes, facing and flip
-- [ ] **M5** Camera rig, bounds, coverage readout
-- [ ] **M6** Play mode on the runtime package
-- [ ] **M7** glTF export with the extras spec
+- [x] **M2** Terrain sculpt: picking to `(surface, cell)`, strokes, dirty chunks
+- [x] **M3** Terrain paint: autotiling, cliff paint, tint
+- [x] **M4** Image objects, display modes, facing and flip
+- [x] **M5** Camera rig, bounds, coverage readout
+- [x] **M6** Play mode on the runtime package
+- [x] **M7** glTF export with the extras spec
 
-M1 landed first because the meshers and ops need somewhere to write to. M0's
-viewport follows immediately.
+M1 landed before M0 because the meshers and ops needed somewhere to write to.
+
+The runtime package was carved out at M4, when billboard behaviour first
+existed, rather than at play mode — so the editor viewport and the game share
+one implementation by construction instead of by later refactor.
+
+## What is deliberately not built
+
+Buildings, blocks, prefabs, styles, engine-defined custom types, the profile
+strip, and fixtures. All of brief section 4's generality waits until a second
+template kind exists to generalise from. The tool layer is a switch statement
+on three tools, not a plugin API, for the same reason.
 
 ## Questions the prototype was built to answer
 

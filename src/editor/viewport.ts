@@ -108,7 +108,32 @@ const DEFAULT_OPTIONS: ViewportOptions = {
   selectedObjectId: null,
 }
 
+/**
+ * Software rasterizers (SwiftShader in headless Chromium, llvmpipe on a
+ * machine with no GPU driver) render the bloom pass as a black frame: the
+ * scene itself draws correctly, and putting UnrealBloomPass in front of it
+ * turns the whole image black. Measured, not guessed — see FINDINGS.md.
+ *
+ * Rather than lose the whole viewport on such a machine, detect it and drop
+ * post-processing. The editor says so in the status bar so nobody concludes
+ * the atmosphere sliders are broken.
+ */
+function isSoftwareRenderer(renderer: THREE.WebGLRenderer): boolean {
+  try {
+    const gl = renderer.getContext()
+    const info = gl.getExtension('WEBGL_debug_renderer_info')
+    const name = info
+      ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL))
+      : String(gl.getParameter(gl.RENDERER))
+    return /swiftshader|llvmpipe|software|mesa offscreen/i.test(name)
+  } catch {
+    return false
+  }
+}
+
 export class Viewport {
+  /** True when post-processing had to be switched off. */
+  readonly softwareRenderer: boolean
   private renderer: THREE.WebGLRenderer
   private composer: EffectComposer
   private bloom: UnrealBloomPass
@@ -169,11 +194,25 @@ export class Viewport {
 
     this.composer = new EffectComposer(this.renderer)
     this.composer.addPass(new RenderPass(this.scene.scene, this.camera))
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.35, 0.55, 0.85)
+    // Built at the real size rather than a placeholder that resize() fixes up
+    // later. (That was a suspect for the software-GL black frame below; it was
+    // not the cause, but sizing it correctly up front is right anyway.)
+    this.bloom = new UnrealBloomPass(
+      new THREE.Vector2(Math.max(1, canvas.clientWidth), Math.max(1, canvas.clientHeight)),
+      0.35,
+      0.55,
+      0.85,
+    )
     this.composer.addPass(this.bloom)
     this.tiltShift = new ShaderPass(TiltShiftShader)
     this.composer.addPass(this.tiltShift)
     this.composer.addPass(new OutputPass())
+
+    this.softwareRenderer = isSoftwareRenderer(this.renderer)
+    if (this.softwareRenderer) {
+      this.bloom.enabled = false
+      this.tiltShift.enabled = false
+    }
 
     // --- overlays ---------------------------------------------------------
     const overlayMaterial = new THREE.MeshBasicMaterial({
@@ -254,6 +293,30 @@ export class Viewport {
     return { yaw: this.orbit.yaw, pitch: this.orbit.pitch, distance: this.orbit.distance }
   }
 
+  /** Used by the headless diagnostic scripts. */
+  setDistanceForProbe(distance: number): void {
+    this.orbit.distance = distance
+  }
+
+  /** Used by the headless diagnostic scripts. */
+  hideOverlayForProbe(): void {
+    this.overlay.visible = false
+  }
+
+  /** Used by the headless diagnostic scripts. */
+  bypassComposer = false
+
+  /** Used by the headless diagnostic scripts. */
+  setPitchForProbe(pitch: number): void {
+    this.orbit.pitch = pitch
+  }
+
+  /** Used by the headless diagnostic scripts. */
+  setPassForProbe(name: 'bloom' | 'tiltShift', enabled: boolean): void {
+    if (name === 'bloom') this.bloom.enabled = enabled
+    else this.tiltShift.enabled = enabled
+  }
+
   /** Adopt the document's rig as the current view, for the "preview" button. */
   applyRigDefaults(): void {
     const rig = this.store.doc.camera
@@ -262,15 +325,20 @@ export class Viewport {
     this.orbit.distance = rig.distance
   }
 
+  /**
+   * Open on the map centre at the rig's own distance.
+   *
+   * Not a fit-the-whole-map framing: at the narrow field of view this look
+   * wants, fitting a 36-tile map means standing 80 units back, where the map's
+   * own fog — correctly, for gameplay — has already swallowed everything. The
+   * rig distance is what the game will actually use, so it is also the honest
+   * thing to open on. Zooming out from there is one scroll away.
+   */
   frameMap(): void {
     const { width, height } = this.store.doc.size
     const rig = this.store.doc.camera
     this.orbit.target.set(width / 2, 1, height / 2)
-    // Fit the map to the vertical field of view rather than guessing, so a
-    // narrow FOV — which this look tends to want — does not crop the level.
-    const radius = Math.hypot(width, height) / 2
-    const halfFov = ((rig.projection === 'orthographic' ? 45 : rig.fov) / 2) * (Math.PI / 180)
-    this.orbit.distance = (radius / Math.tan(halfFov)) * 0.85
+    this.orbit.distance = Math.min(rig.bounds.distMax, Math.max(rig.bounds.distMin, rig.distance))
   }
 
   dispose(): void {
@@ -611,10 +679,13 @@ export class Viewport {
     this.updateHover()
     this.updateSelection()
 
-    this.bloom.strength = doc.atmosphere.bloom
-    this.tiltShift.uniforms.amount.value = doc.atmosphere.tiltShift
+    if (!this.softwareRenderer) {
+      this.bloom.strength = doc.atmosphere.bloom
+      this.tiltShift.uniforms.amount.value = doc.atmosphere.tiltShift
+    }
 
-    this.composer.render()
+    if (this.bypassComposer) this.renderer.render(this.scene.scene, this.camera)
+    else this.composer.render()
 
     // --- reporting ---------------------------------------------------------
     this.handlers.onCameraChange({

@@ -58,6 +58,7 @@ export default function App() {
   const [hoverCells, setHoverCells] = useState<Array<[number, number]>>([])
   const [camera, setCamera] = useState({ yaw: 45, pitch: 35, distance: 26, inBounds: true })
   const [stats, setStats] = useState({ fps: 0, triangles: 0, meshMs: 0 })
+  const [softwareRenderer, setSoftwareRenderer] = useState(false)
   const [sheet, setSheet] = useState<HTMLCanvasElement | null>(null)
   const [sheetWarning, setSheetWarning] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -117,6 +118,10 @@ export default function App() {
       onStats: setStats,
     })
     viewportRef.current = viewport
+    setSoftwareRenderer(viewport.softwareRenderer)
+    // Handy from the console, and the headless probe scripts drive it.
+    ;(window as unknown as Record<string, unknown>).__viewport = viewport
+    ;(window as unknown as Record<string, unknown>).__store = store
     viewport.frameMap()
     if (sheet) viewport.loadSheet(sheet)
     return () => {
@@ -510,6 +515,7 @@ export default function App() {
         <span>
           {stats.fps.toFixed(0)} fps · {(stats.triangles / 1000).toFixed(0)}k tris · mesh{' '}
           {stats.meshMs.toFixed(1)}ms
+          {softwareRenderer ? ' · software GL, post-processing off' : ''}
         </span>
         <span>{store.history.undoLabel() ?? 'nothing to undo'}</span>
       </footer>

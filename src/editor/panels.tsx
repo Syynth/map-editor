@@ -585,7 +585,16 @@ export function AtmospherePanel({
       <Field label="Preset">
         <Select
           value={atmosphere.preset}
-          onChange={(preset) => onChange({ ...makeAtmosphere(preset), backdrop: atmosphere.backdrop })}
+          onChange={(preset) =>
+            onChange({
+              // Keep the fog distances this map already has: they are scaled to
+              // its size, and the preset's are authored against a reference.
+              ...makeAtmosphere(preset),
+              fogNear: atmosphere.fogNear,
+              fogFar: atmosphere.fogFar,
+              backdrop: atmosphere.backdrop,
+            })
+          }
           options={Object.keys(ATMOSPHERE_PRESETS).map((name) => ({ value: name, label: name }))}
         />
       </Field>

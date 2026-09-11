@@ -322,9 +322,24 @@ export const ATMOSPHERE_PRESETS: Record<string, Omit<Atmosphere, 'preset' | 'bac
   },
 }
 
-export function makeAtmosphere(preset = 'Clear noon'): Atmosphere {
+/** Preset fog distances are authored for a map this many tiles across. */
+export const PRESET_REFERENCE_SPAN = 32
+
+/**
+ * Fog distances in a preset describe a *look*, not an absolute distance, so
+ * they scale with the map. Without this, opening a 64-tile map with a preset
+ * authored against a 32-tile one buries the far half of the level in fog.
+ */
+export function makeAtmosphere(preset = 'Clear noon', mapSpan = PRESET_REFERENCE_SPAN): Atmosphere {
   const base = ATMOSPHERE_PRESETS[preset] ?? ATMOSPHERE_PRESETS['Clear noon']
-  return { preset, ...base, backdrop: [] }
+  const scale = Math.max(0.25, mapSpan / PRESET_REFERENCE_SPAN)
+  return {
+    preset,
+    ...base,
+    fogNear: Math.round(base.fogNear * scale),
+    fogFar: Math.round(base.fogFar * scale),
+    backdrop: [],
+  }
 }
 
 export function defaultCameraRig(): CameraRig {
@@ -377,6 +392,6 @@ export function createMap(width = 32, height = 32, name = 'Untitled Map'): MapDo
     objects: {},
     objectOrder: [],
     camera: defaultCameraRig(),
-    atmosphere: makeAtmosphere(),
+    atmosphere: makeAtmosphere('Clear noon', Math.max(width, height)),
   }
 }
