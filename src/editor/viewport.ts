@@ -99,6 +99,11 @@ export interface ViewportOptions {
   selectedObjectId: string | null
 }
 
+/** How far an alt+left press must travel before it counts as an orbit drag
+ *  rather than an eyedropper click. Small enough that a deliberate drag is
+ *  never swallowed, large enough to absorb trackpad jitter during a tap. */
+const ORBIT_DRAG_THRESHOLD = 4
+
 const DEFAULT_OPTIONS: ViewportOptions = {
   brushPreview: [],
   showGrid: true,
@@ -156,7 +161,10 @@ export class Viewport {
   private character: Character | null = null
   private keys = new Set<string>()
 
-  private dragging: 'none' | 'stroke' | 'orbit' | 'pan' = 'none'
+  private dragging: 'none' | 'stroke' | 'orbit' | 'pan' | 'pending' = 'none'
+  /** An alt+left press that has not yet moved far enough to count as an orbit.
+   *  Held here so a click can still reach the eyedropper on release. */
+  private pending: { x: number; y: number; event: PointerEvent } | null = null
   private lastPointer = { x: 0, y: 0 }
   private frameHandle = 0
   private lastTime = performance.now()
@@ -530,14 +538,21 @@ export class Viewport {
     this.canvas.setPointerCapture(event.pointerId)
     this.lastPointer = { x: event.clientX, y: event.clientY }
 
-    // Middle drags orbit, right drags pan, and alt+left orbits too so a
-    // trackpad user is not stuck.
-    if (event.button === 1 || (event.button === 0 && event.altKey && event.shiftKey)) {
+    // Middle drags orbit and right drags pan, but a MacBook trackpad has no
+    // middle button, so alt+drag orbits as well — the Maya/Unity gesture. Alt
+    // is also the eyedropper, so the press is held as 'pending' until it moves
+    // far enough to be a drag; a release before that is treated as the click.
+    if (event.button === 1) {
       this.dragging = 'orbit'
       return
     }
     if (event.button === 2) {
       this.dragging = 'pan'
+      return
+    }
+    if (event.button === 0 && event.altKey) {
+      this.dragging = 'pending'
+      this.pending = { x: event.clientX, y: event.clientY, event }
       return
     }
     if (event.button !== 0 || this.options.playing) return
@@ -551,6 +566,12 @@ export class Viewport {
     const dy = event.clientY - this.lastPointer.y
     this.lastPointer = { x: event.clientX, y: event.clientY }
 
+    if (this.dragging === 'pending' && this.pending) {
+      const moved = Math.hypot(event.clientX - this.pending.x, event.clientY - this.pending.y)
+      if (moved < ORBIT_DRAG_THRESHOLD) return
+      this.dragging = 'orbit'
+      this.pending = null
+    }
     if (this.dragging === 'orbit') {
       this.orbit.yaw = wrapDegrees(this.orbit.yaw - dx * 0.4)
       this.orbit.pitch = Math.min(89, Math.max(-5, this.orbit.pitch + dy * 0.3))
@@ -575,6 +596,15 @@ export class Viewport {
       this.canvas.releasePointerCapture(event.pointerId)
     }
     if (this.dragging === 'stroke') this.handlers.onStrokeEnd()
+    if (this.dragging === 'pending' && this.pending && !this.options.playing) {
+      // Never moved: replay it as the click it turned out to be. Picking uses
+      // the press position, not the release position, so a stray pixel of
+      // travel cannot land the eyedropper on a different cell.
+      const press = this.pending.event
+      this.handlers.onStrokeStart(this.pickAt(press), this.modifiers(press))
+      this.handlers.onStrokeEnd()
+    }
+    this.pending = null
     this.dragging = 'none'
   }
 

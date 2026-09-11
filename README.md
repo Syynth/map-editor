@@ -49,13 +49,15 @@ npm run probe      # measure whether post-processing survives on this GPU
 | `Tab` | Sculpt / Paint |
 | `[` `]` | Brush size |
 | `Shift` | Erase, or invert (lower instead of raise) |
-| `Alt` | Eyedropper |
+| `Alt` click | Eyedropper |
 | `Ctrl` | Reach through objects to the terrain |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `G` | Clamp to the game's camera bounds |
 | `P` | Play mode |
 | `Delete` | Remove the selected object |
-| Middle drag / right drag | Orbit / pan |
+| `Alt` drag / middle drag | Orbit |
+| Right drag | Pan |
+| Scroll / pinch | Zoom |
 
 ## Layout
 
