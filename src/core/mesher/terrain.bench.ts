@@ -8,7 +8,7 @@
  *
  * Run with `npm run bench`.
  */
-import { bench, describe } from 'vitest'
+import { describe, test } from 'vitest'
 
 import { allChunkKeys } from '../chunks'
 import { cellIndex, createMap, type MapDoc } from '../document'
@@ -36,16 +36,36 @@ const middle = keys128[Math.floor(keys128.length / 2)]
 // The 3x3 neighbourhood a brush tick actually dirties.
 const brushChunks = ['3,3', '4,3', '5,3', '3,4', '4,4', '5,4', '3,5', '4,5', '5,5']
 
+// Vitest 5 moved `bench` off the module exports and onto the test context: a
+// benchmark is now a registration you await inside a test, so each timing below
+// is one test that reports a benchmark rather than a top-level `bench()` call.
+//
+// Read the numbers as an upper bound, not a clean measurement. Vitest 5 prints a
+// "accessed module export getters too many times" warning for all three cases
+// here (tracking `cellIndex`, `inBounds`, `HALF`, `DIR_VECTORS` and friends from
+// src/core/document.ts): under the module runner every cross-module import is a
+// getter call, and the mesher reads those in its innermost loops. The overhead is
+// the harness's, not the mesher's, so real runtime work is somewhat faster than
+// what prints. We do not suppress the warning — see
+// https://vitest.dev/guide/benchmarking#module-runner-overhead. What the numbers
+// are still good for is the comparison that matters: brush tick vs. 16.7 ms, and
+// this run vs. the last one.
 describe('terrain mesher', () => {
-  bench('one chunk (16x16 cells), hilly', () => {
-    meshTerrainChunk(map128, middle)
+  test('one chunk (16x16 cells), hilly', async ({ bench }) => {
+    await bench('one chunk (16x16 cells), hilly', () => {
+      meshTerrainChunk(map128, middle)
+    }).run()
   })
 
-  bench('one brush tick (9 chunks)', () => {
-    for (const key of brushChunks) meshTerrainChunk(map128, key)
+  test('one brush tick (9 chunks)', async ({ bench }) => {
+    await bench('one brush tick (9 chunks)', () => {
+      for (const key of brushChunks) meshTerrainChunk(map128, key)
+    }).run()
   })
 
-  bench('whole 128x128 map (64 chunks)', () => {
-    for (const key of keys128) meshTerrainChunk(map128, key)
+  test('whole 128x128 map (64 chunks)', async ({ bench }) => {
+    await bench('whole 128x128 map (64 chunks)', () => {
+      for (const key of keys128) meshTerrainChunk(map128, key)
+    }).run()
   })
 })

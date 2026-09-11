@@ -1,5 +1,5 @@
 import { defineConfig, configDefaults, mergeConfig } from 'vitest/config'
-import viteConfig from './vite.config'
+import viteConfig from './vite.config.ts'
 
 // Separate from vite.config.ts because vitest bundles its own copy of vite:
 // declaring `test` inside the vite config fails to typecheck, since the two

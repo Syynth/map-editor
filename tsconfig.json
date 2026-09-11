@@ -17,11 +17,10 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "exactOptionalPropertyTypes": false,
-    "baseUrl": ".",
     "paths": {
-      "@core/*": ["src/core/*"],
-      "@runtime/*": ["src/runtime/*"],
-      "@editor/*": ["src/editor/*"]
+      "@core/*": ["./src/core/*"],
+      "@runtime/*": ["./src/runtime/*"],
+      "@editor/*": ["./src/editor/*"]
     }
   },
   "include": ["src", "scripts", "vite.config.ts"]

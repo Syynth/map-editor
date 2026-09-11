@@ -39,7 +39,9 @@ function loadAutosave() {
 }
 
 export default function App() {
-  const storeRef = useRef<EditorStore>()
+  // React 19's useRef demands an initial value, so the lazy-construct guard
+  // below now carries the null itself.
+  const storeRef = useRef<EditorStore | null>(null)
   if (!storeRef.current) storeRef.current = new EditorStore(loadAutosave())
   const store = storeRef.current
 
