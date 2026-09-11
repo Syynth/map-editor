@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { type Atmosphere, type CameraRig, type MapObject } from '@core/document'
 import { createSampleMap } from '@core/sample'
 import { deserialize, LoadError, serialize } from '@core/io'
-import { brushCells, removeObject, updateObject } from '@core/ops'
+import { brushCells, flatten, raise, removeObject, updateObject } from '@core/ops'
 import { EditorStore } from '@core/store'
 import { countDormant } from '@core/paint'
 import { describeSurface, SURFACE_CLIFF, type SurfaceAddress } from '@core/surface'
@@ -119,9 +119,14 @@ export default function App() {
     })
     viewportRef.current = viewport
     setSoftwareRenderer(viewport.softwareRenderer)
-    // Handy from the console, and the headless probe scripts drive it.
-    ;(window as unknown as Record<string, unknown>).__viewport = viewport
-    ;(window as unknown as Record<string, unknown>).__store = store
+    // Scripting hooks. scripts/tour.mjs and scripts/probe.mjs drive the real
+    // editor in a headless browser; these are also handy from the console.
+    // Nothing in the app reads them.
+    const scripting = window as unknown as Record<string, unknown>
+    scripting.__viewport = viewport
+    scripting.__store = store
+    scripting.__ops = { flatten, raise, removeObject, updateObject }
+    scripting.__selectObject = (id: string | null) => set({ selectedObjectId: id })
     viewport.frameMap()
     if (sheet) viewport.loadSheet(sheet)
     return () => {
@@ -474,6 +479,7 @@ export default function App() {
               />
               <CoveragePanel
                 doc={doc}
+                revision={revision}
                 onSelect={(id) => set({ selectedObjectId: id, inspector: 'properties', tool: 'object' })}
                 onFix={(id) => store.apply('Fix display mode', updateObject(store.doc, id, { display: 'billboardY' }))}
               />

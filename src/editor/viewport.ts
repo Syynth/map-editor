@@ -293,25 +293,39 @@ export class Viewport {
     return { yaw: this.orbit.yaw, pitch: this.orbit.pitch, distance: this.orbit.distance }
   }
 
-  /** Used by the headless diagnostic scripts. */
-  setDistanceForProbe(distance: number): void {
-    this.orbit.distance = distance
+  // --- scripting hooks --------------------------------------------------------
+  //
+  // Driven by scripts/tour.mjs and scripts/probe.mjs, which run the editor in a
+  // headless browser to capture screenshots and to measure rendering. They are
+  // here rather than in test-only code because the thing worth driving is the
+  // real viewport; nothing in the app calls them.
+
+  /** Skip the post-processing chain, to isolate it when diagnosing. */
+  bypassComposer = false
+
+  setCameraForProbe(state: Partial<{ yaw: number; pitch: number; distance: number }>): void {
+    if (state.yaw !== undefined) this.orbit.yaw = state.yaw
+    if (state.pitch !== undefined) this.orbit.pitch = state.pitch
+    if (state.distance !== undefined) this.orbit.distance = state.distance
   }
 
-  /** Used by the headless diagnostic scripts. */
+  /** Look at a particular cell, so a script can click something specific. */
+  focusCellForProbe(x: number, y: number, distance?: number): void {
+    this.orbit.target.set(x + 0.5, groundHeight(this.store.doc, x + 0.5, y + 0.5), y + 0.5)
+    if (distance !== undefined) this.orbit.distance = distance
+  }
+
+  /** Aim at an arbitrary world point — a cliff face's middle, say, which is
+   *  not the same as the ground height at its cell. */
+  setTargetForProbe(x: number, y: number, z: number, distance?: number): void {
+    this.orbit.target.set(x, y, z)
+    if (distance !== undefined) this.orbit.distance = distance
+  }
+
   hideOverlayForProbe(): void {
     this.overlay.visible = false
   }
 
-  /** Used by the headless diagnostic scripts. */
-  bypassComposer = false
-
-  /** Used by the headless diagnostic scripts. */
-  setPitchForProbe(pitch: number): void {
-    this.orbit.pitch = pitch
-  }
-
-  /** Used by the headless diagnostic scripts. */
   setPassForProbe(name: 'bloom' | 'tiltShift', enabled: boolean): void {
     if (name === 'bloom') this.bloom.enabled = enabled
     else this.tiltShift.enabled = enabled

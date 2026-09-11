@@ -35,27 +35,35 @@ per-cell work grows (a profile strip sweep would roughly double it).
 ### Can the coverage readout turn "do we want rotation?" into a real trade-off?
 
 **Yes, and it is the most useful thing in the prototype.** On the sample map,
-27 objects:
+24 objects:
 
 | Camera bounds | Objects reading wrong | Extra images to fix | Cliff faces never visible |
 |---|---|---|---|
-| Free 360° rotation | 3 of 27 | 3 | 0% (0 of 1232) |
-| Narrow (20–70°) | 0 of 27 | 0 | ~60% |
+| Free 360° rotation | 3 of 24 | 3 | 0% (0 of 1210) |
+| Narrow (20–70°) | 3 of 24 | 3 | **50%** (605 of 1210) |
 
-Two things fall out of this that were not obvious from the brief:
+Three things fall out of this that were not obvious from the brief:
 
-1. **`auto` display mode does most of the work.** 25 of the 27 objects have a
+1. **`auto` display mode does most of the work.** 22 of the 24 objects have a
    single facing, and under free rotation almost none of them read wrong,
    because `auto` resolves them to Y-billboards. The art cost of rotation is
    only paid by objects the artist *deliberately* makes flat planes — signs,
    statues, anything with real sides. That reframes the question: rotation is
    cheap for scenery and expensive for characters and signage.
 
-2. **The hidden-surface payoff is real and large.** Under a narrow yaw range
-   roughly 60% of cliff faces can never be seen from any permitted angle. That
-   is 60% of cliff painting the artist never has to do, and geometry the mesher
-   could skip. Under free rotation it is 0%. This is a concrete, quantified
-   argument for constraining the camera that has nothing to do with taste.
+2. **Narrowing the camera does not fix a flat plane.** This one contradicts
+   what I first assumed. The three flagged objects still read wrong at a 50°
+   yaw range, because a fixed plane only works if it happens to *face* the
+   envelope — and the sample rotates its props freely. Tightening the bounds
+   is not a lever on that problem at all; orientation and display mode are.
+   An earlier version of this document claimed narrow bounds took the count to
+   zero. That was wrong, and the walkthrough capture caught it.
+
+3. **The hidden-surface payoff is real and large.** Under a narrow yaw range
+   50% of cliff faces can never be seen from any permitted angle — 605 of 1210.
+   That is half the cliff painting the artist never has to do, and geometry the
+   mesher could skip. Under free rotation it is 0%. This, not the object count,
+   is the quantified argument for constraining the camera.
 
 The readout is in the Camera tab, live, and flags each offending object with a
 one-click fix.
@@ -141,9 +149,9 @@ These need the artist, and no amount of prototyping substitutes:
 Section 8 lists `auto` as one option among six. In practice it is the setting
 that decides whether camera rotation is affordable, because it silently
 converts the long tail of scenery into billboards. Worth promoting to the
-default in the UI (it already is) and worth explaining to the artist, since the
-difference between "flat plane" and "auto" is the difference between 3 broken
-objects and 0.
+default in the UI (it already is) and worth explaining to the artist: on the
+sample map every object that reads wrong is one deliberately set to a flat
+plane, and every object left on `auto` is fine at any bounds.
 
 ### Fog distances are a property of the map, not of the preset
 
@@ -151,6 +159,20 @@ Atmosphere presets author fog in absolute world units. Opening a larger map with
 the same preset buries its far half. Presets now declare fog against a
 32-tile reference span and scale to the map. Anything else authored in world
 units — camera distance bounds especially — will have the same problem.
+
+### The coverage readout was silently stale
+
+The panel memoised its analysis on the document object. The store mutates the
+document in place behind a revision counter — deliberately, so a brush stroke
+does not clone parallel arrays sixty times a second — so `doc` never changes
+identity and the memo never recomputed. The readout froze at whatever the map
+looked like when the panel mounted, and changing the camera bounds appeared to
+do nothing.
+
+It was caught by the walkthrough capture asserting that narrowing the bounds
+changed the numbers. Worth a general note: mutation-plus-revision is the right
+trade for a brush loop, but every `useMemo` and `useEffect` downstream of it has
+to depend on the revision, never on the document.
 
 ### Two rendering bugs the tests could not have caught
 

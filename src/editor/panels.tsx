@@ -518,14 +518,22 @@ export function CameraPanel({
 
 export function CoveragePanel({
   doc,
+  revision,
   onFix,
   onSelect,
 }: {
   doc: MapDoc
+  /**
+   * The store's revision counter. The document is mutated in place, so `doc`
+   * never changes identity and memoising on it alone would freeze this readout
+   * at whatever the map looked like when the panel first mounted.
+   */
+  revision: number
   onFix: (id: string) => void
   onSelect: (id: string) => void
 }) {
-  const report: CoverageReport = useMemo(() => analyseCoverage(doc, doc.camera), [doc])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const report: CoverageReport = useMemo(() => analyseCoverage(doc, doc.camera), [doc, revision])
   const flagged = report.objects.filter((entry) => entry.readsWrong)
   const hiddenPercent =
     report.hiddenSurfaces.totalFaces === 0
