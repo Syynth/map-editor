@@ -1,13 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
-import { type Atmosphere, type CameraRig, type MapObject } from '@core/document'
+import {
+  EditorStore,
+  LoadError,
+  SURFACE_CLIFF,
+  brushCells,
+  cellIndex,
+  countDormant,
+  describeSurface,
+  deserialize,
+  flatten,
+  inBounds,
+  raise,
+  removeObject,
+  serialize,
+  updateObject,
+  type Atmosphere,
+  type CameraRig,
+  type MapObject,
+  type SurfaceAddress,
+} from '@map-editor/document'
 import { createSampleMap } from '@core/sample'
-import { deserialize, LoadError, serialize } from '@core/io'
-import { brushCells, flatten, raise, removeObject, updateObject } from '@core/ops'
-import { EditorStore } from '@core/store'
-import { countDormant } from '@core/paint'
-import { describeSurface, SURFACE_CLIFF, type SurfaceAddress } from '@core/surface'
-import { cellIndex, inBounds } from '@core/document'
 import { exportGltf } from '@runtime/export'
 import { generateTerrainSheet } from '@runtime/textures'
 import type { PickResult } from '@runtime/picking'

@@ -13,7 +13,7 @@
 
 import * as THREE from 'three'
 
-import type { Atmosphere } from '@core/document'
+import type { Atmosphere } from '@map-editor/document'
 import type { SpriteAsset } from './textures'
 import { canvasTexture } from './billboard'
 

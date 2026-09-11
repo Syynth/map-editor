@@ -115,6 +115,9 @@ importers:
       '@mantine/hooks':
         specifier: 9.6.1
         version: 9.6.1(react@19.3.0)
+      '@map-editor/document':
+        specifier: workspace:*
+        version: link:packages/document
       '@xstate/react':
         specifier: 7.0.0-alpha.2
         version: 7.0.0-alpha.2(@types/react@19.3.0)(react@19.3.0)(xstate@6.0.0-alpha.53)
@@ -173,6 +176,15 @@ importers:
       vite:
         specifier: ^8.3.0
         version: 8.3.0(@types/node@22.20.2)
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.20.2)(vite@8.3.0(@types/node@22.20.2))
+
+  packages/document:
+    devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
       vitest:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.20.2)(vite@8.3.0(@types/node@22.20.2))

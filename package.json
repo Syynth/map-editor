@@ -21,6 +21,7 @@
     "probe": "node scripts/probe.mjs"
   },
   "dependencies": {
+    "@map-editor/document": "workspace:*",
     "@mantine/core": "9.6.1",
     "@mantine/hooks": "9.6.1",
     "@xstate/react": "7.0.0-alpha.2",

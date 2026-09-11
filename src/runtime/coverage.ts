@@ -15,8 +15,14 @@
  * them. `hiddenSurfaces` counts those.
  */
 
-import { DIR_VECTORS, type CameraRig, type MapDoc, type MapObject } from '@core/document'
-import { cellIndex, inBounds } from '@core/document'
+import {
+  DIR_VECTORS,
+  cellIndex,
+  inBounds,
+  type CameraRig,
+  type MapDoc,
+  type MapObject,
+} from '@map-editor/document'
 import { resolveDisplayMode } from './billboard'
 import { sampleYawEnvelope, wrapDegrees, yawIsFree } from './camera'
 

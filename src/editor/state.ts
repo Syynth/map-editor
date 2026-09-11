@@ -11,8 +11,7 @@
  * right now there are three.
  */
 
-import type { Brush } from '@core/ops'
-import { NO_RAMP } from '@core/document'
+import { NO_RAMP, type Brush } from '@map-editor/document'
 
 export type ToolId = 'terrain' | 'object' | 'camera'
 export type TerrainMode = 'sculpt' | 'paint'

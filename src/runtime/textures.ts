@@ -23,8 +23,13 @@ import {
   CLIFF_TOP,
   RAMP_COLUMN,
 } from '@core/template'
-import { MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST } from '@core/autotile'
-import type { MaterialDef } from '@core/document'
+import {
+  MASK_EAST,
+  MASK_NORTH,
+  MASK_SOUTH,
+  MASK_WEST,
+  type MaterialDef,
+} from '@map-editor/document'
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0

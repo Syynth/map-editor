@@ -14,7 +14,7 @@
 
 import * as THREE from 'three'
 
-import type { CameraRig, MapObject } from '@core/document'
+import type { CameraRig, MapObject } from '@map-editor/document'
 import { wrapDegrees, yawIsFree } from './camera'
 import type { SpriteAsset } from './textures'
 

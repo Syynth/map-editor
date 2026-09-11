@@ -11,7 +11,7 @@ import {
   type CameraRig,
   type MapDoc,
   type MapObject,
-} from '@core/document'
+} from '@map-editor/document'
 import { sheetLayoutFor, tileColumnRow } from '@core/template'
 import { analyseCoverage, type CoverageReport } from '@runtime/coverage'
 import { SPRITE_NAMES } from '@runtime/textures'

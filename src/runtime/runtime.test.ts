@@ -6,7 +6,7 @@ import {
   defaultFacing,
   type CameraRig,
   type MapObject,
-} from '@core/document'
+} from '@map-editor/document'
 import { pickFacing, resolveDisplayMode } from './billboard'
 import {
   clampToBounds,

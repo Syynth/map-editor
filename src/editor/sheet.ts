@@ -13,7 +13,7 @@
  */
 
 import { BLOCK_COLUMNS, BLOCK_ROWS } from '@core/template'
-import type { MapDoc } from '@core/document'
+import type { MapDoc } from '@map-editor/document'
 
 export interface SheetLoadResult {
   canvas: HTMLCanvasElement

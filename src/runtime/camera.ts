@@ -15,7 +15,7 @@
 
 import * as THREE from 'three'
 
-import type { CameraRig } from '@core/document'
+import type { CameraRig } from '@map-editor/document'
 
 export interface RigState {
   yaw: number

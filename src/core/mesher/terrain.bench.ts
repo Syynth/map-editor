@@ -10,8 +10,7 @@
  */
 import { describe, test } from 'vitest'
 
-import { allChunkKeys } from '../chunks'
-import { cellIndex, createMap, type MapDoc } from '../document'
+import { allChunkKeys, cellIndex, createMap, type MapDoc } from '@map-editor/document'
 import { meshTerrainChunk } from './terrain'
 
 function hilly(width: number, height: number): MapDoc {

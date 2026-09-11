@@ -34,7 +34,7 @@
  * material.
  */
 
-import type { MapDoc } from './document'
+import type { MapDoc } from '@map-editor/document'
 
 export const BLOCK_COLUMNS = 4
 export const BLOCK_ROWS = 5

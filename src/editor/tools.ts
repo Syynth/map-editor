@@ -12,30 +12,38 @@
  *   Ctrl   — reach through objects to the terrain beneath
  */
 
-import { NO_WATER, cellIndex, newId, type MapDoc, type MapObject } from '@core/document'
-import { defaultFacing } from '@core/document'
 import {
+  NO_WATER,
+  SURFACE_CLIFF,
+  SURFACE_TOP,
   addObject,
+  autotileMask,
   brushCells,
+  cellIndex,
+  cliffPaint,
+  defaultFacing,
   fillCells,
   flatten,
   groundedPosition,
+  newId,
+  paintCliff,
   paintTint,
   paintTop,
-  paintCliff,
   raise,
   rectCells,
   setMaterial,
   setRamp,
   setWater,
+  tintPaint,
+  topPaint,
   updateObject,
   type Cell,
-} from '@core/ops'
-import { cliffPaint, topPaint, tintPaint } from '@core/paint'
-import { autotileMask } from '@core/autotile'
+  type EditorStore,
+  type MapDoc,
+  type MapObject,
+  type SurfaceAddress,
+} from '@map-editor/document'
 import { defaultTopTile, sheetLayoutFor } from '@core/template'
-import type { EditorStore } from '@core/store'
-import { SURFACE_CLIFF, SURFACE_TOP, type SurfaceAddress } from '@core/surface'
 import type { PickResult } from '@runtime/picking'
 import type { EditorState } from './state'
 import type { PointerModifiers } from './viewport'

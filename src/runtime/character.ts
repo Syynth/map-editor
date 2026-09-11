@@ -13,9 +13,13 @@
 
 import * as THREE from 'three'
 
-import { groundHeight } from '@core/terrain'
-import { inBounds, type MapDoc, type MapObject } from '@core/document'
-import { defaultFacing } from '@core/document'
+import {
+  defaultFacing,
+  groundHeight,
+  inBounds,
+  type MapDoc,
+  type MapObject,
+} from '@map-editor/document'
 import { ObjectView, type ObjectViewContext } from './billboard'
 import type { SpriteAsset } from './textures'
 

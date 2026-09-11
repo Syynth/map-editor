@@ -24,25 +24,26 @@
  * blending looks mushy next to pixel art.
  */
 
-import { autotileMask } from '../autotile'
-import { chunkBounds } from '../chunks'
 import {
+  CORNER_OFFSETS,
   DIR_VECTORS,
   HALF,
   NO_RAMP,
   NO_WATER,
-  cellIndex,
-  inBounds,
-  type MapDoc,
-} from '../document'
-import { CORNER_OFFSETS, cornerHeights } from '../terrain'
-import { cliffPaint, tintPaint, topPaint } from '../paint'
-import {
   SURFACE_CLIFF,
   SURFACE_TOP,
   SURFACE_WATER,
+  autotileMask,
+  cellIndex,
+  chunkBounds,
+  cliffPaint,
+  cornerHeights,
   encodeExtra,
-} from '../surface'
+  inBounds,
+  tintPaint,
+  topPaint,
+  type MapDoc,
+} from '@map-editor/document'
 import {
   cliffTile,
   defaultTopTile,

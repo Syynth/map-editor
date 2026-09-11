@@ -17,10 +17,17 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 
-import { cellIndex, inBounds, type MapDoc } from '@core/document'
-import { cornerHeights, groundHeight } from '@core/terrain'
-import { SURFACE_CLIFF, SURFACE_TOP, type SurfaceAddress } from '@core/surface'
-import type { EditorStore } from '@core/store'
+import {
+  SURFACE_CLIFF,
+  SURFACE_TOP,
+  cellIndex,
+  cornerHeights,
+  groundHeight,
+  inBounds,
+  type EditorStore,
+  type MapDoc,
+  type SurfaceAddress,
+} from '@map-editor/document'
 import {
   applyRig,
   clampToBounds,
