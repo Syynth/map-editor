@@ -6,8 +6,9 @@ for building 3D levels in a Paper Mario / HD-2D style, where the artist never
 models anything in 3D.
 
 This is the first prototype slice, built to answer questions rather than to be
-kept. See [`PLAN.md`](PLAN.md) for what was built and why, and
-[`FINDINGS.md`](FINDINGS.md) for what it has answered so far.
+kept. See [`FINDINGS.md`](FINDINGS.md) for what it measured, [`CONTEXT.md`](CONTEXT.md)
+for the vocabulary, and [`docs/decision-log.md`](docs/decision-log.md) for the
+decisions and their reasoning.
 
 ```bash
 npm install
@@ -49,13 +50,15 @@ npm run probe      # measure whether post-processing survives on this GPU
 | `Tab` | Sculpt / Paint |
 | `[` `]` | Brush size |
 | `Shift` | Erase, or invert (lower instead of raise) |
-| `Alt` | Eyedropper |
+| `Alt` click | Eyedropper |
 | `Ctrl` | Reach through objects to the terrain |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `G` | Clamp to the game's camera bounds |
 | `P` | Play mode |
 | `Delete` | Remove the selected object |
-| Middle drag / right drag | Orbit / pan |
+| `Alt` drag / middle drag | Orbit |
+| Right drag | Pan |
+| Scroll / pinch | Zoom |
 
 ## Layout
 
