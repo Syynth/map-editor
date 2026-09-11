@@ -5,18 +5,39 @@ repository. Decisions behind it are in [`decision-log.md`](decision-log.md);
 this file is the task list, not the rationale. Technology choices live in
 [`stack.md`](stack.md).
 
-Target layout:
+**The decisions behind this file now live on the wayfinder map,
+[#2](https://github.com/Syynth/map-editor/issues/2), and its closed tickets. Where this
+file and a ticket disagree, the ticket wins.**
+
+Target layout, decided by [#3](https://github.com/Syynth/map-editor/issues/3). This
+replaces the original five-package sketch; **`core` no longer exists as a name**, having
+held three unrelated things and named none of them.
 
 ```
-packages/core      document, commands, undo, meshers, ops   (no three, no react)
-packages/runtime   three.js reference runtime               (private, built as if publishable)
-packages/exporter  glTF writer + headless CLI
-apps/editor        the React/Vite editor
-apps/desktop       Electron or Tauri shell                  (slot reserved, not built)
+packages/registry          declarations + handlers, predicate DSL, keymap. Zero runtime deps.
+packages/document          map data, verbs, patches, Edit/undo, io. Owns the document actor.
+packages/geometry          mesher + sheet layout.
+packages/runtime           three.js reference runtime; glTF export as a subpath.
+packages/ui                the editor's design vocabulary; Mantine is an implementation detail of it.
+packages/viewport          editor GL shell: renderer, post-processing, overlays, pointer input, rAF loop.
+packages/viewport-contrib  what a feature may import to contribute an overlay.
+packages/editor-host       root actor, dispatch wiring, tool/stroke framework, files, play, feature folders.
+packages/feature-terrain   the one extracted feature, proving the import surface is sufficient.
+packages/fixtures          procedural texture generation + the sample map. Dev-only, but NOT lint-exempt.
+apps/editor                index.html, Vite config, mount, composition root, features/index.ts.
+apps/export-cli            headless glTF exporter.
 ```
 
-`core <- runtime <- editor` is enforced by pnpm's strict `node_modules` once the
-split lands: core cannot import three.js if it is not a declared dependency.
+Direction: `registry <- document <- geometry <- runtime <- viewport <- editor-host`, with
+`ui` and `viewport-contrib` hanging off the side.
+
+The rule that produced it: **a package exists when there is a consumer that must not be
+able to reach past it — not when there is a topic.** `exporter` and `schema` were both
+candidates and both failed that test.
+
+Note [#20](https://github.com/Syynth/map-editor/issues/20)'s correction: pnpm's strict
+`node_modules` blocks *undeclared* imports but does **not** enforce direction, so the
+dependency direction needs a test as well as the workspace structure.
 
 ---
 
@@ -31,38 +52,48 @@ split lands: core cannot import three.js if it is not a declared dependency.
 
 ## Phase 1 — Workspace skeleton
 
+Blocked on [#24](https://github.com/Syynth/map-editor/issues/24), which brings the
+toolchain to the baseline this phase installs against — React 19, Vite 8, Vitest 5,
+TypeScript 6.0.3, plus ESLint, XState and Mantine. React 18 → 19 across 2,640 untested
+lines of `src/editor` is the real risk there, not the version numbers.
+
 - [ ] Switch to pnpm: delete `package-lock.json`, add `pnpm-workspace.yaml`,
       set the `packageManager` field.
 - [ ] Add `.nvmrc` — development is on Node 26, CI will default to something else.
 - [ ] Add Turborepo with a `turbo.json` pipeline covering `build`, `test`,
       `typecheck`, `lint`.
+- [ ] **Install ESLint 10 + typescript-eslint 8 here, not in Phase 3.**
+      [#20](https://github.com/Syynth/map-editor/issues/20) decided this deliberately, so
+      the checks land *with* the code rather than being retrofitted onto it. Flat config,
+      type-aware, custom rules in their own workspace package, `noInlineConfig: true`.
+      Test files and `scripts/` are scoped out by `files:` globs; `packages/fixtures` is
+      not.
 - [ ] Confirm `pnpm test` still passes before moving a single file.
 
 ## Phase 2 — Extract packages, leaves first
 
-Extract bottom-up and run the suite after each step, so a break is attributable
-to one move rather than to the whole restructure.
+Extract bottom-up and run the suite after each step, so a break is attributable to one
+move rather than to the whole restructure. Order follows the dependency direction above:
+`registry` and `document` first, `apps/*` last.
 
-- [ ] **`packages/core`** — no dependencies, so it moves cleanly. Needs a real
-      `index.ts`: there are currently no barrel files anywhere and every import
-      reaches into a file path.
-- [ ] **`packages/runtime`** — depends on core. Same barrel work.
-- [ ] **`packages/exporter`** — split `src/runtime/export.ts` (301 lines) out of
-      the runtime. The CLI must produce a `.glb` with no WebGL context, which is
-      the forcing function the boundary script always named.
-- [ ] **`apps/editor`** — moves last; it may import anything.
-- [ ] Replace the `@core` / `@runtime` / `@editor` path aliases with workspace
-      package names. They are currently declared twice, in `tsconfig.json` and
-      `vite.config.ts`, and drift silently.
-- [ ] Per-package `tsconfig.json` with project references; the root config
-      currently covers everything with `noEmit: true`.
-- [ ] Build emit (tsup or unbuild) for `core`, `runtime`, `exporter`. Nothing
-      emits today, so `runtime` is not consumable by anyone.
-- [ ] **Delete `scripts/check-boundaries.mjs`.** Its header has always said to.
+- [ ] Every package needs a real `index.ts`. There are no barrel files anywhere today and
+      every import reaches into a file path.
+- [ ] Replace the `@core` / `@runtime` / `@editor` path aliases with workspace package
+      names. They are declared twice — in `tsconfig.json` and `vite.config.ts` — and drift
+      silently.
+- [ ] Per-package `tsconfig.json` with project references; the root config currently
+      covers everything with `noEmit: true`.
+- [ ] Build emit (tsup or unbuild) where a package needs to be consumable.
+- [ ] `apps/export-cli` must produce a `.glb` with **no WebGL context** — the forcing
+      function the boundary script always named.
+- [ ] A test enforcing dependency direction, since pnpm does not.
+- [ ] **Delete `scripts/check-boundaries.mjs`.** Its header has always said to, and
+      [#20](https://github.com/Syynth/map-editor/issues/20) found it is regex-over-source
+      and therefore blind to types.
 
 ## Phase 3 — Development practices
 
-- [ ] ESLint (flat config) + Prettier, configured once against the final layout.
+- [x] ~~ESLint~~ — moved to Phase 1 by [#20](https://github.com/Syynth/map-editor/issues/20). Prettier still to decide.
 - [ ] A rule for the stale-memo trap: the store mutates the document in place
       behind a revision counter, so any `useMemo`/`useEffect` keyed on `doc`
       never recomputes. This already shipped one bug (the frozen coverage
