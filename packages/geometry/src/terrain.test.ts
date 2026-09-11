@@ -11,7 +11,7 @@ import {
   SURFACE_TOP,
   type MapDoc,
 } from '@map-editor/document'
-import { meshTerrainChunk } from './mesher/terrain'
+import { meshTerrainChunk } from './terrain'
 
 function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
   doc.terrain.height[cellIndex(doc.size, x, y)] = h

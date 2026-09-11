@@ -12,7 +12,7 @@
  * least predictable downward.
  */
 
-import { BLOCK_COLUMNS, BLOCK_ROWS } from '@core/template'
+import { BLOCK_COLUMNS, BLOCK_ROWS } from '@map-editor/geometry'
 import type { MapDoc } from '@map-editor/document'
 
 export interface SheetLoadResult {

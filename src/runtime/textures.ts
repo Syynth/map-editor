@@ -22,7 +22,7 @@ import {
   CLIFF_MIDDLE,
   CLIFF_TOP,
   RAMP_COLUMN,
-} from '@core/template'
+} from '@map-editor/geometry'
 import {
   MASK_EAST,
   MASK_NORTH,
@@ -76,8 +76,8 @@ function speckle(
 }
 
 /**
- * The terrain template sheet. Layout is documented in core/template.ts; this
- * only draws into it.
+ * The terrain template sheet. Layout is documented in
+ * packages/geometry/src/template.ts; this only draws into it.
  */
 export function generateTerrainSheet(
   materials: MaterialDef[],

@@ -13,7 +13,7 @@ import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
 import { allChunkKeys, type MapDoc } from '@map-editor/document'
-import { meshTerrainChunk, type MeshBuffers } from '@core/mesher/terrain'
+import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
 import { resolveDisplayMode, canvasTexture } from './billboard'
 import { generateSprites, generateTerrainSheet, type SpriteAsset } from './textures'
 

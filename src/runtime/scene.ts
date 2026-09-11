@@ -15,7 +15,7 @@
 import * as THREE from 'three'
 
 import { allChunkKeys, type MapDoc, type MapObject } from '@map-editor/document'
-import { meshTerrainChunk, type MeshBuffers } from '@core/mesher/terrain'
+import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
 import { ObjectView, canvasTexture, type ObjectViewContext } from './billboard'
 import { Sky, sunDirection } from './sky'
 import { generateSprites, generateTerrainSheet, type SpriteAsset } from './textures'

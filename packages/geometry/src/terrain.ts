@@ -52,7 +52,7 @@ import {
   tileUv,
   type CliffBand,
   type SheetLayout,
-} from '../template'
+} from './template'
 
 export interface MeshBuffers {
   positions: Float32Array
