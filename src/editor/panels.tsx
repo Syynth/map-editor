@@ -14,7 +14,7 @@ import {
 } from '@map-editor/document'
 import { sheetLayoutFor, tileColumnRow } from '@map-editor/geometry'
 import { SPRITE_NAMES, analyseCoverage, type CoverageReport } from '@map-editor/runtime'
-import { ColorInput, Field, Note, NumberInput, Panel, Segmented, Select, Slider } from './ui'
+import { ColorInput, Field, Note, NumberInput, Panel, Segmented, Select, Slider } from '@map-editor/ui'
 import type { EditorState } from './state'
 
 // --- tile palette -----------------------------------------------------------

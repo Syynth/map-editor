@@ -23,6 +23,7 @@ import {
 import { createSampleMap } from '@map-editor/fixtures'
 import { generateTerrainSheet, type PickResult } from '@map-editor/runtime'
 import { exportGltf } from '@map-editor/runtime/export'
+import { Note } from '@map-editor/ui'
 import {
   AtmospherePanel,
   CameraPanel,
@@ -35,7 +36,6 @@ import { initialEditorState, type EditorState } from './state'
 import { applyStroke, strokeCells, type StrokeContext } from './tools'
 import { loadSheetFromFile } from './sheet'
 import { Viewport, type PointerModifiers } from './viewport'
-import { Note } from './ui'
 
 const AUTOSAVE_KEY = 'map-editor:autosave'
 

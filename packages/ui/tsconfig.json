@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // `DOM` stays, for the same reason as `runtime`'s: these primitives are
+    // `<input>`s and `<select>`s, so the element and event types are this
+    // package's surface rather than an accident.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No ambient `@types`. React and Mantine are reached through their imports;
+    // leaving Node's globals out means the day a primitive reaches for
+    // `process` or `fs` the compiler says so here, while the same file still
+    // builds under the root config.
+    "types": []
+  },
+
+  // No `references`, for the reason spelled out in `geometry`'s tsconfig: a
+  // referenced project must be `composite`, and `composite` forbids `noEmit`.
+  // There is nothing to reference yet in any case — `@map-editor/registry`,
+  // this package's only workspace dependency in the target layout, does not
+  // exist.
+  "include": ["src"]
+}
