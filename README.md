@@ -15,6 +15,8 @@ npm run dev        # http://localhost:5173
 npm test           # layer boundaries + unit tests
 npm run bench      # mesher throughput
 npm run shoot      # drive it headless and save screenshots to shots/
+npm run tour       # capture the 25-step guided walkthrough to shots/tour/
+npm run probe      # measure whether post-processing survives on this GPU
 ```
 
 ## What works

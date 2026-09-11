@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit",
     "boundaries": "node scripts/check-boundaries.mjs",
     "bench": "vitest bench --run",
-    "shoot": "node scripts/screenshot.mjs"
+    "shoot": "node scripts/screenshot.mjs",
+    "tour": "node scripts/tour.mjs",
+    "probe": "node scripts/probe.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
