@@ -18,6 +18,13 @@ during interactive work and record them there.
 Issues live in this repo's GitHub Issues, driven through the `gh` CLI. See
 [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
 
+### Autonomous build pump
+
+For working through a backlog of build-ready issues with parallel agents, once one
+exists. See
+[`.claude/skills/autonomous-pump/MAP-EDITOR-CONFIG.md`](.claude/skills/autonomous-pump/MAP-EDITOR-CONFIG.md)
+— including why it is **not usable until the restructure lands**.
+
 ### Domain docs
 
 Single-context: one `CONTEXT.md` plus `docs/adr/` at the repo root. See

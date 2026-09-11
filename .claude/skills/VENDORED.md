@@ -1,5 +1,13 @@
 # Vendored skills
 
+`autonomous-pump` is **ours**, copied from `~/code/rs/brink` at brink commit `0692a12`
+(2026-07-29) — same author, no third-party licence. Its project-specific configuration
+lives in [`autonomous-pump/MAP-EDITOR-CONFIG.md`](autonomous-pump/MAP-EDITOR-CONFIG.md);
+re-copy `SKILL.md` and `pump.js` from brink rather than editing them, so improvements
+there flow here cleanly.
+
+Everything below concerns the **mattpocock/skills** copies only.
+
 These skills are **not ours**. They are vendored verbatim from
 [mattpocock/skills](https://github.com/mattpocock/skills), MIT licensed,
 Copyright (c) 2026 Matt Pocock. The full licence is in [LICENSE](LICENSE).
