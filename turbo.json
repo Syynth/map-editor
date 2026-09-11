@@ -1,0 +1,54 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+
+  // `.nvmrc` is not read by any task's command, but it pins the Node the tasks
+  // run under, and a Node bump can change tsc/vitest output. Declaring it
+  // globally means a version change busts every cached task rather than
+  // silently serving results produced on the old runtime.
+  "globalDependencies": [".nvmrc"],
+
+  "tasks": {
+    // Per-package tasks. `packages/*` and `apps/*` are still empty globs, so
+    // nothing implements these yet — they are declared now so the ordering rule
+    // lands with the tool rather than being retrofitted once packages exist.
+    // `^build` is the whole point: a consumer's test/typecheck/lint must not run
+    // until its dependencies have been built, or it typechecks against stale
+    // (or absent) emit.
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "test": { "dependsOn": ["^build"] },
+    "typecheck": { "dependsOn": ["^build"] },
+    // Nothing implements `lint` yet — the ESLint flat config is its own Phase 1
+    // item. Note that `turbo run lint` therefore exits 0 with "No tasks were
+    // executed as part of this run", not an error: wiring it into CI before
+    // ESLint lands buys a green check that ran nothing.
+    "lint": { "dependsOn": ["^build"] },
+
+    // Root tasks. Turbo only runs a root-package script when it is declared
+    // with the `//#` prefix, and today the root package IS the whole editor, so
+    // these are what `turbo run test typecheck` actually executes.
+    //
+    // This is also why `package.json`'s `test`/`typecheck`/`build` stay the real
+    // commands instead of becoming `turbo run …` aliases: turbo invokes the
+    // same-named root script, so an alias would re-enter turbo forever. The
+    // turbo-fronted entry points are `gate` and `gate:full`, named distinctly
+    // for exactly that reason. `ci` was the obvious name for the second and is
+    // unusable: `pnpm ci` is a pnpm builtin and silently runs a clean install
+    // instead of the script.
+    //
+    // Inputs start from turbo's default (every git-tracked file in the package,
+    // which for the root package is the repo) and subtract only what provably
+    // cannot change a tsc or vitest result. Subtracting rather than listing
+    // keeps a new source directory cache-correct by default; a missed entry in
+    // a hand-written allowlist would serve a stale hit instead.
+    "//#build": {
+      "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"],
+      "outputs": ["dist/**"]
+    },
+    "//#test": {
+      "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
+    },
+    "//#typecheck": {
+      "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
+    }
+  }
+}
