@@ -17,10 +17,11 @@
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "test": { "dependsOn": ["^build"] },
     "typecheck": { "dependsOn": ["^build"] },
-    // Nothing implements `lint` yet — the ESLint flat config is its own Phase 1
-    // item. Note that `turbo run lint` therefore exits 0 with "No tasks were
-    // executed as part of this run", not an error: wiring it into CI before
-    // ESLint lands buys a green check that ran nothing.
+    // `lint` is currently implemented only by the root task below: one
+    // `eslint .` from the repo root covers `packages/*` too, because flat
+    // config resolves from the root and the project service finds each
+    // package's own tsconfig. A package only needs its own `lint` script once
+    // it wants a rule set the root does not give it.
     "lint": { "dependsOn": ["^build"] },
 
     // Root tasks. Turbo only runs a root-package script when it is declared
@@ -48,6 +49,9 @@
       "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
     },
     "//#typecheck": {
+      "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
+    },
+    "//#lint": {
       "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
     }
   }

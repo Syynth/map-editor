@@ -213,7 +213,7 @@ export class ObjectView {
 
     // Crossfade needs a second quad to blend against.
     if (object.facing.transition === 'crossfade' && object.facing.facings > 1) {
-      this.fadeMaterial = makeMaterial(this.material.map as THREE.Texture, asset.emissive)
+      this.fadeMaterial = makeMaterial(this.material.map, asset.emissive)
       this.fadeMaterial.transparent = true
       this.fadeMaterial.alphaTest = 0.01
       this.fadeMaterial.depthWrite = false

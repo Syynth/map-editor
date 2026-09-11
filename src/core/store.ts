@@ -16,7 +16,6 @@ import {
   applyPatches,
   pruneNoops,
   History,
-  type Edit,
   type Patch,
 } from './edits'
 import type { MapDoc } from './document'
@@ -156,7 +155,7 @@ export class EditorStore {
     const stroke = this.stroke
     this.stroke = null
     if (!stroke || stroke.patches.length === 0) return
-    this.history.push(stroke as Edit)
+    this.history.push(stroke)
     this.emit()
   }
 

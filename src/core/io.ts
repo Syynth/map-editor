@@ -58,7 +58,7 @@ function normaliseObject(raw: Partial<MapObject>, id: string): MapObject {
 export function deserialize(text: string): MapDoc {
   let raw: Record<string, unknown>
   try {
-    raw = JSON.parse(text)
+    raw = JSON.parse(text) as Record<string, unknown>
   } catch (error) {
     throw new LoadError(`Not valid JSON: ${(error as Error).message}`)
   }

@@ -153,10 +153,10 @@ export async function buildExportScene(doc: MapDoc, options: ExportOptions): Pro
     let indexOffset = 0
     for (const geometry of mergedPositions) {
       const position = geometry.getAttribute('position')
-      positions.set(position.array as Float32Array, vertexOffset * 3)
-      normals.set(geometry.getAttribute('normal').array as Float32Array, vertexOffset * 3)
-      uvs.set(geometry.getAttribute('uv').array as Float32Array, vertexOffset * 2)
-      colors.set(geometry.getAttribute('color').array as Float32Array, vertexOffset * 3)
+      positions.set(position.array, vertexOffset * 3)
+      normals.set(geometry.getAttribute('normal').array, vertexOffset * 3)
+      uvs.set(geometry.getAttribute('uv').array, vertexOffset * 2)
+      colors.set(geometry.getAttribute('color').array, vertexOffset * 3)
       const index = geometry.getIndex()
       if (index) {
         for (let i = 0; i < index.count; i++) indices[indexOffset + i] = index.getX(i) + vertexOffset

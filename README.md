@@ -14,6 +14,7 @@ decisions and their reasoning.
 pnpm install
 pnpm dev           # http://localhost:5173
 pnpm test          # layer boundaries + unit tests
+pnpm lint          # type-aware ESLint; no inline suppressions exist
 pnpm bench         # mesher throughput
 pnpm shoot         # drive it headless and save screenshots to shots/
 pnpm tour          # capture the 25-step guided walkthrough to shots/tour/

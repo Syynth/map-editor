@@ -50,7 +50,7 @@ export function tintKey(x: number, y: number): string {
   return `${x},${y}`
 }
 
-export function cliffKey(x: number, y: number, dir: Direction | number, level: number): string {
+export function cliffKey(x: number, y: number, dir: number, level: number): string {
   return `${x},${y},${dir},${level}`
 }
 
@@ -73,7 +73,7 @@ export function cliffPaint(
   paint: PaintLayers,
   x: number,
   y: number,
-  dir: Direction | number,
+  dir: number,
   level: number,
 ): number | undefined {
   return paint.cliff[cliffKey(x, y, dir, level)]

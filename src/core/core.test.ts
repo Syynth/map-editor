@@ -15,6 +15,21 @@ function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
   doc.terrain.height[cellIndex(doc.size, x, y)] = h
 }
 
+/**
+ * A serialised document loosened enough for the migration and rejection tests
+ * to mangle it — `formatVersion` optional so it can be deleted, everything else
+ * open so a field can be set to something the loader must refuse.
+ *
+ * `JSON.parse` returns `any`, and the whole point of these tests is the shape
+ * the loader is handed, so the shape is stated once here rather than left
+ * untyped at each call.
+ */
+type OnDisk = { formatVersion?: number; terrain: { height: unknown } } & Record<string, unknown>
+
+function parseOnDisk(doc: MapDoc): OnDisk {
+  return JSON.parse(serialize(doc)) as OnDisk
+}
+
 describe('edits', () => {
   it('derives an exact inverse without the tool writing one', () => {
     const doc = createMap(4, 4)
@@ -362,7 +377,7 @@ describe('io', () => {
 
   it('migrates an unversioned document forward', () => {
     const doc = createMap(4, 4)
-    const raw = JSON.parse(serialize(doc))
+    const raw = parseOnDisk(doc)
     delete raw.formatVersion
     const restored = deserialize(JSON.stringify(raw))
     expect(restored.formatVersion).toBe(1)
@@ -370,14 +385,14 @@ describe('io', () => {
 
   it('refuses a document from a newer editor', () => {
     const doc = createMap(4, 4)
-    const raw = JSON.parse(serialize(doc))
+    const raw = parseOnDisk(doc)
     raw.formatVersion = 99
     expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
   })
 
   it('rejects a terrain array of the wrong length', () => {
     const doc = createMap(4, 4)
-    const raw = JSON.parse(serialize(doc))
+    const raw = parseOnDisk(doc)
     raw.terrain.height = [1, 2, 3]
     expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
   })

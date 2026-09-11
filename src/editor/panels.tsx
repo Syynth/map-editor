@@ -532,7 +532,6 @@ export function CoveragePanel({
   onFix: (id: string) => void
   onSelect: (id: string) => void
 }) {
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   const report: CoverageReport = useMemo(() => analyseCoverage(doc, doc.camera), [doc, revision])
   const flagged = report.objects.filter((entry) => entry.readsWrong)
   const hiddenPercent =

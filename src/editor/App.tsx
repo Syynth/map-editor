@@ -136,7 +136,6 @@ export default function App() {
       viewportRef.current = null
     }
     // Intentionally created once: the viewport reads live state through refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const hoverRef = useRef<SurfaceAddress | null>(null)
@@ -348,7 +347,8 @@ export default function App() {
       const height = d.terrain.height[cellIndex(d.size, x, y)]
       return level < height
     })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Keyed on the revision counter alone: the document is mutated in place,
+    // so `store.doc` never changes identity and would never retrigger this.
   }, [revision])
 
   const selected = state.selectedObjectId ? doc.objects[state.selectedObjectId] ?? null : null
@@ -382,7 +382,7 @@ export default function App() {
               }}
             />
           </label>
-          <button type="button" onClick={onExport}>
+          <button type="button" onClick={() => void onExport()}>
             Export glTF
           </button>
         </span>

@@ -479,7 +479,7 @@ export class Viewport {
       this.selectionBox.visible = false
       return
     }
-    ;(this.selectionBox.box as THREE.Box3).copy(box)
+    this.selectionBox.box.copy(box)
     this.selectionBox.visible = true
     this.selectionBox.updateMatrixWorld(true)
   }
