@@ -124,6 +124,9 @@ importers:
       '@map-editor/ui':
         specifier: workspace:*
         version: link:packages/ui
+      '@map-editor/viewport':
+        specifier: workspace:*
+        version: link:packages/viewport
       '@xstate/react':
         specifier: 7.0.0-alpha.2
         version: 7.0.0-alpha.2(@types/react@19.3.0)(react@19.3.0)(xstate@6.0.0-alpha.53)
@@ -273,6 +276,25 @@ importers:
       '@types/react-dom':
         specifier: ^19.3.0
         version: 19.3.0(@types/react@19.3.0)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+
+  packages/viewport:
+    dependencies:
+      '@map-editor/document':
+        specifier: workspace:*
+        version: link:../document
+      '@map-editor/runtime':
+        specifier: workspace:*
+        version: link:../runtime
+      three:
+        specifier: ^0.186.0
+        version: 0.186.0
+    devDependencies:
+      '@types/three':
+        specifier: ^0.186.0
+        version: 0.186.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3

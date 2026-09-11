@@ -46,7 +46,7 @@ import {
 import { defaultTopTile, sheetLayoutFor } from '@map-editor/geometry'
 import type { PickResult } from '@map-editor/runtime'
 import type { EditorState } from './state'
-import type { PointerModifiers } from './viewport'
+import type { PointerModifiers } from '@map-editor/viewport'
 
 export interface StrokeContext {
   store: EditorStore

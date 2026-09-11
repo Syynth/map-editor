@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // `DOM` stays, and here it is the point rather than a concession: this
+    // package owns a `<canvas>`, a `WebGLRenderer`, and `window`-level pointer
+    // and key listeners. Those types ARE its surface.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No ambient `@types`, matching `runtime` and `ui`. Node's globals staying
+    // out is what makes the browser-only claim compiler-checked: the day
+    // something here reaches for `process` or `fs` this config says so, while
+    // the same file still builds under the root config. `@types/three` is
+    // reached through its import, not through this list.
+    "types": []
+  },
+
+  // No `references`, for the reason spelled out in `geometry`'s tsconfig: a
+  // referenced project must be `composite`, and `composite` forbids `noEmit`.
+  // Resolution reaches `document` and `runtime` through their `exports` maps,
+  // which tsc follows across the boundary on its own.
+  "include": ["src"]
+}

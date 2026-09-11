@@ -26,6 +26,7 @@
     "@map-editor/geometry": "workspace:*",
     "@map-editor/runtime": "workspace:*",
     "@map-editor/ui": "workspace:*",
+    "@map-editor/viewport": "workspace:*",
     "@xstate/react": "7.0.0-alpha.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

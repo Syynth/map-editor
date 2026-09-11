@@ -35,7 +35,7 @@ import {
 import { initialEditorState, type EditorState } from './state'
 import { applyStroke, strokeCells, type StrokeContext } from './tools'
 import { loadSheetFromFile } from './sheet'
-import { Viewport, type PointerModifiers } from './viewport'
+import { Viewport, type PointerModifiers } from '@map-editor/viewport'
 
 const AUTOSAVE_KEY = 'map-editor:autosave'
 
