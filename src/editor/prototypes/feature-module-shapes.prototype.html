@@ -1,0 +1,787 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Prototype — what a feature module registers</title>
+<style>
+  :root {
+    --bg: #fbfaf8; --panel: #fff; --ink: #1b1a18; --dim: #6c6862;
+    --line: #e3dfd8; --accent: #b4531f; --accent-soft: #fbf0e8;
+    --ok: #2f7d45; --warn: #9a6b00;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171614; --panel: #1f1e1b; --ink: #ecebe7; --dim: #9c968c;
+      --line: #33312c; --accent: #e8875a; --accent-soft: #2a201a;
+      --ok: #6fbf87; --warn: #d5a53c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 28px; letter-spacing: -0.02em; margin: 0 0 4px; }
+  h2 { font-size: 19px; letter-spacing: -0.01em; margin: 44px 0 10px; }
+  h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em;
+       color: var(--dim); margin: 24px 0 8px; font-weight: 600; }
+  p { margin: 0 0 12px; max-width: 76ch; }
+  .lede { color: var(--dim); }
+  code, pre { font-family: var(--mono); font-size: 12.5px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 16px 0 0; }
+  .tab {
+    border: 1px solid var(--line); background: var(--panel); color: var(--dim);
+    padding: 7px 14px; border-radius: 999px; cursor: pointer; font: inherit; font-size: 13.5px;
+  }
+  .tab[aria-selected="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 8px 0 4px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; width: 210px; }
+  pre {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; margin: 0 0 14px; line-height: 1.55;
+  }
+  .filename { font-family: var(--mono); font-size: 11.5px; color: var(--dim); margin: 0 0 5px; }
+  .kw { color: var(--accent); } .str { color: var(--ok); }
+  .cm { color: var(--dim); font-style: italic; } .num { color: var(--warn); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 880px) { .grid2 { grid-template-columns: 1fr; } }
+  button.act {
+    border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+    border-radius: 7px; padding: 6px 11px; cursor: pointer; font: inherit; font-size: 13px;
+  }
+  button.act:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+  button.act:disabled { opacity: .42; cursor: not-allowed; }
+  button.act.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .pill { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); }
+  .pill.live { color: var(--ok); border-color: var(--ok); }
+  .pill.dead { color: var(--warn); border-color: var(--warn); }
+  .pill.leak { color: #c0392b; border-color: #c0392b; }
+  .cmd { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .cmd .id { font-family: var(--mono); font-size: 12px; }
+  .cmd .why { color: var(--warn); font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(6, 34px); gap: 3px; }
+  .cell { height: 34px; border-radius: 4px; display: grid; place-items: center;
+          font: 600 12px var(--mono); color: #2b2a27; }
+  #log { font-family: var(--mono); font-size: 11.5px; line-height: 1.75; max-height: 210px;
+         overflow-y: auto; margin: 0; white-space: pre-wrap; }
+  #log b { color: var(--accent); font-weight: 600; }
+  .step { display: block; width: 100%; text-align: left; margin: 5px 0; }
+  .step.done { opacity: .45; text-decoration: line-through; }
+  .note { border-left: 3px solid var(--accent); padding: 2px 0 2px 14px; color: var(--dim); margin: 14px 0; }
+</style>
+
+<div class="wrap">
+
+<h1>What does a feature module register?</h1>
+<p class="lede">
+  Throwaway prototype for
+  <a href="https://github.com/Syynth/map-editor/issues/9">ticket #9</a>, under map
+  <a href="https://github.com/Syynth/map-editor/issues/2">#2</a>. Not an implementation.
+</p>
+
+<div class="card" style="margin-top:20px">
+  <h3 style="margin-top:0">The question</h3>
+  <p>
+    A <b>feature module</b> is a self-contained unit — a tool, a panel, an overlay — that attaches
+    through a declared API rather than reaching into other parts of the editor. The standing position
+    on the map is that this is a <b>constraint</b>: boundaries must keep a feature module able to live
+    outside the app, but no extension API ships in this effort. The caveat was that seeing a concrete
+    proposal might change that.
+  </p>
+  <p>
+    So: three shapes, each writing <b>the same two features</b> — a <i>Smooth Terrain</i> tool and an
+    <i>Outliner</i> panel. Your reaction decides whether extensibility graduates from constraint to
+    deliverable, and which shape the package boundaries in
+    <a href="https://github.com/Syynth/map-editor/issues/3">#3</a> have to accommodate.
+  </p>
+  <p class="note">
+    All three obey the map's standing constraints identically: declarations are static module-level
+    data registered at import; handlers ride with actors; arguments are plain serialisable data
+    addressing targets by stable id. <b>So the runtime behaviour below is the same under all three.</b>
+    What differs is what the feature author writes, what the module is allowed to import, and whether
+    a feature can be turned off. Those are the things to react to.
+  </p>
+</div>
+
+<h2>Three shapes</h2>
+<div class="tabs" id="shape-tabs"></div>
+<div id="shape-body" style="margin-top:18px"></div>
+
+<h2>Drive it</h2>
+<p class="lede">
+  A toy editor running the shape selected above. Same engine underneath in every case — the point is
+  to check the behaviour all three are required to produce, and then feel where they come apart.
+</p>
+
+<div class="grid2" style="margin-top:14px">
+  <div class="card">
+    <h3 style="margin-top:0">Features</h3>
+    <div id="features"></div>
+    <h3>Terrain <span style="font-weight:400;text-transform:none;letter-spacing:0">(height in half-tiles)</span></h3>
+    <div class="grid" id="terrain"></div>
+    <h3>Objects</h3>
+    <div id="objects"></div>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Command palette <span style="font-weight:400;text-transform:none;letter-spacing:0">— the declaration registry</span></h3>
+    <div id="palette"></div>
+    <h3>Keymap <span style="font-weight:400;text-transform:none;letter-spacing:0">— binds (id, args), never a function</span></h3>
+    <div id="keymap"></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px">
+  <div class="row" style="justify-content:space-between">
+    <h3 style="margin:0">Log</h3>
+    <button class="act" onclick="APP.clearLog()">clear</button>
+  </div>
+  <pre id="log"></pre>
+</div>
+
+<h2>Guided walkthroughs</h2>
+<p class="lede">Each one resets to a known state, then walks the awkward case. Watch the palette and the log.</p>
+<div class="tabs" id="walk-tabs"></div>
+<div class="card" style="margin-top:14px">
+  <p id="walk-desc" style="margin-top:0"></p>
+  <div id="walk-steps"></div>
+</div>
+
+</div>
+
+<script>
+// ============================================================================
+// THE THREE PROPOSALS. Prose, trade table, and the same two features written
+// three ways. This block is documentation, not logic.
+// ============================================================================
+
+const SHAPES = {
+
+conv: {
+  name: 'A. Convention',
+  tagline: 'No feature-module API at all. The constraint stays a constraint.',
+  blurb: `A feature is a folder. It calls exactly the same <code>declareCommand</code> that core
+    calls, exports an actor the app spawns by hand, and exports a React component the app renders by
+    hand. Nothing enforces the seam except a lint rule and taste. This is the standing position on
+    the map, made concrete — it ships no API, and it is the honest baseline the other two have to
+    beat.`,
+  facts: [
+    ['What ships', 'Nothing. A folder convention plus an <code>import/no-restricted-paths</code> rule.'],
+    ['Feature may import', 'Anything under <code>@editor</code>. The fence is lint, not the module graph.'],
+    ['Feature is handed', 'Nothing. It reaches for what it needs.'],
+    ['Discovery', 'Hand-wired: three edits in <code>App.tsx</code> per feature.'],
+    ['Actors', 'Spawned explicitly by the root machine, by name, in app code.'],
+    ['Can be disabled at runtime', 'No. There is no unit to disable.'],
+    ['Out-of-tree plugin later', 'Needs designing then; nothing here transfers.'],
+    ['Cost of being wrong', 'Low. There is nothing to undo.'],
+  ],
+  files: [
+    ['src/editor/features/smooth-terrain/commands.ts', `import { declareCommand } from '@editor/commands'
+import { and, contextKey } from '@editor/availability'
+import { z } from 'zod'
+
+export const mapLoaded = contextKey('mapLoaded')
+
+// Static module-level data. Registered the moment this file is imported,
+// whether or not anything is running.
+export const SMOOTH = declareCommand({
+  id: 'terrain.smooth',
+  title: 'Smooth Terrain',
+  category: 'Terrain',
+  args: z.object({
+    cells: z.array(z.tuple([z.number(), z.number()])),
+    strength: z.number().int().min(1).max(4),
+  }),
+  precondition: mapLoaded,
+})`],
+    ['src/editor/features/smooth-terrain/machine.ts', `import { setup } from 'xstate'
+import { smoothCells } from './ops'
+import { SMOOTH } from './commands'
+
+// The handler rides with the actor. The actor registers it on entry.
+export const smoothMachine = setup({ /* ... */ }).createMachine({
+  entry: ({ self }) => handlers.register(SMOOTH.id, self),
+  on: {
+    'terrain.smooth': {
+      actions: ({ event }) => {
+        // store is a factory closure, never input — see map constraint
+        store.commit('Smooth Terrain', smoothCells(store.doc, event.args))
+      },
+    },
+  },
+})`],
+    ['src/editor/App.tsx  (edited by hand, once per feature)', `import { smoothMachine } from './features/smooth-terrain/machine'
+import { Outliner } from './features/outliner/Outliner'
+import './features/smooth-terrain/commands'   // side-effect import
+import './features/outliner/commands'
+
+// 1. spawn the actor
+const smooth = useActor(smoothMachine)
+
+// 2. widen the tool union in state.ts
+export type ToolId = 'terrain' | 'object' | 'camera' | 'smooth'
+
+// 3. widen the inspector union and render the panel
+{state.inspector === 'outliner' && <Outliner doc={doc} state={state} />}`],
+  ],
+},
+
+reg: {
+  name: 'B. Registry calls',
+  tagline: 'A thin runtime registry the module imports and calls at import time.',
+  blurb: `VS Code's shape, faithfully: two registries joined by a string id. The module makes
+    side-effecting <code>declare</code> calls at import for its declarations, and exports an actor
+    whose <code>entry</code> registers handlers. The host imports the barrel for side effects. Small,
+    incremental — you can convert one existing command at a time — but the feature's import surface
+    is a live runtime singleton, and every <code>declare</code> hands back a disposable you have to
+    remember to collect.`,
+  facts: [
+    ['What ships', 'A ~150-line registry module plus its types. One concept: <code>declare</code>.'],
+    ['Feature may import', '<code>@editor/registry</code> (a runtime singleton) and <code>@core</code>.'],
+    ['Feature is handed', 'Nothing at declare time; the actor is handed the store by factory closure.'],
+    ['Discovery', '<code>features/index.ts</code> does <code>import \'./smooth-terrain\'</code> for side effects.'],
+    ['Actors', 'Feature exports <code>logic</code>; the host spawns it and keeps the <code>ActorRef</code>.'],
+    ['Can be disabled at runtime', 'Yes — if the feature collected every disposable. Nothing enforces it.'],
+    ['Out-of-tree plugin later', 'Possible: expose the singleton. Import order becomes load order.'],
+    ['Cost of being wrong', 'Medium. Call sites are scattered, so changing the API touches every feature.'],
+  ],
+  files: [
+    ['src/editor/features/smooth-terrain/index.ts', `import { commands, tools, keymap, viewportFocused } from '@editor/registry'
+import { fromMachine } from '@editor/registry'
+import { smoothMachine } from './machine'
+import { z } from 'zod'
+
+const disposables: Disposable[] = []
+
+disposables.push(commands.declare({
+  id: 'terrain.smooth',
+  title: 'Smooth Terrain',
+  category: 'Terrain',
+  args: z.object({
+    cells: z.array(z.tuple([z.number(), z.number()])),
+    strength: z.number().int().min(1).max(4),
+  }),
+  precondition: mapLoaded,
+}))
+
+disposables.push(tools.declare({ id: 'smooth', title: 'Smooth', icon: 'wave' }))
+
+// Two bindings, same id, different args. Binds (id, args) — never a function.
+disposables.push(keymap.declare({ key: 'shift+s', command: 'terrain.smooth',
+  args: { strength: 1 }, when: viewportFocused }))
+disposables.push(keymap.declare({ key: 'shift+alt+s', command: 'terrain.smooth',
+  args: { strength: 3 }, when: viewportFocused }))
+
+// Handlers ride with the actor. The host spawns this; the machine's entry
+// action registers 'terrain.smooth' against its own ActorRef.
+export const logic = fromMachine(smoothMachine)
+
+export function dispose() { for (const d of disposables) d.dispose() }`],
+    ['src/editor/features/outliner/index.ts', `import { commands, panels } from '@editor/registry'
+import { Outliner } from './Outliner'
+import { z } from 'zod'
+
+panels.declare({ id: 'outliner', title: 'Outliner', slot: 'inspector', render: Outliner })
+
+commands.declare({
+  id: 'outliner.deleteSelected',
+  title: 'Delete Selected Objects',
+  category: 'Outliner',
+  args: z.object({ ids: z.array(z.string()) }),   // stable ids, never object refs
+  precondition: and(mapLoaded, selectionNonEmpty),
+})
+
+export const logic = fromMachine(outlinerMachine)
+
+// NOTE: this file never collected its disposables. Nothing complains.`],
+  ],
+},
+
+man: {
+  name: 'C. Manifest',
+  tagline: 'The module exports one inert data object. The host interprets it.',
+  blurb: `<code>defineFeature</code> is an identity function — types at compile time, nothing at
+    runtime. The feature exports a plain object describing everything it contributes; it never calls
+    into the editor at all. Its only value-level import is <code>@core</code>. The host can enumerate,
+    diff, disable, serialise and lint the manifest without executing feature code, and dropping a
+    feature is dropping an array entry. The biggest deliverable of the three, and the only one where
+    an out-of-tree plugin is a drop-in rather than a redesign.`,
+  facts: [
+    ['What ships', 'A <code>@editor/feature-api</code> types package, a registry, and a host loader (~300 LOC).'],
+    ['Feature may import', '<code>@core</code>, and <b>types only</b> from the editor. No runtime app import.'],
+    ['Feature is handed', 'The store by factory closure into its actor; nothing else.'],
+    ['Discovery', '<code>features/index.ts</code> is an array of manifests. One line per feature.'],
+    ['Actors', 'Declared as a machine on the manifest. Host spawns and holds the <code>ActorRef</code>.'],
+    ['Can be disabled at runtime', 'Yes, and by construction — the host drops it and recomputes. Nothing to leak.'],
+    ['Out-of-tree plugin later', 'Drop-in. A plugin is a module that default-exports a manifest.'],
+    ['Cost of being wrong', 'Highest. You have designed an API with one consumer and three features.'],
+  ],
+  files: [
+    ['src/editor/features/smooth-terrain/feature.ts', `import { defineFeature } from '@editor/feature-api'  // identity fn; types only
+import { smoothMachine } from './machine'
+import { z } from 'zod'
+
+export default defineFeature({
+  id: 'smooth-terrain',
+  title: 'Smooth Terrain',
+
+  commands: [{
+    id: 'terrain.smooth',
+    title: 'Smooth Terrain',
+    category: 'Terrain',
+    args: z.object({
+      cells: z.array(z.tuple([z.number(), z.number()])),
+      strength: z.number().int().min(1).max(4),
+    }),
+    precondition: 'mapLoaded',
+  }],
+
+  tools: [{ id: 'smooth', title: 'Smooth', icon: 'wave',
+            activates: { command: 'tool.select', args: { tool: 'smooth' } } }],
+
+  keymap: [
+    { key: 'shift+s',     command: 'terrain.smooth', args: { strength: 1 }, when: 'viewportFocused' },
+    { key: 'shift+alt+s', command: 'terrain.smooth', args: { strength: 3 }, when: 'viewportFocused' },
+  ],
+
+  // The one non-data field: the machine whose handlers serve these commands.
+  // Still joined by string id — the manifest names what it handles.
+  actor: { machine: smoothMachine, handles: ['terrain.smooth'] },
+})`],
+    ['src/editor/features/index.ts  (the whole discovery mechanism)', `import smoothTerrain from './smooth-terrain/feature'
+import outliner from './outliner/feature'
+
+export const FEATURES = [smoothTerrain, outliner]
+
+// The host does the rest:
+//   for (const f of FEATURES) registry.install(f)
+// and \`registry.uninstall(f)\` is total, because \`f\` is just data.`],
+  ],
+},
+
+}
+
+// ============================================================================
+// THE PORTABLE BIT. A registry + availability DSL + dispatcher, pure, no DOM.
+// Identical under all three shapes; only install/uninstall semantics differ,
+// which is exactly the thing the three shapes disagree about.
+// ============================================================================
+
+const W = 6, H = 4
+
+function contextKey(key, why) {
+  return { keys: [key], run: (c) => (c[key] ? { ok: true } : { ok: false, why }) }
+}
+function and(...ps) {
+  return {
+    keys: ps.flatMap((p) => p.keys),
+    run: (c) => { for (const p of ps) { const r = p.run(c); if (!r.ok) return r } return { ok: true } },
+  }
+}
+const mapLoaded = contextKey('mapLoaded', 'no map is open')
+const selectionNonEmpty = contextKey('selectionNonEmpty', 'nothing is selected')
+const viewportFocused = contextKey('viewportFocused', 'the viewport is not focused')
+
+function createEngine(log) {
+  const engine = {
+    ctx: { mapLoaded: true, viewportFocused: true, selectionNonEmpty: false },
+    terrain: [],
+    objects: [
+      { id: 'obj_tree_01', name: 'Oak' },
+      { id: 'obj_tree_02', name: 'Pine' },
+      { id: 'obj_rock_01', name: 'Boulder' },
+    ],
+    selection: [],
+    declarations: new Map(), // id -> declaration
+    handlers: new Map(),     // id -> featureId, populated by a *running* actor
+    keymap: [],
+    panels: new Map(),
+    installed: new Map(),    // featureId -> { running, leaked }
+  }
+
+  engine.reset = () => {
+    const seed = [4, 4, 0, 0, 7, 7, 4, 1, 0, 6, 7, 2, 0, 0, 5, 6, 2, 0, 3, 0, 6, 1, 0, 0]
+    engine.terrain = seed.slice()
+    engine.objects = [
+      { id: 'obj_tree_01', name: 'Oak' },
+      { id: 'obj_tree_02', name: 'Pine' },
+      { id: 'obj_rock_01', name: 'Boulder' },
+    ]
+    engine.selection = []
+    engine.ctx.selectionNonEmpty = false
+  }
+  engine.reset()
+
+  // --- installation -------------------------------------------------------
+  engine.install = (feature) => {
+    for (const c of feature.commands) engine.declarations.set(c.id, { ...c, feature: feature.id })
+    for (const k of feature.keymap || []) engine.keymap.push({ ...k, feature: feature.id })
+    for (const p of feature.panels || []) engine.panels.set(p.id, { ...p, feature: feature.id })
+    engine.installed.set(feature.id, { running: false, leaked: false })
+    log(`installed <b>${feature.id}</b> — ${feature.commands.length} declaration(s) now enumerable, 0 handlers`)
+  }
+
+  // How total an uninstall is, is the whole disagreement between the shapes.
+  engine.uninstall = (feature, mode) => {
+    if (mode === 'none') return log(`<b>${feature.id}</b>: this shape has no unit to uninstall`)
+    engine.stopActor(feature, true)
+    if (mode === 'leaky' && feature.leaksOnDispose) {
+      engine.installed.get(feature.id).leaked = true
+      log(`uninstalled <b>${feature.id}</b> — but its declarations were never collected as disposables, so the palette entry and panel survive it`)
+      return
+    }
+    for (const c of feature.commands) engine.declarations.delete(c.id)
+    for (const p of feature.panels || []) engine.panels.delete(p.id)
+    engine.keymap = engine.keymap.filter((k) => k.feature !== feature.id)
+    engine.installed.delete(feature.id)
+    log(`uninstalled <b>${feature.id}</b> — declarations, keymap and panels gone`)
+  }
+
+  // --- the actor half -----------------------------------------------------
+  engine.startActor = (feature) => {
+    const rec = engine.installed.get(feature.id)
+    if (!rec || rec.running) return
+    rec.running = true
+    for (const id of feature.handles) engine.handlers.set(id, feature.id)
+    log(`actor for <b>${feature.id}</b> started — now handling ${feature.handles.join(', ')}`)
+  }
+  engine.stopActor = (feature, quiet) => {
+    const rec = engine.installed.get(feature.id)
+    if (!rec || !rec.running) return
+    rec.running = false
+    for (const id of feature.handles) engine.handlers.delete(id)
+    if (!quiet) log(`actor for <b>${feature.id}</b> stopped — declarations stay, handlers go`)
+  }
+
+  // --- availability -------------------------------------------------------
+  engine.availability = (id) => {
+    const decl = engine.declarations.get(id)
+    if (!decl) return { ok: false, why: 'not declared' }
+    return decl.precondition ? decl.precondition.run(engine.ctx) : { ok: true }
+  }
+
+  // --- dispatch -----------------------------------------------------------
+  // One entry point. A keybinding, a palette pick and a test all call this.
+  engine.dispatch = (id, args) => {
+    const decl = engine.declarations.get(id)
+    if (!decl) return log(`✕ <b>${id}</b> — no such command`)
+
+    const avail = engine.availability(id)
+    if (!avail.ok) return log(`✕ <b>${id}</b> — unavailable: ${avail.why}`)
+
+    const owner = engine.handlers.get(id)
+    if (!owner) return log(`✕ <b>${id}</b> — declared, but no actor is handling it. Legal state: the command exists, its feature is not running.`)
+
+    const parsed = decl.parse ? decl.parse(args) : { ok: true, value: args }
+    if (!parsed.ok) return log(`✕ <b>${id}</b> — arguments rejected: ${parsed.why}`)
+
+    log(`→ <b>${id}</b>(${JSON.stringify(parsed.value)}) → actor ${owner}`)
+    decl.run(engine, parsed.value, log)
+  }
+
+  return engine
+}
+
+// --- the features, as the engine sees them ---------------------------------
+// Under all three shapes this is what the host ends up holding. The shapes
+// differ in how the author wrote it, not in what it becomes.
+
+function smoothCells(engine, strength) {
+  const next = engine.terrain.slice()
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    let sum = 0, n = 0
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue
+      sum += engine.terrain[ny * W + nx]; n++
+    }
+    const target = sum / n
+    const cur = engine.terrain[y * W + x]
+    next[y * W + x] = Math.round(cur + (target - cur) * (strength / 4))
+  }
+  engine.terrain = next
+}
+
+const FEATURES = [
+  {
+    id: 'smooth-terrain',
+    title: 'Smooth Terrain tool',
+    handles: ['terrain.smooth'],
+    leaksOnDispose: false,
+    commands: [{
+      id: 'terrain.smooth',
+      title: 'Smooth Terrain',
+      category: 'Terrain',
+      precondition: mapLoaded,
+      argsHint: '{ cells, strength: 1–4 }',
+      defaultArgs: { strength: 2 },
+      parse: (a) => (a && a.strength >= 1 && a.strength <= 4
+        ? { ok: true, value: a }
+        : { ok: false, why: `strength must be 1–4, got ${a && a.strength}` }),
+      run: (engine, args, log) => {
+        smoothCells(engine, args.strength)
+        log(`   committed one Edit: "Smooth Terrain"`)
+      },
+    }],
+    keymap: [
+      { key: 'shift+s', command: 'terrain.smooth', args: { strength: 1 }, when: viewportFocused },
+      { key: 'shift+alt+s', command: 'terrain.smooth', args: { strength: 4 }, when: viewportFocused },
+    ],
+    panels: [],
+  },
+  {
+    id: 'outliner',
+    title: 'Outliner panel',
+    handles: ['outliner.deleteSelected'],
+    leaksOnDispose: true,
+    commands: [{
+      id: 'outliner.deleteSelected',
+      title: 'Delete Selected Objects',
+      category: 'Outliner',
+      precondition: and(mapLoaded, selectionNonEmpty),
+      argsHint: '{ ids: string[] }',
+      defaultArgs: null, // filled from selection at dispatch time — by id, never by reference
+      parse: (a) => (a && Array.isArray(a.ids) && a.ids.length
+        ? { ok: true, value: a }
+        : { ok: false, why: 'ids must be a non-empty array of stable object ids' }),
+      run: (engine, args, log) => {
+        engine.objects = engine.objects.filter((o) => !args.ids.includes(o.id))
+        engine.selection = []
+        engine.ctx.selectionNonEmpty = false
+        log(`   committed one Edit: "Delete ${args.ids.length} object(s)"`)
+      },
+    }],
+    keymap: [{ key: 'delete', command: 'outliner.deleteSelected', args: null, when: selectionNonEmpty }],
+    panels: [{ id: 'outliner', title: 'Outliner', slot: 'inspector' }],
+  },
+]
+
+// ============================================================================
+// THE SHELL. Throwaway. Nothing above this line touches the DOM.
+// ============================================================================
+
+const APP = (() => {
+  let shape = 'man'
+  let logLines = []
+
+  const log = (html) => { logLines.push(html); renderLog() }
+  const engine = createEngine(log)
+
+  const UNINSTALL_MODE = { conv: 'none', reg: 'leaky', man: 'total' }
+
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }
+  function hl(src) {
+    return esc(src)
+      .replace(/(\/\/[^\n]*)/g, '<span class="cm">$1</span>')
+      .replace(/(&#39;|')([^'\n]*)\1/g, '<span class="str">\'$2\'</span>')
+      .replace(/\b(import|from|export|default|const|let|function|return|for|of|if|else|type|interface|new)\b/g, '<span class="kw">$1</span>')
+      .replace(/\b(\d+)\b/g, '<span class="num">$1</span>')
+  }
+
+  function bootstrap() {
+    engine.declarations.clear(); engine.handlers.clear()
+    engine.keymap = []; engine.panels.clear(); engine.installed.clear()
+    engine.reset()
+    logLines = []
+    for (const f of FEATURES) engine.install(f)
+    log('nothing is running yet. The palette below is already complete.')
+  }
+
+  // --- shape tabs ---------------------------------------------------------
+  function renderShapes() {
+    document.getElementById('shape-tabs').innerHTML = Object.entries(SHAPES)
+      .map(([k, s]) => `<button class="tab" aria-selected="${k === shape}" onclick="APP.pickShape('${k}')">${s.name}</button>`)
+      .join('')
+    const s = SHAPES[shape]
+    document.getElementById('shape-body').innerHTML = `
+      <div class="card">
+        <p style="font-size:17px;margin-bottom:10px"><b>${s.tagline}</b></p>
+        <p>${s.blurb}</p>
+        <table>${s.facts.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>
+        ${s.files.map(([name, src]) => `<p class="filename" style="margin-top:18px">${esc(name)}</p><pre>${hl(src)}</pre>`).join('')}
+      </div>`
+  }
+
+  // --- live editor --------------------------------------------------------
+  function renderFeatures() {
+    const mode = UNINSTALL_MODE[shape]
+    document.getElementById('features').innerHTML = FEATURES.map((f) => {
+      const rec = engine.installed.get(f.id)
+      const gone = !rec
+      const leaked = rec && rec.leaked
+      const pill = gone
+        ? '<span class="pill dead">uninstalled</span>'
+        : leaked
+          ? '<span class="pill leak">uninstalled, registrations leaked</span>'
+          : rec.running ? '<span class="pill live">actor running</span>' : '<span class="pill dead">actor stopped</span>'
+      return `<div class="cmd" style="flex-wrap:wrap">
+        <div style="flex:1;min-width:170px"><b>${f.title}</b><br><span class="id" style="color:var(--dim)">${f.id}</span></div>
+        ${pill}
+        <button class="act" ${gone ? 'disabled' : ''} onclick="APP.toggleActor('${f.id}')">${rec && rec.running ? 'stop actor' : 'start actor'}</button>
+        <button class="act" ${gone || mode === 'none' ? 'disabled' : ''}
+          title="${mode === 'none' ? 'Shape A has no unit to uninstall' : ''}"
+          onclick="APP.uninstall('${f.id}')">uninstall</button>
+      </div>`
+    }).join('') + (engine.panels.size
+      ? `<p style="font-size:12.5px;color:var(--dim);margin:10px 0 0">inspector slot holds: ${[...engine.panels.values()].map((p) => p.title).join(', ')}</p>`
+      : `<p style="font-size:12.5px;color:var(--dim);margin:10px 0 0">inspector slot is empty</p>`)
+  }
+
+  function renderTerrain() {
+    document.getElementById('terrain').innerHTML = engine.terrain.map((h) => {
+      const t = Math.min(1, h / 8)
+      const bg = `hsl(${95 - t * 70} ${38 + t * 22}% ${88 - t * 42}%)`
+      return `<div class="cell" style="background:${bg};color:${t > .5 ? '#fff' : '#2b2a27'}">${h}</div>`
+    }).join('')
+  }
+
+  function renderObjects() {
+    if (!engine.objects.length) return document.getElementById('objects').innerHTML = '<p style="color:var(--dim);font-size:13px;margin:0">no objects</p>'
+    document.getElementById('objects').innerHTML = engine.objects.map((o) => {
+      const sel = engine.selection.includes(o.id)
+      return `<div class="cmd"><button class="act ${sel ? 'primary' : ''}" style="min-width:132px;text-align:left"
+        onclick="APP.toggleSelect('${o.id}')">${sel ? '● ' : '○ '}${o.name}</button>
+        <span class="id" style="color:var(--dim)">${o.id}</span></div>`
+    }).join('')
+  }
+
+  function renderPalette() {
+    const decls = [...engine.declarations.values()]
+    if (!decls.length) return document.getElementById('palette').innerHTML = '<p style="color:var(--dim);font-size:13px;margin:0">empty</p>'
+    document.getElementById('palette').innerHTML = decls.map((d) => {
+      const a = engine.availability(d.id)
+      const handled = engine.handlers.has(d.id)
+      const args = d.defaultArgs ?? (d.id === 'outliner.deleteSelected' ? { ids: engine.selection } : {})
+      return `<div class="cmd" style="flex-wrap:wrap">
+        <div style="flex:1;min-width:190px">
+          <b>${d.category} : ${d.title}</b><br>
+          <span class="id" style="color:var(--dim)">${d.id} <span style="opacity:.7">${esc(d.argsHint)}</span></span>
+        </div>
+        ${handled ? '<span class="pill live">handled</span>' : '<span class="pill dead">no handler</span>'}
+        ${a.ok ? '' : `<span class="why">${a.why}</span>`}
+        <button class="act" onclick='APP.run("${d.id}", ${JSON.stringify(args)})'>run</button>
+      </div>`
+    }).join('')
+  }
+
+  function renderKeymap() {
+    if (!engine.keymap.length) return document.getElementById('keymap').innerHTML = '<p style="color:var(--dim);font-size:13px;margin:0">empty</p>'
+    document.getElementById('keymap').innerHTML = engine.keymap.map((k, i) => {
+      const args = k.args ?? (k.command === 'outliner.deleteSelected' ? { ids: engine.selection } : {})
+      const scope = k.when.run(engine.ctx)
+      return `<div class="cmd">
+        <code style="min-width:104px"><b>${k.key}</b></code>
+        <div style="flex:1"><span class="id">${k.command}</span>
+          <span class="id" style="color:var(--dim)"> ${k.args ? esc(JSON.stringify(k.args)) : '\u27e8ids from selection\u27e9'}</span></div>
+        ${scope.ok ? '' : '<span class="why">out of scope</span>'}
+        <button class="act" onclick='APP.press(${i})'>press</button>
+      </div>`
+    }).join('')
+  }
+
+  function renderLog() {
+    const el = document.getElementById('log')
+    el.innerHTML = logLines.join('\n')
+    el.scrollTop = el.scrollHeight
+  }
+
+  function renderAll() { renderFeatures(); renderTerrain(); renderObjects(); renderPalette(); renderKeymap(); renderLog() }
+
+  // --- walkthroughs -------------------------------------------------------
+  const WALKS = [
+    {
+      name: 'Enumerable before anything runs',
+      desc: `The map requires that a keybinding UI and a command palette can list the full command set before any actor exists. Reset, leave both actors stopped, and read the palette: every command is there, titled and categorised, every one marked "no handler".`,
+      steps: [
+        ['Reset — install both features, start nothing', () => bootstrap()],
+        ['Read the palette', () => log('the palette is complete and nothing is running. That is the requirement.')],
+      ],
+    },
+    {
+      name: 'Declared, but unhandled',
+      desc: `The legal state the map names explicitly: the command exists, its actor is not running. It must be a message, not a crash, and not a missing menu entry.`,
+      steps: [
+        ['Reset', () => bootstrap()],
+        ['Run Smooth Terrain with its actor stopped', () => engine.dispatch('terrain.smooth', { strength: 2 })],
+        ['Start the Smooth Terrain actor', () => engine.startActor(FEATURES[0])],
+        ['Run it again', () => engine.dispatch('terrain.smooth', { strength: 2 })],
+      ],
+    },
+    {
+      name: 'A disabled control says why',
+      desc: `Availability is a closed predicate, not an arbitrary function, so the editor can name the failing leaf. Delete Selected Objects is gated on <code>mapLoaded && selectionNonEmpty</code>; with nothing selected the palette must say <i>which</i> half failed.`,
+      steps: [
+        ['Reset and start the Outliner actor', () => { bootstrap(); engine.startActor(FEATURES[1]) }],
+        ['Try Delete Selected with nothing selected', () => engine.dispatch('outliner.deleteSelected', { ids: [] })],
+        ['Select Oak', () => APP.toggleSelect('obj_tree_01')],
+        ['Try it again — note the args are stable ids', () => engine.dispatch('outliner.deleteSelected', { ids: engine.selection.slice() })],
+      ],
+    },
+    {
+      name: 'One command, two bindings, different args',
+      desc: `The open question from the research: does a keybinding carry <code>args</code>, or do we mint one command per variant? Here <code>shift+s</code> and <code>shift+alt+s</code> bind the same id at different strengths. Watch the terrain flatten at two speeds.`,
+      steps: [
+        ['Reset and start the Smooth Terrain actor', () => { bootstrap(); engine.startActor(FEATURES[0]) }],
+        ['Press shift+s  (strength 1)', () => APP.press(0)],
+        ['Press shift+s again', () => APP.press(0)],
+        ['Press shift+alt+s  (strength 4)', () => APP.press(1)],
+        ['Try an out-of-range strength', () => engine.dispatch('terrain.smooth', { strength: 9 })],
+      ],
+    },
+    {
+      name: 'Turn a feature off — where the shapes come apart',
+      desc: `This is the only walkthrough whose outcome depends on which shape is selected above. <b>A. Convention</b> has no uninstall at all. <b>B. Registry</b> uninstalls only what the feature remembered to collect — the Outliner module never collected its disposables, so its palette entry and panel survive. <b>C. Manifest</b> drops an array entry, so it is total by construction. Run it once per shape.`,
+      steps: [
+        ['Reset and start both actors', () => { bootstrap(); engine.startActor(FEATURES[0]); engine.startActor(FEATURES[1]) }],
+        ['Uninstall Smooth Terrain', () => APP.uninstall('smooth-terrain')],
+        ['Uninstall Outliner', () => APP.uninstall('outliner')],
+        ['Check the palette and the inspector slot', () => log(`palette holds ${engine.declarations.size} declaration(s); inspector slot holds ${engine.panels.size} panel(s).`)],
+      ],
+    },
+  ]
+  let walk = 0, step = 0
+
+  function renderWalks() {
+    document.getElementById('walk-tabs').innerHTML = WALKS
+      .map((w, i) => `<button class="tab" aria-selected="${i === walk}" onclick="APP.pickWalk(${i})">${i + 1}. ${w.name}</button>`).join('')
+    document.getElementById('walk-desc').innerHTML = WALKS[walk].desc
+    document.getElementById('walk-steps').innerHTML = WALKS[walk].steps
+      .map((s, i) => `<button class="act step ${i < step ? 'done' : ''}" ${i === step ? 'style="border-color:var(--accent);color:var(--accent)"' : ''}
+        ${i > step ? 'disabled' : ''} onclick="APP.doStep(${i})">${i + 1}. ${s[0]}</button>`).join('')
+  }
+
+  const api = {
+    pickShape(k) { shape = k; renderShapes(); renderAll() },
+    pickWalk(i) { walk = i; step = 0; renderWalks() },
+    doStep(i) { WALKS[walk].steps[i][1](); step = i + 1; renderWalks(); renderAll() },
+    run(id, args) { engine.dispatch(id, args); renderAll() },
+    press(i) {
+      const k = engine.keymap[i]
+      const scope = k.when.run(engine.ctx)
+      if (!scope.ok) { log(`⌨ <b>${k.key}</b> — no binding in scope: ${scope.why}. The key falls through.`); return renderAll() }
+      const args = k.args ?? { ids: engine.selection.slice() }
+      log(`⌨ <b>${k.key}</b> resolves to (${k.command}, ${JSON.stringify(args)})`)
+      engine.dispatch(k.command, args); renderAll()
+    },
+    toggleActor(id) {
+      const f = FEATURES.find((x) => x.id === id)
+      const rec = engine.installed.get(id)
+      rec.running ? engine.stopActor(f) : engine.startActor(f)
+      renderAll()
+    },
+    uninstall(id) { engine.uninstall(FEATURES.find((x) => x.id === id), UNINSTALL_MODE[shape]); renderAll() },
+    toggleSelect(id) {
+      engine.selection = engine.selection.includes(id)
+        ? engine.selection.filter((x) => x !== id) : [...engine.selection, id]
+      engine.ctx.selectionNonEmpty = engine.selection.length > 0
+      renderAll()
+    },
+    clearLog() { logLines = []; renderLog() },
+  }
+
+  bootstrap(); renderShapes(); renderWalks(); renderAll()
+  return api
+})()
+</script>
