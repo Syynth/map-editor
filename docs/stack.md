@@ -105,7 +105,12 @@ alone; do not route it through a machine.
       (19), `tools.ts` (5) — onto the hook.
 - [ ] Keep the store reference out of machine `context`; XState's inspector
       would try to serialise the whole map every transition. Use a machine
-      factory closure or `input`.
+      factory closure — **not** `input`, which rides on the `xstate.init` event
+      and reaches the inspector even when kept out of context. Measured on
+      xstate 5.32.6: a 50k-entry store passed as `input` puts 100,089 bytes on
+      the init event; the same store captured in a factory closure puts 22.
+      The inspector's `filter` and `sanitizeContext` do not help, because the
+      snapshot is stringified before either runs.
 
 ### Compact stroke patches
 Measured on the real store: a 3-second drag with a size-5 round brush over 180
