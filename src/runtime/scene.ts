@@ -38,6 +38,7 @@ interface ChunkView {
   /** Kept so picking can turn a raycast hit back into a document coordinate. */
   faceAddr: Int32Array
   waterFaceAddr: Int32Array | null
+  triangleCount: number
 }
 
 export interface SceneStats {
@@ -167,7 +168,6 @@ export class RuntimeScene {
   rebuildChunks(keys?: string[]): void {
     const list = keys ?? allChunkKeys(this.doc.size.width, this.doc.size.height)
     const start = performance.now()
-    let triangles = 0
 
     for (const key of list) {
       const existing = this.chunks.get(key)
@@ -190,7 +190,6 @@ export class RuntimeScene {
       solid.userData.chunkKey = key
       solid.userData.surface = 'solid'
       this.terrainGroup.add(solid)
-      triangles += mesh.solid.triangleCount
 
       let water: THREE.Mesh | null = null
       if (mesh.water) {
@@ -206,12 +205,18 @@ export class RuntimeScene {
         water,
         faceAddr: mesh.solid.faceAddr,
         waterFaceAddr: mesh.water?.faceAddr ?? null,
+        triangleCount: mesh.solid.triangleCount,
       })
     }
 
+    // Sum across every live chunk, not just the ones rebuilt this pass, so a
+    // partial rebuild does not make the readout collapse to the brush.
+    let triangles = 0
+    for (const chunk of this.chunks.values()) triangles += chunk.triangleCount
+
     this.stats = {
       chunksBuilt: list.length,
-      triangles: triangles || this.stats.triangles,
+      triangles,
       lastMeshMs: performance.now() - start,
     }
   }

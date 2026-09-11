@@ -180,6 +180,9 @@ export interface Atmosphere {
   ambientIntensity: number
   sunAzimuth: number
   sunElevation: number
+  /** Post-processing. Presets move these together; sliders are secondary. */
+  bloom: number
+  tiltShift: number
   /** Painted distant scenery: the no-modeling answer to far-off mountains. */
   backdrop: BackdropCard[]
 }
@@ -269,6 +272,8 @@ export const ATMOSPHERE_PRESETS: Record<string, Omit<Atmosphere, 'preset' | 'bac
     ambientIntensity: 0.65,
     sunAzimuth: 135,
     sunElevation: 55,
+    bloom: 0.35,
+    tiltShift: 0.25,
   },
   'Misty dusk': {
     fogColor: 0xc2a3b4,
@@ -282,6 +287,8 @@ export const ATMOSPHERE_PRESETS: Record<string, Omit<Atmosphere, 'preset' | 'bac
     ambientIntensity: 0.5,
     sunAzimuth: 250,
     sunElevation: 12,
+    bloom: 0.7,
+    tiltShift: 0.55,
   },
   'Night festival': {
     fogColor: 0x1d2340,
@@ -295,6 +302,8 @@ export const ATMOSPHERE_PRESETS: Record<string, Omit<Atmosphere, 'preset' | 'bac
     ambientIntensity: 0.35,
     sunAzimuth: 300,
     sunElevation: 35,
+    bloom: 1.1,
+    tiltShift: 0.45,
   },
   Overcast: {
     fogColor: 0xc8cdd2,
@@ -308,6 +317,8 @@ export const ATMOSPHERE_PRESETS: Record<string, Omit<Atmosphere, 'preset' | 'bac
     ambientIntensity: 0.85,
     sunAzimuth: 180,
     sunElevation: 60,
+    bloom: 0.2,
+    tiltShift: 0.3,
   },
 }
 

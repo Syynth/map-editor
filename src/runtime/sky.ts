@@ -53,8 +53,10 @@ void main() {
   float glow = pow(max(cosAngle, 0.0), 48.0) * 0.35;
   color += sunColor * (disc + glow);
 
+  // Deliberately no colorspace conversion here. The composer's OutputPass owns
+  // tone mapping and the linear-to-sRGB step; converting twice washes the sky
+  // out to near-white.
   gl_FragColor = vec4(color, 1.0);
-  #include <colorspace_fragment>
 }
 `
 
@@ -98,11 +100,13 @@ export class Sky {
   }
 
   apply(atmosphere: Atmosphere, sprites: Record<string, SpriteAsset>, nearest: boolean): void {
+    // The shader works in linear space, so the authored sRGB hexes convert on
+    // the way in rather than on the way out.
     const uniforms = this.material.uniforms
-    ;(uniforms.topColor.value as THREE.Color).setHex(atmosphere.skyTop)
-    ;(uniforms.horizonColor.value as THREE.Color).setHex(atmosphere.skyHorizon)
-    ;(uniforms.bottomColor.value as THREE.Color).setHex(atmosphere.skyBottom)
-    ;(uniforms.sunColor.value as THREE.Color).setHex(atmosphere.sunColor)
+    ;(uniforms.topColor.value as THREE.Color).setHex(atmosphere.skyTop, THREE.SRGBColorSpace)
+    ;(uniforms.horizonColor.value as THREE.Color).setHex(atmosphere.skyHorizon, THREE.SRGBColorSpace)
+    ;(uniforms.bottomColor.value as THREE.Color).setHex(atmosphere.skyBottom, THREE.SRGBColorSpace)
+    ;(uniforms.sunColor.value as THREE.Color).setHex(atmosphere.sunColor, THREE.SRGBColorSpace)
     ;(uniforms.sunDirection.value as THREE.Vector3).copy(sunDirection(atmosphere))
 
     this.rebuildBackdrops(atmosphere, sprites, nearest)

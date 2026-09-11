@@ -91,15 +91,17 @@ class BufferBuilder {
   /**
    * Emit a quad as two triangles. Corners must be given in winding order
    * p0, p1, p2, p3 such that (p1-p0) x (p2-p0) points outwards.
+   *
+   * UVs are given per corner rather than as a rectangle. Top quads and side
+   * faces walk their corners along different axes, so there is no single
+   * rectangle-to-corner mapping that serves both.
    */
   quad(
     corners: [number, number, number][],
-    uv: [number, number, number, number],
+    cornerUvs: [[number, number], [number, number], [number, number], [number, number]],
     shade: [number, number, number, number],
     tint: [number, number, number],
     address: [number, number, number, number],
-    /** Override the v coordinate per corner, for bands clipped by a ramp. */
-    vOverride?: [number, number, number, number],
   ): void {
     const base = this.vertexCount
     const [p0, p1, p2] = corners
@@ -117,15 +119,6 @@ class BufferBuilder {
     nx /= len
     ny /= len
     nz /= len
-
-    const [u0, v0, u1, v1] = uv
-    const vs = vOverride ?? [v0, v0, v1, v1]
-    const cornerUvs: [number, number][] = [
-      [u0, vs[0]],
-      [u1, vs[1]],
-      [u1, vs[2]],
-      [u0, vs[3]],
-    ]
 
     for (let i = 0; i < 4; i++) {
       this.positions.push(corners[i][0], corners[i][1], corners[i][2])
@@ -262,16 +255,20 @@ export function meshTerrainChunk(doc: MapDoc, key: string): TerrainChunkMesh {
           cornerShade(doc, x, y, x + offset[0], y + offset[1], cornerH[i]),
         ) as [number, number, number, number]
 
-        const uv = tileUv(layout, resolveTopTile(doc, layout, x, y))
-        // Sheets are authored top-down: +Z on the map is downward on the sheet.
-        const [u0, v0, u1, v1] = uv
+        const [u0, v0, u1, v1] = tileUv(layout, resolveTopTile(doc, layout, x, y))
+        // Corner order is c00, c01, c11, c10. Sheets are authored top-down, so
+        // increasing map +Z walks down the sheet, which is decreasing v.
         solid.quad(
           corners,
-          [u0, v1, u1, v0],
+          [
+            [u0, v1],
+            [u0, v0],
+            [u1, v0],
+            [u1, v1],
+          ],
           shade,
           tint,
           [SURFACE_TOP, x, y, 0],
-          [v1, v0, v0, v1],
         )
       }
 
@@ -309,8 +306,10 @@ export function meshTerrainChunk(doc: MapDoc, key: string): TerrainChunkMesh {
 
           const band: CliffBand =
             level === topLevel ? 'top' : level === neighbour ? 'bottom' : 'middle'
-          const uv = tileUv(layout, resolveCliffTile(doc, layout, x, y, dir, level, band))
-          const [u0, v0, u1, v1] = uv
+          const [u0, v0, u1, v1] = tileUv(
+            layout,
+            resolveCliffTile(doc, layout, x, y, dir, level, band),
+          )
 
           // Keep the texture from stretching when a band is clipped short.
           const vStart = v0 + (hStart - bottom) * (v1 - v0)
@@ -327,11 +326,15 @@ export function meshTerrainChunk(doc: MapDoc, key: string): TerrainChunkMesh {
               [ex, hEnd * HALF, ez],
               [ox, hStart * HALF, oz],
             ],
-            [u0, v0, u1, v1],
+            [
+              [u0, v0],
+              [u1, v0],
+              [u1, vEnd],
+              [u0, vStart],
+            ],
             shade,
             tint,
             [SURFACE_CLIFF, x, y, encodeExtra(dir, level)],
-            [v0, v0, vEnd, vStart],
           )
         }
       }
@@ -347,11 +350,15 @@ export function meshTerrainChunk(doc: MapDoc, key: string): TerrainChunkMesh {
             [x + 1, wy, y + 1],
             [x + 1, wy, y],
           ],
-          [0, 0, 1, 1],
+          [
+            [0, 1],
+            [0, 0],
+            [1, 0],
+            [1, 1],
+          ],
           [1, 1, 1, 1],
           [1, 1, 1],
           [SURFACE_WATER, x, y, 0],
-          [1, 0, 0, 1],
         )
       }
     }

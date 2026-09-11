@@ -210,6 +210,44 @@ describe('mesher', () => {
     }
   })
 
+  it('gives every quad a non-degenerate UV rectangle', () => {
+    // Regression: top quads and side faces walk their corners along different
+    // axes, and a shared rectangle-to-corner mapping collapsed the top quad's
+    // UVs onto two points, which streaked the whole terrain.
+    const doc = createMap(4, 4)
+    setHeight(doc, 1, 1, 6)
+    const { solid } = meshTerrainChunk(doc, '0,0')
+
+    for (let quad = 0; quad < solid.positions.length / 3 / 4; quad++) {
+      const us: number[] = []
+      const vs: number[] = []
+      for (let corner = 0; corner < 4; corner++) {
+        const index = (quad * 4 + corner) * 2
+        us.push(solid.uvs[index])
+        vs.push(solid.uvs[index + 1])
+      }
+      // A tile occupies a rectangle, so both axes must actually vary.
+      expect(Math.max(...us) - Math.min(...us)).toBeGreaterThan(1e-6)
+      expect(Math.max(...vs) - Math.min(...vs)).toBeGreaterThan(1e-6)
+      // And all four corners must be distinct points in UV space.
+      const unique = new Set(us.map((u, i) => `${u.toFixed(6)},${vs[i].toFixed(6)}`))
+      expect(unique.size).toBe(4)
+    }
+  })
+
+  it('maps the sheet the right way up on a top quad', () => {
+    const doc = createMap(4, 4)
+    const { solid } = meshTerrainChunk(doc, '0,0')
+    // Corner order is c00, c01, c11, c10. c00 is the sheet's top-left, which
+    // in GL coordinates is the largest v.
+    const v00 = solid.uvs[1]
+    const v01 = solid.uvs[3]
+    const u00 = solid.uvs[0]
+    const u11 = solid.uvs[4]
+    expect(v00).toBeGreaterThan(v01)
+    expect(u11).toBeGreaterThan(u00)
+  })
+
   it('produces finite, consistent buffers', () => {
     const doc = createMap(8, 8)
     setHeight(doc, 2, 2, 7)
