@@ -30,6 +30,55 @@ A method for chewing through a large backlog of changes with parallel subagents 
 4. **Cluster related issues**: combine same-file ones into a single PR via the batch entry's `closes: [n, …]` field (the template generates the honest multi-`Closes` body); serialize ones that share a hot file; split oversized issues so the closes list stays honest.
 5. **Lane each issue.** Docs/comments/banner-level changes get `lane: "light"` (lower agent effort + a cheaper per-entry `gate` override, e.g. typecheck-only) — full adversarial ceremony on a README edit is wasted tokens. Default lane is full.
 
+## Feeding the pump from a wayfinder map
+
+When the project plans with the `wayfinder` skill, its map is not just adjacent to Gate 0 —
+it **is** Gate 0's source of truth, and reading it is cheaper than re-deriving any of this.
+A map issue carries exactly the four things triage otherwise has to invent:
+
+| map section | what it feeds |
+|---|---|
+| **Standing constraints** (Notes) | the `RULES` seed — do **not** start empty |
+| **Decisions so far** | what is build-ready, and the reference material behind it |
+| **Open tickets** | `needs-design`, by definition — never admit these to a wave |
+| **Not yet specified** (fog) | not build-ready; not even a candidate yet |
+| **Out of scope** | a hard fence — the pump must not file issues past it |
+
+**Seed `RULES` from the map's standing constraints.** The general advice is to seed empty and
+grow from review findings, and that is right for a project with no prior. A wayfinder map is
+a prior: its constraints were argued, and the good ones were verified empirically. Starting
+empty makes the first wave re-learn them the expensive way — through a fix cycle, which is
+~18% of pump spend. Constraints that came with a measurement are the highest-value rules you
+will ever have, because an agent that violates one produces a *silently* wrong result.
+
+**The build-ready boundary is the frontier.** An open ticket is an undecided question, so
+anything downstream of it is `needs-design` no matter how obvious it looks. A closed ticket
+is a ruling, and work implementing it is build-ready. This removes most of Gate 0's judgement
+— the classification was already made, with the human, when the ticket closed.
+
+**Point Gate 0's "study the reference first" at the research tickets.** Wayfinder `research`
+tickets exist precisely to produce that study, and their findings are usually more specific
+than anything an agent will rediscover under time pressure. Cite them in build prompts.
+
+**Scope reconciliation flows back to the map, not only to the issue tracker.** Discovered work
+that is a *decision* belongs on the map as a new ticket or as fog — filing it as a build-ready
+issue smuggles an undecided question into a later wave, where an agent will answer it alone.
+Work that is merely *unbuilt* stays an ordinary issue. Sorting a `scopeNote` into one or the
+other is a human call; propose, don't file.
+
+**The map is the ledger.** The outer-loop audit below asks where rulings and code have drifted
+apart. On a wayfinder project the ruling set is not a chronological log to be mined — it is the
+map's Decisions-so-far, each entry linking to the ticket holding its reasoning. That makes the
+three-way audit (decision ↔ issue ↔ code) tractable rather than archaeological, and the
+highest-risk entries are the same ones: a decision whose *implementation* was assumed to ride
+along with a ticket that has since closed without delivering it.
+
+**⚠ Do not have pump agents invoke `wayfinder`.** It is marked `disable-model-invocation` and
+refuses the Skill tool, and its refusal text forbids replicating the workflow by other means.
+Agents should *read* the map issue as data — which needs no skill — and escalate to the human
+when a decision is missing. An agent that starts charting or resolving tickets on its own has
+broken the human-in-the-loop property the map exists to protect.
+
 ## Model tiers (credit control)
 Subagents inherit the session model unless overridden — on a top-tier session that burns premium credits on mechanical work. The template pins: **builds/train/fix = sonnet** (light lane = haiku), **adversarial review = opus** (the quality bar — don't cheap out where the bugs get caught), per-entry `model:` override for known-hard builds. Rationale: three consecutive waves' reviews found real bugs the gate missed; nothing else in the pipeline needs the top tier.
 
