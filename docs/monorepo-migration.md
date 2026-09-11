@@ -22,11 +22,11 @@ split lands: core cannot import three.js if it is not a declared dependency.
 
 ## Phase 0 — Land the prototype
 
-- [ ] Merge `prototype` into `main`. Tag the merge `prototype-v0` so the
+- [x] Merge `prototype` into `main`. Tag the merge `prototype-v0` so the
       pre-restructure state stays referenceable.
-- [ ] Convert the open items in `FINDINGS.md` into issues. It is a prototype
+- [x] Convert the open items in `FINDINGS.md` into issues. It is a prototype
       log, not a living document.
-- [ ] Migrate the "decisions taken up front" table from `PLAN.md` into
+- [x] Migrate the "decisions taken up front" table from `PLAN.md` into
       `decision-log.md`, then retire `PLAN.md`.
 
 ## Phase 1 — Workspace skeleton

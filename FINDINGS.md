@@ -6,6 +6,19 @@ the questions in `level-editor-design-brief.md`.
 Everything here is measured in this repository unless it says otherwise. Where
 a question needs the artist or a real GPU, it says that instead of guessing.
 
+**This is a prototype log, not a living document.** It is kept for the
+measurements. The open questions it raised have moved to issues, which is where
+they are now tracked:
+
+- [#16](https://github.com/Syynth/map-editor/issues/16) — confirm pixel art in perspective on a real GPU
+- [#17](https://github.com/Syynth/map-editor/issues/17) — run the template sheet test with Kenney Tiny Town
+- [#18](https://github.com/Syynth/map-editor/issues/18) — decide how much gameplay data levels carry
+- [#19](https://github.com/Syynth/map-editor/issues/19) — confirm whether bloom-renders-black is SwiftShader-only
+
+Electron vs Tauri, the prefabs and reuse model, and moving the mesher into a
+worker are tracked as fog on the wayfinder map,
+[#2](https://github.com/Syynth/map-editor/issues/2), rather than as issues.
+
 ---
 
 ## Answered
