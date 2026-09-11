@@ -13,8 +13,7 @@ import {
   type MapObject,
 } from '@map-editor/document'
 import { sheetLayoutFor, tileColumnRow } from '@map-editor/geometry'
-import { analyseCoverage, type CoverageReport } from '@runtime/coverage'
-import { SPRITE_NAMES } from '@runtime/textures'
+import { SPRITE_NAMES, analyseCoverage, type CoverageReport } from '@map-editor/runtime'
 import { ColorInput, Field, Note, NumberInput, Panel, Segmented, Select, Slider } from './ui'
 import type { EditorState } from './state'
 

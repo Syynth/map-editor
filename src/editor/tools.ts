@@ -44,7 +44,7 @@ import {
   type SurfaceAddress,
 } from '@map-editor/document'
 import { defaultTopTile, sheetLayoutFor } from '@map-editor/geometry'
-import type { PickResult } from '@runtime/picking'
+import type { PickResult } from '@map-editor/runtime'
 import type { EditorState } from './state'
 import type { PointerModifiers } from './viewport'
 

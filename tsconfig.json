@@ -19,7 +19,6 @@
     "exactOptionalPropertyTypes": false,
     "paths": {
       "@core/*": ["./src/core/*"],
-      "@runtime/*": ["./src/runtime/*"],
       "@editor/*": ["./src/editor/*"]
     }
   },

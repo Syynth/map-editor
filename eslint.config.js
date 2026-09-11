@@ -67,11 +67,11 @@ export default tseslint.config(
   },
 
   {
-    files: ['src/runtime/export.ts'],
+    files: ['packages/runtime/src/export.ts'],
     // The two rules from `recommendedTypeChecked` that the existing code does
     // not satisfy, and whose fixes are API-shape decisions rather than
     // mechanical ones. Both land on `exportGltf`/`buildExportScene` in
-    // `src/runtime/export.ts`, which has no test covering it — so "make the
+    // `packages/runtime/src/export.ts`, which has no test covering it — so "make the
     // linter happy" would mean reshaping untested exported surface inside a
     // toolchain commit. Turned on by whoever owns that call, with a test.
     rules: {

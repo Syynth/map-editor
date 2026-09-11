@@ -29,6 +29,9 @@ import {
   type SurfaceAddress,
 } from '@map-editor/document'
 import {
+  Character,
+  Picker,
+  RuntimeScene,
   applyRig,
   clampToBounds,
   createCamera,
@@ -36,11 +39,9 @@ import {
   updateCameraProjection,
   withinBounds,
   wrapDegrees,
-} from '@runtime/camera'
-import { Character } from '@runtime/character'
-import { Picker, type PickResult } from '@runtime/picking'
-import { RuntimeScene } from '@runtime/scene'
-import type { ObjectViewContext } from '@runtime/billboard'
+  type ObjectViewContext,
+  type PickResult,
+} from '@map-editor/runtime'
 
 /** Tilt-shift: a cheap vertical-gradient blur, the HD-2D miniature look. */
 const TiltShiftShader = {

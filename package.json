@@ -23,6 +23,7 @@
   "dependencies": {
     "@map-editor/document": "workspace:*",
     "@map-editor/geometry": "workspace:*",
+    "@map-editor/runtime": "workspace:*",
     "@mantine/core": "9.6.1",
     "@mantine/hooks": "9.6.1",
     "@xstate/react": "7.0.0-alpha.2",

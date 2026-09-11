@@ -21,9 +21,8 @@ import {
   type SurfaceAddress,
 } from '@map-editor/document'
 import { createSampleMap } from '@core/sample'
-import { exportGltf } from '@runtime/export'
-import { generateTerrainSheet } from '@runtime/textures'
-import type { PickResult } from '@runtime/picking'
+import { generateTerrainSheet, type PickResult } from '@map-editor/runtime'
+import { exportGltf } from '@map-editor/runtime/export'
 import {
   AtmospherePanel,
   CameraPanel,

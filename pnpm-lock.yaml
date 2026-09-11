@@ -121,6 +121,9 @@ importers:
       '@map-editor/geometry':
         specifier: workspace:*
         version: link:packages/geometry
+      '@map-editor/runtime':
+        specifier: workspace:*
+        version: link:packages/runtime
       '@xstate/react':
         specifier: 7.0.0-alpha.2
         version: 7.0.0-alpha.2(@types/react@19.3.0)(react@19.3.0)(xstate@6.0.0-alpha.53)
@@ -207,6 +210,28 @@ importers:
         specifier: workspace:*
         version: link:../document
     devDependencies:
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.20.2)(vite@8.3.0(@types/node@22.20.2))
+
+  packages/runtime:
+    dependencies:
+      '@map-editor/document':
+        specifier: workspace:*
+        version: link:../document
+      '@map-editor/geometry':
+        specifier: workspace:*
+        version: link:../geometry
+      three:
+        specifier: ^0.186.0
+        version: 0.186.0
+    devDependencies:
+      '@types/three':
+        specifier: ^0.186.0
+        version: 0.186.0
       typescript:
         specifier: 6.0.3
         version: 6.0.3
