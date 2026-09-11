@@ -11,13 +11,13 @@ for the vocabulary, and [`docs/decision-log.md`](docs/decision-log.md) for the
 decisions and their reasoning.
 
 ```bash
-npm install
-npm run dev        # http://localhost:5173
-npm test           # layer boundaries + unit tests
-npm run bench      # mesher throughput
-npm run shoot      # drive it headless and save screenshots to shots/
-npm run tour       # capture the 25-step guided walkthrough to shots/tour/
-npm run probe      # measure whether post-processing survives on this GPU
+pnpm install
+pnpm dev           # http://localhost:5173
+pnpm test          # layer boundaries + unit tests
+pnpm bench         # mesher throughput
+pnpm shoot         # drive it headless and save screenshots to shots/
+pnpm tour          # capture the 25-step guided walkthrough to shots/tour/
+pnpm probe         # measure whether post-processing survives on this GPU
 ```
 
 ## What works
@@ -69,7 +69,7 @@ src/editor/   React panels and the imperative viewport
 ```
 
 The import direction `core <- runtime <- editor` is enforced by
-`scripts/check-boundaries.mjs`, which runs as part of `npm test`. The runtime is
+`scripts/check-boundaries.mjs`, which runs as part of `pnpm test`. The runtime is
 the package a game would consume; the editor renders through it, so the preview
 and the game cannot drift apart.
 

@@ -1,0 +1,24 @@
+# The globs are declared before any package exists so the pnpm switch and the
+# first file move stay separately revertable — see docs/monorepo-migration.md.
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# pnpm 12 checks lockfile entries against a minimum-release-age window (a
+# supply-chain guard against a freshly compromised release). Both versions below
+# were pinned hours earlier by the toolchain-baseline commit, so both fall
+# inside it. `minimumReleaseAgeStrict` defaults to false, so a plain `pnpm
+# install` resolving from scratch does NOT fail: it writes these two exemptions
+# into this file itself and proceeds ("Added 2 entries to
+# minimumReleaseAgeExclude ..."). They are committed for two reasons — so that
+# install never mutates a tracked file underneath CI, and because `pnpm install
+# --frozen-lockfile` *does* hard-fail without them, with
+# ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION / "2 lockfile entries failed
+# verification ... within the minimumReleaseAge cutoff". (Reproducing that
+# failure needs a cold ~/Library/Caches/pnpm/lockfile-verified.jsonl; a warm
+# verification cache short-circuits the re-check.) Drop each entry once its
+# version has aged past the window — the guard is only meaningful for the next
+# package we add.
+minimumReleaseAgeExclude:
+  - '@types/three@0.186.0'
+  - xstate@6.0.0-alpha.53
