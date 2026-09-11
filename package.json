@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@map-editor/document": "workspace:*",
+    "@map-editor/fixtures": "workspace:*",
     "@map-editor/geometry": "workspace:*",
     "@map-editor/runtime": "workspace:*",
     "@mantine/core": "9.6.1",

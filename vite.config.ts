@@ -6,7 +6,6 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@core': fileURLToPath(new URL('./src/core', import.meta.url)),
       '@editor': fileURLToPath(new URL('./src/editor', import.meta.url)),
     },
   },

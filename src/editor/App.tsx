@@ -20,7 +20,7 @@ import {
   type MapObject,
   type SurfaceAddress,
 } from '@map-editor/document'
-import { createSampleMap } from '@core/sample'
+import { createSampleMap } from '@map-editor/fixtures'
 import { generateTerrainSheet, type PickResult } from '@map-editor/runtime'
 import { exportGltf } from '@map-editor/runtime/export'
 import {
