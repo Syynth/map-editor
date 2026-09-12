@@ -129,7 +129,7 @@ export function flatten(doc: ReadonlyMapDoc, cells: Cell[], height: number): Pat
   const clamped = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, height))
   const patches: Patch[] = cells.flatMap(([x, y]) => {
     const index = cellIndex(doc.size, x, y)
-    return [{ t: 'terrain', field: 'height', index, value: clamped } as Patch, ...drainedBy(doc, index, clamped)]
+    return [{ t: 'terrain', field: 'height', index, value: clamped }, ...drainedBy(doc, index, clamped)]
   })
   return [...patches, ...regroundObjects(doc, cells, patches)]
 }
