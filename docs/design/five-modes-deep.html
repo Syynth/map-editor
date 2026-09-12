@@ -1,0 +1,433 @@
+<title>Five Modes Deep</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #15171c; --bg-2: #1b1e25; --panel: #242833; --panel-2: #2c3140; --line: #353b4a; --line-2: #414859;
+    --ink: #e8eaf0; --ink-2: #aab0c0; --ink-3: #7b8294;
+    --accent: #e9a23b; --accent-ink: #1a1305; --accent-soft: rgba(233,162,59,.16);
+    --warn: #e5636f; --warn-soft: rgba(229,99,111,.16); --ok: #7bc47f; --ok-soft: rgba(123,196,127,.16);
+    --map-grass: #5a8a44; --map-dirt: #7a5a3c; --map-water: #4c7fb0;
+    --serif: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+    --sans: 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+    --mono: 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace;
+    --measure: 62ch;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 400 15px/1.55 var(--sans); }
+  a { color: var(--accent); }
+  .page { max-width: 1120px; margin: 0 auto; padding: 48px 32px 96px; }
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+  h1 { font: 500 44px/1.05 var(--serif); letter-spacing: -.01em; }
+  h2 { font: 500 28px/1.15 var(--serif); margin-top: 72px; }
+  h3 { font: 600 15px/1.3 var(--sans); }
+  .eyebrow { font: 500 11px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  p { max-width: var(--measure); margin: 12px 0 0; color: var(--ink-2); }
+  p strong { color: var(--ink); font-weight: 600; }
+  .lede { font-size: 18px; color: var(--ink); max-width: 58ch; }
+  .facts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-top: 32px; }
+  .fact { background: var(--bg-2); padding: 16px 18px; }
+  .fact b { display: block; font: 500 28px/1 var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+  .fact span { display: block; margin-top: 8px; font-size: 13px; color: var(--ink-3); }
+  .finding { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 40px; margin-top: 28px; align-items: start; }
+  .finding.wide { grid-template-columns: 1fr; }
+  .finding p { max-width: none; font-size: 14.5px; }
+  .today { border-left: 2px solid var(--warn); padding-left: 14px; margin-top: 14px; font-size: 13.5px; color: var(--ink-2); }
+  .today .eyebrow { color: var(--warn); display: block; margin-bottom: 4px; }
+  .keep { border-left: 2px solid var(--ok); padding-left: 14px; margin-top: 14px; font-size: 13.5px; color: var(--ink-2); }
+  .keep .eyebrow { color: var(--ok); display: block; margin-bottom: 4px; }
+  .mock { background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; font-size: 13px; }
+  .mock-cap { font: 500 11px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--bg); }
+
+  /* ---- the proposed chrome, as real UI ---- */
+  .ed { display: grid; grid-template-rows: 44px 40px 1fr 28px; grid-template-columns: 52px 1fr 300px; height: 620px; background: var(--bg-2); font: 400 13px/1.3 var(--sans); }
+  .ed.compact { height: 420px; }
+  .topbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .ctxbar { grid-column: 2 / 3; display: flex; align-items: center; gap: 14px; padding: 0 14px; background: var(--bg-2); border-bottom: 1px solid var(--line); }
+  .rail { grid-row: 2 / 4; grid-column: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0; background: var(--panel); border-right: 1px solid var(--line); }
+  .view { grid-row: 3; grid-column: 2; position: relative; background: #0f1a12; }
+  .view canvas { display: block; width: 100%; height: 100%; }
+  .insp { grid-row: 2 / 4; grid-column: 3; overflow: hidden; background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+  .status { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; padding: 0 14px; font: 400 12px/1 var(--sans); color: var(--ink-3); background: var(--panel); border-top: 1px solid var(--line); }
+  .status .hint { color: var(--ink-2); }
+  .status .hint kbd { font: 500 11px/1 var(--mono); color: var(--ink); background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 3px; padding: 2px 5px; }
+  .status .undo { margin-left: auto; }
+  .status .debug { color: var(--ink-3); font-family: var(--mono); font-size: 11px; opacity: .55; }
+  .title { font-weight: 600; color: var(--ink); display: flex; align-items: center; gap: 6px; }
+  .title .chev { color: var(--ink-3); font-size: 10px; }
+  .sep { width: 1px; height: 20px; background: var(--line-2); margin: 0 4px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 4px; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--ink); font: 500 12.5px/1 var(--sans); cursor: pointer; white-space: nowrap; }
+  .btn.quiet { border-color: transparent; background: transparent; color: var(--ink-2); }
+  .btn.play { margin-left: auto; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); padding: 0 14px; font-weight: 600; }
+  .btn.play svg { fill: currentColor; }
+  .btn kbd { font: 500 10.5px/1 var(--mono); color: inherit; opacity: .6; }
+  .btn:disabled { opacity: .35; }
+  .icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .tool { width: 40px; height: 40px; display: grid; place-items: center; border-radius: 6px; color: var(--ink-2); position: relative; cursor: pointer; }
+  .tool .icon { width: 20px; height: 20px; }
+  .tool kbd { position: absolute; right: 4px; bottom: 3px; font: 500 9.5px/1 var(--mono); color: var(--ink-3); }
+  .tool.on { background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px rgba(233,162,59,.35); }
+  .tool.on kbd { color: var(--accent); }
+  .rail .spacer { flex: 1; }
+  .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: 5px; overflow: hidden; background: var(--panel-2); }
+  .seg > span { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; color: var(--ink-2); font-weight: 500; font-size: 12.5px; border-right: 1px solid var(--line-2); cursor: pointer; white-space: nowrap; }
+  .seg > span:last-child { border-right: 0; }
+  .seg > span.on { background: var(--accent-soft); color: var(--accent); }
+  .seg > span kbd { font: 500 10px/1 var(--mono); opacity: .55; }
+  .field { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-3); font-size: 12px; }
+  .field .val { font: 500 12px/1 var(--mono); color: var(--ink); min-width: 2ch; text-align: right; font-variant-numeric: tabular-nums; }
+  .slider { width: 96px; height: 4px; border-radius: 2px; background: var(--line-2); position: relative; }
+  .slider i { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ink); left: var(--v, 30%); }
+  .slider b { position: absolute; left: 0; top: 0; bottom: 0; width: var(--v, 30%); background: var(--accent); border-radius: 2px; }
+  .shape { display: inline-flex; gap: 4px; }
+  .shape i { width: 22px; height: 22px; border: 1px solid var(--line-2); border-radius: 4px; display: grid; place-items: center; color: var(--ink-3); }
+  .shape i.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .shape i::before { content: ''; width: 9px; height: 9px; background: currentColor; }
+  .shape i.round::before { border-radius: 50%; }
+  .swatch { width: 28px; height: 28px; border-radius: 4px; border: 2px solid var(--accent); background: var(--map-grass); box-shadow: 0 0 0 1px var(--bg-2); }
+  .ctxbar .cur { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); font-weight: 500; }
+  .ctxbar .cur small { color: var(--ink-3); font-weight: 400; }
+  /* inspector */
+  .sec { border-bottom: 1px solid var(--line); }
+  .sec-h { display: flex; align-items: center; gap: 8px; padding: 10px 12px; font: 600 11px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+  .sec-h .chev { color: var(--ink-3); font-size: 10px; }
+  .sec-h .more { margin-left: auto; color: var(--ink-3); font-weight: 400; letter-spacing: 0; text-transform: none; font-size: 12px; }
+  .sec-b { padding: 4px 12px 12px; }
+  .row { display: grid; grid-template-columns: 84px 1fr; align-items: center; gap: 8px; min-height: 30px; font-size: 12.5px; }
+  .row label { color: var(--ink-3); }
+  .row .in { display: flex; align-items: center; gap: 8px; }
+  .input { height: 26px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 4px; background: var(--bg-2); color: var(--ink); font: 400 12.5px/1 var(--sans); display: inline-flex; align-items: center; min-width: 0; }
+  .input.grow { flex: 1; }
+  .input .chev { margin-left: auto; color: var(--ink-3); font-size: 10px; padding-left: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px; border-radius: 10px; font: 500 11px/1 var(--sans); }
+  .chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .chip.ok { background: var(--ok-soft); color: var(--ok); }
+  .chip.acc { background: var(--accent-soft); color: var(--accent); }
+  .list { display: flex; flex-direction: column; }
+  .li { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 8px; height: 28px; padding: 0 12px; font-size: 12.5px; color: var(--ink); }
+  .li.sel { background: var(--accent-soft); }
+  .li .k { color: var(--ink-3); font-family: var(--mono); font-size: 11px; }
+  .li .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); }
+  .li .dot.warn { background: var(--warn); }
+  .li .name small { color: var(--ink-3); margin-left: 6px; font-family: var(--mono); font-size: 11px; }
+  .pal { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 8px 12px 12px; }
+  .mat { display: flex; flex-direction: column; gap: 5px; align-items: center; font-size: 11.5px; color: var(--ink-2); cursor: pointer; }
+  .mat i { width: 100%; aspect-ratio: 1; border-radius: 5px; border: 2px solid transparent; }
+  .mat.on { color: var(--accent); }
+  .mat.on i { border-color: var(--accent); box-shadow: 0 0 0 1px var(--bg-2); }
+  .spr { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 8px 12px 12px; }
+  .spr .s { aspect-ratio: 1; border-radius: 5px; background: var(--bg-2); border: 1px solid var(--line); display: grid; place-items: center; position: relative; cursor: pointer; }
+  .spr .s.on { border-color: var(--accent); background: var(--accent-soft); }
+  .spr .s svg { width: 28px; height: 28px; }
+  .spr .s span { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center; font-size: 10px; color: var(--ink-3); }
+  .callouts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 20px; }
+  .co { border-top: 1px solid var(--line-2); padding-top: 10px; font-size: 13px; color: var(--ink-2); }
+  .co b { display: block; color: var(--ink); font-weight: 600; margin-bottom: 2px; }
+  .plan { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 24px; }
+  .plan div { border-top: 2px solid var(--accent); padding-top: 12px; }
+  .plan h3 { font-family: var(--serif); font-weight: 500; font-size: 20px; }
+  .plan p { font-size: 14px; }
+  .note { margin-top: 32px; padding: 14px 16px; border: 1px solid var(--line); background: var(--bg-2); font-size: 13.5px; color: var(--ink-2); max-width: none; }
+  @media (max-width: 900px) {
+    .finding { grid-template-columns: 1fr; }
+    .facts, .callouts, .plan { grid-template-columns: 1fr 1fr; }
+    .ed { grid-template-columns: 52px 1fr; }
+    .insp { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+  <div class="eyebrow">Design review · the editor's primary tasks · 2026-09-12</div>
+  <h1 style="margin-top:12px">Five Modes Deep</h1>
+  <p class="lede">The prototype answered its questions. Its chrome was never designed — it was accreted. This is what an artist meets when they try to raise a hill, paint it, and put a tree on it, and what the chrome should look like instead.</p>
+
+  <div class="facts">
+    <div class="fact"><b>5</b><span>levels of mode between "I want to raise this" and a brush stroke: tool, sub-mode, verb, stroke kind, brush</span></div>
+    <div class="fact"><b>110<small style="font:inherit;font-size:16px">px</small></b><span>width of the entire tile palette — a sheet thumbnail and a paragraph, for the artist's core task</span></div>
+    <div class="fact"><b>12</b><span>controls shown at one level when a tree is selected; seven of them are billboard mechanics</span></div>
+    <div class="fact"><b>24×</b><span>outliner rows called <em>tree</em>, <em>rock</em>, <em>bush</em> — every object named by its sprite</span></div>
+  </div>
+
+  <!-- ============ THE FRAME ============ -->
+  <h2>The frame</h2>
+  <div class="finding wide">
+    <div>
+      <p>Three things change at the frame level and everything else follows from them. <strong>Camera stops being a tool</strong> — orbit and pan are always available, and its bounds are a property of the level, not a mode. <strong>The left panel becomes a rail and a context bar</strong>: three tools you can name from their icons, and one strip under the top bar that holds only what the active tool needs. <strong>The inspector loses its tabs</strong> — Selection, Level, and Objects stack as collapsible sections, so the coverage warnings live on the objects they concern instead of two tabs away.</p>
+      <p>Play is the one action an artist takes a hundred times a session. It gets the accent, and nothing else in the top bar does.</p>
+    </div>
+  </div>
+  <div class="mock" style="margin-top:20px">
+    <div class="mock-cap">Proposed · Sculpt active, one object selected, 1440 × 900</div>
+    <div class="ed">
+      <div class="topbar">
+        <span class="title">Sample Valley <span class="chev">▾</span></span>
+        <span class="sep"></span>
+        <button class="btn quiet" title="Undo raise"><svg class="icon" viewBox="0 0 16 16"><path d="M6 4 3 7l3 3M3 7h6a4 4 0 0 1 0 8H8"/></svg></button>
+        <button class="btn quiet" disabled><svg class="icon" viewBox="0 0 16 16"><path d="m10 4 3 3-3 3M13 7H7a4 4 0 0 0 0 8h1"/></svg></button>
+        <span class="sep"></span>
+        <button class="btn quiet">Grid <kbd>G</kbd></button>
+        <button class="btn quiet">Game camera <kbd>C</kbd></button>
+        <span class="chip warn" style="margin-left:14px">3 objects read wrong · fix</span>
+        <button class="btn play"><svg class="icon" viewBox="0 0 16 16" style="stroke:none"><path d="M4 3v10l9-5z"/></svg> Play <kbd>P</kbd></button>
+      </div>
+      <div class="rail">
+        <div class="tool on" title="Sculpt"><svg class="icon" viewBox="0 0 20 20"><path d="M3 15c4-1 6-6 9-9l2 2c-3 3-8 5-9 9zM12 6l2 2"/></svg><kbd>1</kbd></div>
+        <div class="tool" title="Paint"><svg class="icon" viewBox="0 0 20 20"><path d="M4 12l7-7 4 4-7 7H4zM11 5l2-2 4 4-2 2"/></svg><kbd>2</kbd></div>
+        <div class="tool" title="Objects"><svg class="icon" viewBox="0 0 20 20"><path d="M10 3l7 4v6l-7 4-7-4V7zM10 3v14M3 7l7 4 7-4"/></svg><kbd>3</kbd></div>
+        <div class="spacer"></div>
+        <div class="tool" title="Level settings"><svg class="icon" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3"/><path d="M10 2v3M10 15v3M2 10h3M15 10h3"/></svg></div>
+      </div>
+      <div class="ctxbar">
+        <span class="seg">
+          <span class="on"><svg class="icon" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"/></svg>Raise</span>
+          <span><svg class="icon" viewBox="0 0 16 16"><path d="M3 8h10M6 5l-3 3 3 3"/></svg>Flatten</span>
+          <span><svg class="icon" viewBox="0 0 16 16"><path d="M2 12l12-8v8z"/></svg>Ramp</span>
+          <span><svg class="icon" viewBox="0 0 16 16"><path d="M2 10c2-2 3 2 5 0s3 2 5 0 2 0 2 0"/></svg>Water</span>
+        </span>
+        <span class="sep"></span>
+        <span class="seg"><span class="on">Brush</span><span>Rect</span><span>Fill</span></span>
+        <span class="sep"></span>
+        <span class="field">Size <span class="slider" style="--v:36%"><b></b><i></i></span><span class="val">3</span></span>
+        <span class="shape"><i></i><i class="round on"></i></span>
+      </div>
+      <div class="view"><canvas id="v1"></canvas></div>
+      <div class="insp">
+        <div class="sec">
+          <div class="sec-h"><span class="chev">▾</span>Selection <span class="more">tree · 12, 7</span></div>
+          <div class="sec-b">
+            <div class="row"><label>Name</label><div class="in"><span class="input grow">Big tree by the well</span></div></div>
+            <div class="row"><label>Sprite</label><div class="in"><span class="input grow">tree <span class="chev">▾</span></span></div></div>
+            <div class="row"><label>Faces</label><div class="in"><span class="input grow">Always the camera <span class="chev">▾</span></span></div></div>
+            <div class="row"><label>Scale</label><div class="in"><span class="slider" style="--v:50%"><b></b><i></i></span><span class="val" style="font:500 12px var(--mono)">1.0×</span></div></div>
+            <div class="row"><label>Rotation</label><div class="in"><span class="slider" style="--v:20%"><b></b><i></i></span><span class="val" style="font:500 12px var(--mono)">35°</span></div></div>
+          </div>
+        </div>
+        <div class="sec"><div class="sec-h"><span class="chev">▸</span>Facing &amp; flip <span class="more">1 facing · mirrored back</span></div></div>
+        <div class="sec">
+          <div class="sec-h"><span class="chev">▾</span>Objects <span class="more">24</span></div>
+          <div class="list">
+            <div class="li"><span class="dot warn"></span><span class="name">Sign at the crossroads <small>sign</small></span><span class="chip warn">reads wrong</span></div>
+            <div class="li"><span class="dot warn"></span><span class="name">Statue <small>statue</small></span><span class="chip warn">reads wrong</span></div>
+            <div class="li sel"><span class="dot"></span><span class="name">Big tree by the well <small>tree</small></span><span class="k">12,7</span></div>
+            <div class="li"><span class="dot"></span><span class="name">Tree <small>tree · 2</small></span><span class="k">9,7</span></div>
+            <div class="li"><span class="dot"></span><span class="name">Bush <small>bush · 1</small></span><span class="k">8,9</span></div>
+            <div class="li"><span class="dot"></span><span class="name">Rock <small>rock · 4</small></span><span class="k">14,3</span></div>
+          </div>
+        </div>
+        <div class="sec"><div class="sec-h"><span class="chev">▸</span>Level <span class="more">Clear noon · free orbit</span></div></div>
+      </div>
+      <div class="status">
+        <span class="hint">Drag to raise · <kbd>Shift</kbd> drag to lower · <kbd>Alt</kbd> click to pick a height</span>
+        <span class="undo">Undo: raise, 14 cells</span>
+        <span class="debug">60 fps · 5.1k</span>
+      </div>
+    </div>
+  </div>
+  <div class="callouts">
+    <div class="co"><b>Rail, not panel</b>Three tools, each with its key. Camera is gone from the rail because it was never a tool; level settings get a gear at the bottom instead of a tool slot.</div>
+    <div class="co"><b>Context bar</b>Everything the active tool needs, in one row you never have to scroll. Brush size and shape persist across verbs — set once, keep sculpting.</div>
+    <div class="co"><b>Status bar says what to do</b>The hint names the verb, the modifier for its opposite, and the eyedropper. Frame telemetry dims to a debug readout at the far right.</div>
+  </div>
+
+  <!-- ============ SCULPT ============ -->
+  <h2>Sculpt</h2>
+  <div class="finding">
+    <div>
+      <p>The verbs are already right — raise, flatten, ramp, water are the four things a heightfield artist does. What is wrong is the path to them and the absence of <strong>lower</strong>. There is no lower verb; the artist has to know a modifier exists, and nothing on screen says so.</p>
+      <div class="today"><span class="eyebrow">Today</span>Press <kbd>1</kbd>, then <kbd>Tab</kbd> to reach Sculpt, then choose a verb in one segmented control, a stroke kind in another, then set size and shape — the same five decisions every time the artist returns from painting.</div>
+      <div class="keep"><span class="eyebrow">Keep</span>Undo naming its edit ("raise, 14 cells"). Rect and Fill as stroke kinds. Alt-click as the universal eyedropper. The one-tile-one-unit grid.</div>
+    </div>
+    <div class="mock">
+      <div class="mock-cap">Proposed · the Sculpt context bar, with lower discoverable</div>
+      <div class="ed compact" style="grid-template-rows:40px 1fr 28px;grid-template-columns:1fr">
+        <div class="ctxbar" style="grid-column:1">
+          <span class="seg">
+            <span class="on"><svg class="icon" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"/></svg>Raise <kbd>Q</kbd></span>
+            <span><svg class="icon" viewBox="0 0 16 16"><path d="M3 8h10M6 5l-3 3 3 3"/></svg>Flatten <kbd>W</kbd></span>
+            <span><svg class="icon" viewBox="0 0 16 16"><path d="M2 12l12-8v8z"/></svg>Ramp <kbd>E</kbd></span>
+            <span><svg class="icon" viewBox="0 0 16 16"><path d="M2 10c2-2 3 2 5 0s3 2 5 0 2 0 2 0"/></svg>Water <kbd>R</kbd></span>
+          </span>
+          <span class="sep"></span>
+          <span class="seg"><span class="on">Brush</span><span>Rect</span><span>Fill</span></span>
+          <span class="sep"></span>
+          <span class="field">Size <span class="slider" style="--v:36%"><b></b><i></i></span><span class="val">3</span></span>
+          <span class="shape"><i></i><i class="round on"></i></span>
+        </div>
+        <div class="view" style="grid-column:1"><canvas id="v2"></canvas></div>
+        <div class="status" style="grid-column:1"><span class="hint">Drag to raise · <kbd>Shift</kbd> drag to lower · <kbd>Alt</kbd> click to pick a height</span><span class="undo">Undo: raise, 14 cells</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ PAINT ============ -->
+  <h2>Paint</h2>
+  <div class="finding">
+    <div>
+      <p>Painting is what the brief says the artist came for, and it has the least designed surface in the editor. The artist thinks in <strong>materials</strong> — grass, dirt, stone, water — not in the sixteen autotile variants the sheet lays out for the mesher. The palette should show materials as large named swatches, put the current one where the eye already is, and keep the sheet itself behind a door for the day the artist wants to check a variant.</p>
+      <div class="today"><span class="eyebrow">Today</span>A 110-pixel thumbnail of the whole template sheet, a Load PNG button, and four lines of prose explaining the row layout. Picking a tile means alt-clicking one that is already on the map.</div>
+      <div class="keep"><span class="eyebrow">Keep</span>Tint as a paint verb. The sheet-mismatch warnings on load. Dormant-paint survival — it should get a visible count when it is non-zero, and be silent otherwise.</div>
+    </div>
+    <div class="mock">
+      <div class="mock-cap">Proposed · Paint active: the material palette in the inspector, the current material in the context bar</div>
+      <div class="ed compact" style="grid-template-rows:40px 1fr 28px;grid-template-columns:1fr 240px">
+        <div class="ctxbar" style="grid-column:1">
+          <span class="seg"><span class="on">Tile <kbd>Q</kbd></span><span>Material <kbd>W</kbd></span><span>Tint <kbd>E</kbd></span></span>
+          <span class="sep"></span>
+          <span class="cur"><span class="swatch"></span>Grass <small>· material 1</small></span>
+          <span class="sep"></span>
+          <span class="seg"><span class="on">Brush</span><span>Rect</span><span>Fill</span></span>
+          <span class="field">Size <span class="slider" style="--v:12%"><b></b><i></i></span><span class="val">1</span></span>
+        </div>
+        <div class="view" style="grid-column:1"><canvas id="v3"></canvas></div>
+        <div class="insp" style="grid-row:1/3;grid-column:2">
+          <div class="sec">
+            <div class="sec-h"><span class="chev">▾</span>Materials <span class="more">Sheet…</span></div>
+            <div class="pal">
+              <div class="mat on"><i style="background:#5a8a44"></i>Grass</div>
+              <div class="mat"><i style="background:#7a5a3c"></i>Dirt</div>
+              <div class="mat"><i style="background:#8b8f93"></i>Stone</div>
+              <div class="mat"><i style="background:#4c7fb0"></i>Water</div>
+              <div class="mat"><i style="background:#a0855c"></i>Sand</div>
+              <div class="mat"><i style="background:#3f6b3a"></i>Moss</div>
+              <div class="mat"><i style="background:#6d5b4a"></i>Path</div>
+              <div class="mat"><i style="background:#2f3d55;border-style:dashed;border-color:var(--line-2)"></i>Add…</div>
+            </div>
+          </div>
+          <div class="sec"><div class="sec-h"><span class="chev">▸</span>Tint <span class="more">none</span></div></div>
+          <div class="sec"><div class="sec-h"><span class="chev">▸</span>Cliffs <span class="more">paint by level</span></div></div>
+        </div>
+        <div class="status" style="grid-column:1/-1"><span class="hint">Click to paint grass · <kbd>Alt</kbd> click to pick a material · <kbd>Shift</kbd> to paint cliff faces</span><span class="undo">Undo: paint, 3 cells</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OBJECTS ============ -->
+  <h2>Objects</h2>
+  <div class="finding">
+    <div>
+      <p>The objects tool is a dropdown of eight words. Sprites are images; show them. And when the artist selects a tree, the first thing they see should be the four things they might change — name, sprite, how it faces, size — with the billboard machinery folded away under one honest heading. <strong>Hysteresis</strong> is a real setting and it should exist, one level down.</p>
+      <div class="today"><span class="eyebrow">Today</span><code>Sprite: [tree ▾]</code> in the left panel. On selection, twelve controls at one level: Name, Display, Scale, Rotation, Anchored, Facings, Mirror, Back side, Transition, Duration, Hysteresis, Hinge.</div>
+      <div class="keep"><span class="eyebrow">Keep</span><em>Auto</em> as the default display mode — the coverage readout proved it does most of the work. The one-click "Billboard it" fix, which moves onto the object row.</div>
+    </div>
+    <div class="mock">
+      <div class="mock-cap">Proposed · Objects active: a sprite palette, and the selection with mechanics folded</div>
+      <div class="ed compact" style="grid-template-rows:40px 1fr 28px;grid-template-columns:1fr 240px">
+        <div class="ctxbar" style="grid-column:1"><span class="cur">Placing <b style="font-weight:600">tree</b> <small>· click to place, drag to move</small></span></div>
+        <div class="view" style="grid-column:1"><canvas id="v4"></canvas></div>
+        <div class="insp" style="grid-row:1/3;grid-column:2">
+          <div class="sec">
+            <div class="sec-h"><span class="chev">▾</span>Sprites <span class="more">8</span></div>
+            <div class="spr">
+              <div class="s on"><svg viewBox="0 0 28 28"><path d="M14 3l8 12h-5v4h-6v-4H6z" fill="#3f7a3c"/><rect x="12" y="19" width="4" height="6" fill="#5a3d2a"/></svg><span>tree</span></div>
+              <div class="s"><svg viewBox="0 0 28 28"><ellipse cx="14" cy="16" rx="10" ry="7" fill="#4c8a44"/></svg><span>bush</span></div>
+              <div class="s"><svg viewBox="0 0 28 28"><path d="M5 20l5-9 6-3 7 6-2 6z" fill="#8b8f93"/></svg><span>rock</span></div>
+              <div class="s"><svg viewBox="0 0 28 28"><rect x="13" y="8" width="2" height="16" fill="#5a3d2a"/><circle cx="14" cy="7" r="4" fill="#f2d16b"/></svg><span>lamp</span></div>
+              <div class="s"><svg viewBox="0 0 28 28"><rect x="8" y="6" width="12" height="16" rx="3" fill="#7a5a3c"/><path d="M8 11h12M8 17h12" stroke="#4a3220"/></svg><span>barrel</span></div>
+              <div class="s"><svg viewBox="0 0 28 28"><rect x="6" y="7" width="16" height="9" fill="#c9b07a"/><rect x="13" y="16" width="2" height="8" fill="#5a3d2a"/></svg><span>sign</span></div>
+              <div class="s"><svg viewBox="0 0 28 28"><rect x="9" y="18" width="10" height="5" fill="#8b8f93"/><path d="M14 4l3 5-1 9h-4l-1-9z" fill="#b9bcc0"/></svg><span>statue</span></div>
+              <div class="s"><svg viewBox="0 0 28 28"><circle cx="14" cy="8" r="4" fill="#e9c39b"/><rect x="10" y="12" width="8" height="10" rx="2" fill="#4c7fb0"/></svg><span>hero</span></div>
+            </div>
+          </div>
+          <div class="sec">
+            <div class="sec-h"><span class="chev">▾</span>Selection <span class="more">tree · 12, 7</span></div>
+            <div class="sec-b">
+              <div class="row"><label>Name</label><div class="in"><span class="input grow">Big tree by the well</span></div></div>
+              <div class="row"><label>Faces</label><div class="in"><span class="input grow">Always the camera <span class="chev">▾</span></span></div></div>
+              <div class="row"><label>Scale</label><div class="in"><span class="slider" style="--v:50%"><b></b><i></i></span><span class="val" style="font:500 12px var(--mono)">1.0×</span></div></div>
+            </div>
+          </div>
+          <div class="sec"><div class="sec-h"><span class="chev">▸</span>Facing &amp; flip <span class="more">1 · mirrored · paper flip</span></div></div>
+        </div>
+        <div class="status" style="grid-column:1/-1"><span class="hint">Click to place a tree · drag to move · <kbd>⌫</kbd> to delete</span><span class="undo">Undo: place tree</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ COVERAGE / LEVEL ============ -->
+  <h2>Coverage, and what stops being a tool</h2>
+  <div class="finding">
+    <div>
+      <p>The coverage readout is the most useful thing the prototype produced: it turns "should the camera rotate?" into a count of images the artist would have to draw. It is two clicks away in a tab, next to a copy of the camera controls. <strong>Its warnings belong on the objects</strong> — a rose dot in the list, a chip in the top bar with the count, a "fix" that applies the one-click billboard to every flagged object at once — and its explanation belongs in the Level section beside the camera bounds it depends on.</p>
+      <div class="today"><span class="eyebrow">Today</span>A Coverage tab that also repeats the camera rig. A Camera tool whose left panel is empty and whose controls live in Properties, unlike every other tool.</div>
+      <div class="keep"><span class="eyebrow">Keep</span>The readout's exact language — "fixing every flag costs about 3 more images" is the sentence that makes the trade-off real. The yaw-range presets (Free / 4 detents / Narrow / Fixed).</div>
+    </div>
+    <div class="mock">
+      <div class="mock-cap">Proposed · the Level section, with coverage where the camera bounds are decided</div>
+      <div class="ed compact" style="grid-template-rows:1fr;grid-template-columns:1fr;height:auto">
+        <div class="insp" style="grid-row:1;grid-column:1;border-left:0">
+          <div class="sec">
+            <div class="sec-h"><span class="chev">▾</span>Level</div>
+            <div class="sec-b">
+              <div class="row"><label>Atmosphere</label><div class="in"><span class="input grow">Clear noon <span class="chev">▾</span></span></div></div>
+              <div class="row"><label>Backdrop</label><div class="in"><span class="input grow">Mountains <span class="chev">▾</span></span></div></div>
+              <div class="row"><label>Camera</label><div class="in"><span class="seg"><span class="on">Free</span><span>4 detents</span><span>Narrow</span><span>Fixed</span></span></div></div>
+              <div class="row"><label>Pitch</label><div class="in"><span class="val" style="font:500 12px var(--mono)">20°</span><span class="slider" style="--v:40%"><b></b><i></i></span><span class="val" style="font:500 12px var(--mono)">60°</span></div></div>
+            </div>
+          </div>
+          <div class="sec">
+            <div class="sec-h"><span class="chev">▾</span>Coverage <span class="more"><span class="chip warn">3 read wrong</span></span></div>
+            <div class="sec-b" style="font-size:12.5px;color:var(--ink-2);line-height:1.5">
+              With free rotation, <b style="color:var(--ink)">3 of 24</b> objects read wrong from some angle. Fixing every flag costs about <b style="color:var(--ink)">3 more images</b> to draw, or one click to billboard them. <b style="color:var(--ink)">0%</b> of cliff faces are ever hidden at this range; narrowing to 20–70° would hide half of them.
+              <div style="display:flex;gap:8px;margin-top:10px"><button class="btn">Billboard all 3</button><button class="btn quiet">Show them</button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ WHAT STAYS ============ -->
+  <h2>What the prototype got right</h2>
+  <div class="finding wide"><div>
+    <p>None of this is a rewrite of the editing model. <strong>The verbs are right.</strong> One tile is one unit, heights are half-tiles, cliff paint survives sculpting — those are the decisions that make the tools feel solid, and they are all kept. So is the keyboard: <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> for tools, <kbd>Tab</kbd> between sub-modes becomes unnecessary once Sculpt and Paint are tools of their own, and every verb gets a single key on the home row. The tour, the coverage math, and the undo naming are the parts of the chrome worth being proud of; the proposal moves them to where the artist is looking.</p>
+  </div></div>
+
+  <!-- ============ HOW THIS PHASE RUNS ============ -->
+  <h2>How this phase runs</h2>
+  <div class="plan">
+    <div><h3>React</h3><p>You look at these, say what's wrong, what's missing, and what you'd never do. The rail-versus-panel question and "camera is not a tool" are the two calls that shape everything else — settle those first.</p></div>
+    <div><h3>Pick one surface</h3><p>The Paint palette is the highest-value, lowest-risk place to start: it touches one tool and it's the artist's core task. The frame comes second, once the actor migration has landed and the UI is reading from the host.</p></div>
+    <div><h3>Build it together</h3><p>Mantine is the substrate (#12) and `packages/ui` owns the vocabulary, so each surface is a set of primitives plus one panel. We build one, drive it, adjust, and move to the next. No waves, no tickets — just the editor getting better.</p></div>
+  </div>
+  <p class="note">The viewports in these mockups are drawn stand-ins, not renders. Everything else — the type, the spacing, the palette, the copy in the status bar — is what the proposal actually looks like at 1440 × 900.</p>
+</div>
+
+<script>
+  // A drawn stand-in for the map viewport: an isometric heightfield in the
+  // proposal's map colours, so the chrome can be judged against something that
+  // has the map's shapes and greens rather than a grey box.
+  function drawMap(canvas, seed) {
+    const dpr = window.devicePixelRatio || 1
+    const w = canvas.clientWidth, h = canvas.clientHeight
+    canvas.width = w * dpr; canvas.height = h * dpr
+    const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr)
+    ctx.fillStyle = '#0f1a12'; ctx.fillRect(0, 0, w, h)
+    const tw = Math.max(26, w / 16), th = tw * 0.5, cols = 18, rows = 14
+    let s = seed
+    const rnd = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296 }
+    const hmap = []
+    for (let r = 0; r < rows; r++) { hmap[r] = []; for (let c = 0; c < cols; c++) hmap[r][c] = Math.max(0, Math.round((Math.sin(c * .55 + seed) + Math.cos(r * .7 - seed * .3)) * 1.4 + rnd() * .6)) }
+    const ox = w / 2 - tw * 1.5, oy = th * 2.2
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const hgt = hmap[r][c], water = hgt === 0 && rnd() < .5
+      const x = ox + (c - r) * tw / 2, y = oy + (c + r) * th / 2 - hgt * th * .9
+      const top = water ? '#4c7fb0' : (hgt > 2 ? '#7a5a3c' : (rnd() < .12 ? '#7a5a3c' : '#5a8a44'))
+      // side faces where the neighbour is lower
+      const drop = (nr, nc) => (hmap[nr] && hmap[nr][nc] != null) ? hgt - hmap[nr][nc] : hgt
+      const dS = drop(r + 1, c), dE = drop(r, c + 1)
+      if (dS > 0) { ctx.fillStyle = '#4b6b38'; ctx.beginPath(); ctx.moveTo(x - tw / 2, y + th / 2); ctx.lineTo(x, y + th); ctx.lineTo(x, y + th + dS * th * .9); ctx.lineTo(x - tw / 2, y + th / 2 + dS * th * .9); ctx.fill() }
+      if (dE > 0) { ctx.fillStyle = '#3b5a2f'; ctx.beginPath(); ctx.moveTo(x + tw / 2, y + th / 2); ctx.lineTo(x, y + th); ctx.lineTo(x, y + th + dE * th * .9); ctx.lineTo(x + tw / 2, y + th / 2 + dE * th * .9); ctx.fill() }
+      ctx.fillStyle = top; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + tw / 2, y + th / 2); ctx.lineTo(x, y + th); ctx.lineTo(x - tw / 2, y + th / 2); ctx.closePath(); ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = .5; ctx.stroke()
+    }
+    // a couple of trees, drawn as the sprites would read from this angle
+    const tree = (x, y) => { ctx.fillStyle = '#5a3d2a'; ctx.fillRect(x - 2, y - 10, 4, 12); ctx.fillStyle = '#3f7a3c'; ctx.beginPath(); ctx.moveTo(x, y - 32); ctx.lineTo(x + 12, y - 10); ctx.lineTo(x - 12, y - 10); ctx.fill() }
+    tree(w * .52, h * .55); tree(w * .34, h * .42); tree(w * .68, h * .68)
+    // hover cell + brush footprint, so the sculpt mock reads as mid-stroke
+    ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 1.5
+    for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { if (Math.abs(i) + Math.abs(j) > 2) continue; const cx = w * .5 + (i - j) * tw / 2, cy = h * .5 + (i + j) * th / 2; ctx.beginPath(); ctx.moveTo(cx, cy - th / 2); ctx.lineTo(cx + tw / 2, cy); ctx.lineTo(cx, cy + th / 2); ctx.lineTo(cx - tw / 2, cy); ctx.closePath(); ctx.stroke() }
+  }
+  const draw = () => { ['v1', 'v2', 'v3', 'v4'].forEach((id, i) => { const c = document.getElementById(id); if (c) drawMap(c, 3 + i * 1.7) }) }
+  draw(); addEventListener('resize', draw)
+</script>
