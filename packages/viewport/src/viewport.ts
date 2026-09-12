@@ -20,7 +20,6 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import {
   SURFACE_CLIFF,
   SURFACE_TOP,
-  NO_WATER,
   cellIndex,
   cornerHeights,
   groundHeight,
@@ -536,16 +535,12 @@ export class Viewport {
   /** A flat overlay quad hugging a cell's top surface. */
   private cellQuad(doc: ReadonlyMapDoc, x: number, y: number, out: number[], lift = 0.03): void {
     if (!inBounds(doc.size, x, y)) return
-    // A flooded column's preview sits on the water, not on the lake bed under
-    // it — the water surface writes depth and would hide it there. Under the
-    // layer view, the preview sits on the cap the column was cut to.
+    // On the ground, under any water: the water surface neither writes depth
+    // nor draws before the overlays (see the scene's water material), so a
+    // preview on a lake bed shows through the water rather than under it.
+    // Under the layer view, the preview sits on the cap the column was cut to.
     const layers = this.options.layers
-    const water = doc.terrain.water[cellIndex(doc.size, x, y)]
-    const shown = (h: number) => {
-      const withWater = water === NO_WATER || (layers !== null && water > layers.hi) ? h : Math.max(h, water)
-      return layers === null ? withWater : Math.min(withWater, layers.hi)
-    }
-    const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => shown(h) * 0.5 + lift)
+    const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => (layers === null ? h : Math.min(h, layers.hi)) * 0.5 + lift)
     out.push(
       x, c00, y, x, c01, y + 1, x + 1, c11, y + 1,
       x, c00, y, x + 1, c11, y + 1, x + 1, c10, y,
