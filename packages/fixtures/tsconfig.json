@@ -1,10 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    // `DOM` is here for one module, `textures.ts`: the placeholder generator
-    // draws with a 2D canvas and reads the pixels back out at its edge (#47).
-    // It came from `runtime`, which dropped `DOM` the same day — the canvas
-    // types moved with the only code that used them.
+    // `DOM` is here for two things: `textures.ts`'s placeholder generator,
+    // which draws with a 2D canvas and reads the pixels back out at its edge
+    // (#47) — it came from `runtime`, which dropped `DOM` the same day, and
+    // the canvas types moved with the only code that used them — and
+    // `baked-dir.ts`'s `import.meta.resolve` and `URL`, both typed only by
+    // this lib (`lib.dom.d.ts`'s `ImportMeta` declares `resolve`; `lib.es5.d.ts`'s
+    // is deliberately empty, an augmentation point for whichever lib wants it).
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",

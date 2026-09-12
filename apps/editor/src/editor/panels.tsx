@@ -13,7 +13,9 @@ import {
   type MapObject,
   type RgbaImage,
 } from '@map-editor/document'
-import { SPRITE_NAMES } from '@map-editor/fixtures'
+// Behind the `./textures` subpath, not the package root — see the comment in
+// `App.tsx`'s import of the same package.
+import { SPRITE_NAMES } from '@map-editor/fixtures/textures'
 import { sheetLayoutFor, tileColumnRow } from '@map-editor/geometry'
 import { analyseCoverage, type CoverageReport } from '@map-editor/runtime'
 import { ColorInput, Field, Note, NumberInput, Panel, Segmented, Select, Slider } from '@map-editor/ui'

@@ -14,7 +14,10 @@
  */
 
 import type { RgbaImage } from '@map-editor/document'
-import { createSampleMap, generateSprites, generateTerrainSheet } from '@map-editor/fixtures'
+import { createSampleMap } from '@map-editor/fixtures'
+// See `App.tsx`'s import of the same package for why the generator sits
+// behind its own subpath.
+import { generateSprites, generateTerrainSheet } from '@map-editor/fixtures/textures'
 import { rgbaToDataUrl } from '../editor/rgba'
 
 export interface BakedSprite {

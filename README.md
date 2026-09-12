@@ -31,10 +31,14 @@ headless browser because the placeholder generator draws with a 2D canvas and
 the repo has ruled against giving Node one. Run it whenever the sample map's
 materials or texel density, or a sprite's footprint, change — two tests
 (`tests/baked-fixtures.test.ts`, `packages/fixtures/src/baked.test.ts`) fail
-until you do. The bake exists for a headless consumer that does not exist
-yet (#48): once built, it would read the PNGs with a pure-JS decoder and hand
-the pixels to `RuntimeScene` / `exportGltf` as `RgbaImage`s, since the runtime
-itself never touches a canvas.
+until you do. The bake feeds the headless `apps/export-cli` (#48): it reads
+the PNGs with a pure-JS decoder (`fast-png`) and hands the pixels to
+`exportGltf` as `RgbaImage`s, since the runtime itself never touches a canvas.
+
+```bash
+pnpm --filter @map-editor/export-cli build
+node apps/export-cli/dist/cli.js in.json out.glb [--merge]
+```
 
 ## What works
 
@@ -57,7 +61,8 @@ itself never touches a canvas.
 - **Save and load** — versioned JSON, with migrations and validation.
 - **glTF export** — `.glb` with everything glTF cannot express in `extras`,
   documented in [`docs/extras-spec.md`](docs/extras-spec.md). Also available
-  headlessly: not yet — the CLI was cut (it needed a native canvas). Export runs in the editor.
+  headlessly via `apps/export-cli` (#48), against the checked-in bake instead
+  of a canvas.
 
 ## Keys
 

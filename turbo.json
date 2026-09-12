@@ -20,7 +20,8 @@
   "globalDependencies": [".nvmrc", "scripts/check-bundle-size.mjs"],
 
   "tasks": {
-    // Per-package tasks, implemented by `packages/*` and `apps/editor`.
+    // Per-package tasks, implemented by `packages/*` and every `apps/*` package
+    // that has one (`apps/editor`, and `apps/export-cli` since #48 revived it).
     // `^build` is the whole point: a consumer's test/typecheck/lint must not run
     // until its dependencies have been built, or it typechecks against stale
     // (or absent) emit.
