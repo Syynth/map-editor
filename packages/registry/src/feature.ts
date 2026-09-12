@@ -90,6 +90,8 @@ export interface FeatureInstance<TLogic, TSample, TPatch> {
 export interface FeatureModule<TCreate = unknown> {
   readonly owner: OwnerId
   readonly create: TCreate
+  /** The feature's parameters as they start; the host seeds its slice with them and reads them back through `FeatureDeps.params()`. */
+  readonly params?: object
 }
 
 export interface FeatureChangeHooks<TCreate> {

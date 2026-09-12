@@ -37,6 +37,8 @@
  */
 
 import {
+  SURFACE_SKETCH_CAP,
+  SURFACE_SKETCH_WALL,
   addObject,
   defaultFacing,
   groundedPosition,
@@ -49,7 +51,8 @@ import {
 } from '@map-editor/document'
 import type { StrokeHandler, ToolContract } from '@map-editor/registry'
 
-import type { TerrainMode, ToolSettings, ToolsContext } from './tools'
+import type { ToolSettings, ToolsContext } from './tools'
+import type { Selection } from './view'
 
 /** The keyboard state that rides on a pointer event. `button` is not here: it belongs to the press, not the motion. */
 export interface PointerModifiers {
@@ -88,9 +91,8 @@ export interface StrokeSample {
 }
 
 /** The tools actor's snapshot, flattened: its state (`terrainMode`) beside its context. */
-export interface ToolsSnapshot extends ToolsContext {
-  readonly terrainMode: TerrainMode
-}
+/** The tools actor's context: the active tool, the object tool's sprite, and every feature's parameter slice. */
+export type ToolsSnapshot = ToolsContext
 
 export interface StrokeDeps {
   readonly reader: DocumentReader
@@ -99,7 +101,7 @@ export interface StrokeDeps {
   /** The eyedropper's output. The host turns it into a `settings` event to the tools actor. */
   setTools(settings: ToolSettings): void
   /** The object tool's output. The host turns it into a `select` event to the view actor. */
-  select(id: string | null): void
+  select(selection: Selection | null): void
   /**
    * The contract behind a declared tool, or `undefined` when nobody declared
    * it or its owner contributed none — `Host.toolContract`, handed in rather
@@ -118,34 +120,21 @@ export type EditorStrokeHandler = StrokeHandler<StrokeSample, Patch>
  * the host read from the view actor at the press: the drag target when the
  * press lands on nothing selectable.
  */
-export function createStrokeHandler(deps: StrokeDeps, sample: StrokeSample, selection: string | null): EditorStrokeHandler | undefined {
-  switch (deps.tools().tool) {
-    case 'terrain':
-      // The feature's, by the tool's id and nothing else (#9's join). It
-      // declines a press that missed the terrain by answering `undefined`,
-      // which is the same thing this function does with it.
-      return deps.contract('terrain')?.stroke(sample)
-    case 'select':
-      return selectStroke(deps, selection)
-    case 'object':
-      return objectStroke(deps, selection)
-  }
+export function createStrokeHandler(deps: StrokeDeps, sample: StrokeSample, selection: Selection | null): EditorStrokeHandler | undefined {
+  const tool = deps.tools().tool
+  // The host's two tools are built in; any other declared tool runs the contract its feature contributed.
+  if (tool === 'select') return selectStroke(deps, selection)
+  if (tool === 'object') return objectStroke(deps, selection)
+  return deps.contract(tool)?.stroke(sample)
 }
 
-// --- select -------------------------------------------------------------------
+/** The object a selection names, if it is one: what a drag can move. */
+function selectedObject(selection: Selection | null): string | null {
+  return selection?.kind === 'object' ? selection.id : null
+}
 
-/**
- * Select addresses what already exists: a press on an object selects it and
- * a drag moves it; a press on nothing clears the selection, unless shift is
- * held, which is the convention every reference app shares for "keep what I
- * have". It never places. Alt on an object is the sprite eyedropper, as it is
- * for the object tool, because "pick this one up" reads the same in both.
- *
- * What it does NOT do yet is select terrain: the region half of the design
- * (marquee, expand, contract) waits on a typed selection on the view actor.
- */
-function selectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeHandler {
-  const drag = new Drag(deps, selection)
+function selectStroke(deps: StrokeDeps, selection: Selection | null): EditorStrokeHandler {
+  const drag = new Drag(deps, selectedObject(selection))
 
   return {
     label: 'Move object',
@@ -153,8 +142,15 @@ function selectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeH
       const { pick, modifiers } = sample
       if (pick.objectId) {
         if (modifiers.alt) deps.setTools({ spriteName: deps.reader.doc.objects[pick.objectId]?.sprite ?? deps.tools().spriteName })
-        deps.select(pick.objectId)
+        deps.select({ kind: 'object', id: pick.objectId })
         drag.grab(pick.objectId, pick)
+        return []
+      }
+      // Select is polymorphic: a press on a sketch's cap or wall selects the sketch.
+      const surface = pick.surface
+      if (surface && (surface.kind === SURFACE_SKETCH_CAP || surface.kind === SURFACE_SKETCH_WALL)) {
+        deps.select({ kind: 'structure', id: surface.structure })
+        drag.release()
         return []
       }
       if (!modifiers.shift) {
@@ -168,18 +164,9 @@ function selectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeH
   }
 }
 
-// --- objects ------------------------------------------------------------------
-
-/**
- * The object tool places. A press on empty ground adds the current sprite
- * there and selects it — a creation tool selects what it just made, so the
- * inspector shows it without a tool switch — and the rest of the drag moves
- * it. A press on an existing object selects and drags that instead of
- * placing a second one on top of it.
- */
-function objectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeHandler {
+function objectStroke(deps: StrokeDeps, selection: Selection | null): EditorStrokeHandler {
   /** What a drag moves: the object pressed, the object placed, or failing both the selection at the press. */
-  const drag = new Drag(deps, selection)
+  const drag = new Drag(deps, selectedObject(selection))
 
   return {
     label: 'Edit object',
@@ -190,7 +177,7 @@ function objectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeH
 
       if (pick.objectId) {
         if (modifiers.alt) deps.setTools({ spriteName: doc.objects[pick.objectId]?.sprite ?? tools.spriteName })
-        deps.select(pick.objectId)
+        deps.select({ kind: 'object', id: pick.objectId })
         drag.grab(pick.objectId, pick)
         return []
       }
@@ -213,7 +200,7 @@ function objectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeH
         locked: false,
         hidden: false,
       }
-      deps.select(object.id)
+      deps.select({ kind: 'object', id: object.id })
       drag.grab(object.id, pick)
       return addObject(doc, object)
     },

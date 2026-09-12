@@ -9,7 +9,7 @@
  * name, the sprite library) are things only the app holds.
  */
 
-import type { ToolsSnapshot } from '@map-editor/editor-host'
+import type { EditorParams } from './params'
 import { useHost } from '@map-editor/editor-host'
 import type { ReadonlyMapDoc, MapObject, DeepReadonly } from '@map-editor/document'
 import { SPRITE_NAMES } from '@map-editor/fixtures/textures'
@@ -37,18 +37,18 @@ export function FeaturePanels({
   tool,
   doc,
   params,
-  set,
   platform,
 }: {
   slot: PanelSlot
-  tool: ToolsSnapshot['tool']
+  tool: string
   doc: ReadonlyMapDoc
-  params: ToolsSnapshot
-  set: (changes: Partial<ToolsSnapshot>) => void
+  params: EditorParams
   platform: Platform
 }) {
   const host = useHost()
   const owner = tools.ownerOf(tool)
+  // A feature's panels set the feature's own parameters: the command it declared, under its owner's name.
+  const setOwn = (changes: Partial<EditorParams>) => void host.dispatch(`${owner}.params`, changes)
   // Derived per render, never held: the same rule `dispatch` follows (#8's
   // finding 2). A panel gated on the ramp verb has to appear the render after
   // the verb changed, and this component re-renders with the parameters.
@@ -62,7 +62,7 @@ export function FeaturePanels({
         .filter((decl) => panels.ownerOf(decl.id) === owner && (decl.slot ?? 'inspector') === slot && evaluate(decl.when ?? always, keys).available)
         .map((decl) => {
           const Component = decl.component as ComponentType<TerrainPanelProps>
-          return <Component key={decl.id} doc={doc} params={params} set={set} platform={platform} />
+          return <Component key={decl.id} doc={doc} params={params} set={setOwn} platform={platform} />
         })}
     </>
   )
@@ -107,7 +107,7 @@ export function SelectBar({
   )
 }
 
-export function ObjectBar({ params, set }: { params: ToolsSnapshot; set: (changes: Partial<ToolsSnapshot>) => void }) {
+export function ObjectBar({ params, set }: { params: EditorParams; set: (changes: Partial<EditorParams>) => void }) {
   return (
     <>
       <BarLabel>Sprite</BarLabel>

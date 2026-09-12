@@ -35,6 +35,8 @@ import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { features } from '../features'
+
 import { HostProvider, createHost, useDocument, useHost, useToolsSelector, type Host } from '@map-editor/editor-host'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
@@ -64,10 +66,10 @@ afterEach(() => {
  */
 const heightAtOrigin = (doc: ReadonlyMapDoc): number => ground(doc).terrain.height[0]
 const heightAtOne = (doc: ReadonlyMapDoc): number => ground(doc).terrain.height[1]
-const brushSize = (snapshot: { context: { brush: { size: number } } }): number => snapshot.context.brush.size
+const brushSize = (snapshot: { context: { features: Readonly<Record<string, unknown>> } }): number => (snapshot.context.features.terrain as { brush: { size: number } }).brush.size
 
 function mount(ui: (host: Host) => ReactNode): Host {
-  const host = createHost({ document: createDocument(createMap(8, 8)) })
+  const host = createHost({ document: createDocument(createMap(8, 8)), features })
   const container = window.document.createElement('div')
   window.document.body.append(container)
   const root = createRoot(container)
@@ -109,7 +111,7 @@ describe('the React glue', () => {
     expect(renders.doc).toBe(before.doc + 1)
     expect(renders.tools).toBe(before.tools)
 
-    act(() => void host.dispatch('tools.set', { brush: { size: 5, shape: 'square' } }))
+    act(() => void host.dispatch('terrain.params', { brush: { size: 5, shape: 'square' } }))
     expect(window.document.querySelector('[data-testid="brush"]')?.textContent).toBe('5')
     expect(renders.tools).toBe(before.tools + 1)
     expect(renders.doc).toBe(before.doc + 1)
@@ -129,8 +131,8 @@ describe('the React glue', () => {
     // A real transition on the tools actor, changing a parameter this
     // component does not select. `useSelector` compares what the selector
     // returned, which is the whole reason `useActor` is not offered.
-    act(() => void host.dispatch('tools.set', { tile: 7 }))
-    expect(host.children.tools.getSnapshot().context.tile).toBe(7)
+    act(() => void host.dispatch('terrain.params', { tile: 7 }))
+    expect((host.children.tools.getSnapshot().context.features.terrain as { tile: number }).tile).toBe(7)
     expect(renders).toBe(before)
   })
 

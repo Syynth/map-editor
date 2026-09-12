@@ -106,9 +106,9 @@ import {
 
 import { gestureLogic, type Gesture, type GestureLogic, type PointerMotion, type PointerPress, type PointerRelease } from './gesture'
 import { playLogic, type PlayLogic } from './play'
-import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps, type StrokeSample, type ToolsSnapshot } from './strokes'
-import { TOOLS_OWNER, toolKeys, toolsLogic, type ToolsLogic } from './tools'
-import { VIEW_OWNER, viewKeys, viewLogic, type ViewLogic } from './view'
+import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps, type StrokeSample } from './strokes'
+import { TOOLS_OWNER, toolKeys, toolsLogicWith, type FeatureParams, type ToolsLogic } from './tools'
+import { VIEW_OWNER, viewKeys, viewLogic, type Selection, type ViewLogic } from './view'
 
 export const HOST_OWNER = reserveOwner('editor-host')
 /** The gesture actor declares no commands; the id is the key its ref is held under. */
@@ -180,7 +180,8 @@ commands.declare(HOST_OWNER, {
  * its actor from these and closes over them; they never travel as `input`
  * (#4), which would put the document in reach of an inspector.
  */
-export type EditorFeatureDeps = FeatureDeps<ReadonlyMapDoc, Patch, ToolsSnapshot>
+/** What a feature is handed: the document, its own parameter slice (typed by the feature), and the write path. */
+export type EditorFeatureDeps = FeatureDeps<ReadonlyMapDoc, Patch, object>
 
 /** What a feature's `create` answers with, in the host's own types. */
 export type EditorFeatureInstance = FeatureInstance<AnyActorLogic, StrokeSample, Patch>
@@ -198,6 +199,8 @@ export type EditorFeatureInstance = FeatureInstance<AnyActorLogic, StrokeSample,
  */
 export interface Feature {
   readonly owner: OwnerId
+  /** The feature's parameters as they start; its slice in the tools actor is seeded with them. */
+  readonly params?: object
   create(deps: EditorFeatureDeps): EditorFeatureInstance
 }
 
@@ -264,27 +267,16 @@ export interface HostOptions {
  * `apply` is one labelled edit as an EVENT at the document actor: a feature
  * has no writer and no route to one (#13).
  */
-function featureDeps(reader: DocumentReader, document: AnyActorRef, tools: ActorRefFrom<ToolsLogic>): EditorFeatureDeps {
+function featureDeps(owner: OwnerId, reader: DocumentReader, document: AnyActorRef, tools: ActorRefFrom<ToolsLogic>): EditorFeatureDeps {
   return {
-    // Read per call, never captured: the document is mutated in place.
     doc: () => reader.doc,
-    params: () => {
-      const snapshot = tools.getSnapshot()
-      return { ...snapshot.context, terrainMode: snapshot.value }
-    },
-    setParams: (changes) => tools.send({ type: 'settings', settings: changes }),
+    // The feature's own slice, and nothing else's: what it declared at install, plus what it set since.
+    params: () => tools.getSnapshot().context.features[owner] ?? {},
+    setParams: (changes) => tools.send({ type: 'feature', owner, changes: changes as FeatureParams }),
     apply: (label, patches) => document.send({ type: 'patch', label, patches: [...patches] }),
   }
 }
 
-/**
- * The contract behind a declared tool (#9's handler half), by DECLARING OWNER
- * rather than by an id prefix (#8): the tool registry is what says whose tool
- * this is, exactly as it does for a command. One implementation, read by two
- * callers — `Host.toolContract` for anything outside, and the stroke deps
- * below, which is how the stroke actor runs a feature's handler without this
- * package importing a feature (#35).
- */
 function contractFor(instances: Map<OwnerId, EditorFeatureInstance>, toolId: string): ToolContract<StrokeSample, Patch> | undefined {
   const owner = toolDeclarations.ownerOf(toolId)
   return owner === undefined ? undefined : instances.get(owner)?.tools?.[toolId]
@@ -309,7 +301,7 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
     // logic with no `initialTransition` and the child starts in `error`.
     context: ({ spawn }) => {
       const document = spawn(source.logic, { id: 'document' })
-      const tools = spawn(toolsLogic, { id: 'tools' })
+      const tools = spawn(toolsLogicWith(Object.fromEntries(features.map((feature) => [feature.owner, (feature.params ?? {}) as FeatureParams]))), { id: 'tools' })
       const view = spawn(viewLogic, { id: 'view' })
       // The gesture actor's stroke children write through the document ref,
       // read tool parameters from the tools ref, and reach a feature's tool
@@ -330,12 +322,9 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
       // here pretends to be a command. `dispatch` stays the only way IN.
       const strokeDeps: StrokeDeps = {
         reader,
-        tools: () => {
-          const snapshot = tools.getSnapshot()
-          return { ...snapshot.context, terrainMode: snapshot.value }
-        },
+        tools: () => tools.getSnapshot().context,
         setTools: (settings) => tools.send({ type: 'settings', settings }),
-        select: (id) => view.send({ type: 'select', id }),
+        select: (selection) => view.send({ type: 'select', selection }),
         // Read per press, never captured: a feature installed by a hot
         // re-import replaces its instance wholesale, and the next stroke must
         // run the new contract rather than one closed over at spawn.
@@ -347,7 +336,7 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
           document,
           // #11: a handler never reads ambient selection; the host fills the
           // id in at the press, the way a UI fills in a command's argument.
-          strokeFor: (sample) => createStrokeHandler(strokeDeps, sample, view.getSnapshot().context.selectedObjectId),
+          strokeFor: (sample) => createStrokeHandler(strokeDeps, sample, view.getSnapshot().context.selection),
         }),
         { id: 'gesture' },
       )
@@ -355,9 +344,8 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
       // and the instance is kept beside the ref: `create` answers with the
       // actor to spawn plus the tool contracts and context keys the
       // declarations alone cannot carry (#9's two-registry split).
-      const deps = featureDeps(reader, document, tools)
       const spawned = features.map((feature) => {
-        const instance = feature.create(deps)
+        const instance = feature.create(featureDeps(feature.owner, reader, document, tools))
         instances.set(feature.owner, instance)
         return [feature.owner, spawn(instance.logic, { id: feature.owner })] as const
       })
@@ -437,6 +425,23 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
       },
     },
   })
+}
+
+/** What deleting the selection means, by what it is: the commands that do it, then the selection that remains. */
+function deleteSteps(selection: Selection | null): readonly { readonly id: string; readonly args?: unknown }[] {
+  switch (selection?.kind) {
+    case 'object':
+      return [{ id: 'objects.delete', args: { ids: [selection.id] } }, { id: 'selection.select', args: { selection: null } }]
+    case 'structure':
+      return [{ id: 'structure.delete', args: { id: selection.id } }, { id: 'selection.select', args: { selection: null } }]
+    case 'sketchPoint':
+      return [
+        { id: 'sketch.point.delete', args: { id: selection.structure, index: selection.index } },
+        { id: 'selection.select', args: { selection: { kind: 'structure', id: selection.structure } } },
+      ]
+    default:
+      return []
+  }
 }
 
 export type HostLogic = ReturnType<typeof hostLogic>
@@ -576,8 +581,7 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
       [hostKeys.mode.id]: actor.getSnapshot().value,
       [gestureKeys.stroking.id]: children.gesture.getSnapshot().value === 'stroke',
       [toolKeys.tool.id]: tools.context.tool,
-      [toolKeys.terrainMode.id]: tools.value,
-      [viewKeys.hasSelection.id]: view.context.selectedObjectId !== null,
+      [viewKeys.hasSelection.id]: view.context.selection !== null,
       [viewKeys.gameCamera.id]: view.context.gameCamera,
       [documentKeys.canUndo.id]: reader.canUndo(),
       [documentKeys.canRedo.id]: reader.canRedo(),
@@ -611,14 +615,9 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
   function expand(id: string, args: unknown): readonly { readonly id: string; readonly args?: unknown }[] | null {
     if (id === 'commands.run') return (args as { commands: { id: string; args?: unknown }[] }).commands
     if (id !== 'selection.delete') return null
-    const selected = children.view.getSnapshot().context.selectedObjectId
-    // Read HERE and nowhere lower: what leaves this function is a list of ids
-    // (#2's argument convention), so nothing downstream can act on "whatever
-    // is selected" — including a replay of this dispatch tomorrow.
-    return selected === null ? [] : [{ id: 'objects.delete', args: { ids: [selected] } }, { id: 'selection.set', args: { id: null } }]
+    return deleteSteps(children.view.getSnapshot().context.selection)
   }
 
-  /** A composite may name a composite; the depth is what stops a preferences file from writing a loop. */
   const MAX_EXPANSION_DEPTH = 8
 
   function dispatch(id: string, args?: unknown): DispatchResult {
@@ -676,8 +675,9 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
   // stopped host must not be installed into, and in a test several hosts share
   // one module registry.
   const releaseFeatureHook = onFeatureChange<Feature['create']>({
-    install: ({ owner, create }) => {
-      const instance = create(featureDeps(reader, children.document, children.tools))
+    install: ({ owner, create, params }) => {
+      children.tools.send({ type: 'seed', owner, params: (params ?? {}) as FeatureParams })
+      const instance = create(featureDeps(owner, reader, children.document, children.tools))
       instances.set(owner, instance)
       actor.send({ type: 'install', owner, logic: instance.logic })
     },

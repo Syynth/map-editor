@@ -52,10 +52,10 @@ describe('the default keymap', () => {
     expect(hit(live, 't')).toMatchObject({ command: 'tools.set', args: { tool: 'terrain' } })
     expect(hit(live, 'o')).toMatchObject({ command: 'tools.set', args: { tool: 'object' } })
     expect(hit(live, 'v')).toMatchObject({ command: 'tools.set', args: { tool: 'select' } })
-    live.dispatch('tools.set', { tool: 'terrain' })
+    // `object` rather than `terrain`: no feature is installed here, so `terrain` is a tool nobody declared and the switch is refused.
+    live.dispatch('tools.set', { tool: 'object' })
     expect(hit(live, 'escape')).toMatchObject({ command: 'tools.set', args: { tool: 'select' } })
-    expect(hit(live, '[')).toMatchObject({ command: 'brush.resize', args: { by: -1 } })
-    expect(hit(live, ']')).toMatchObject({ command: 'brush.resize', args: { by: 1 } })
+    // `[`, `]` and Tab are the terrain feature's bindings now, pinned where the feature is installed (apps/editor).
     live.stop()
   })
 
@@ -88,12 +88,7 @@ describe('the default keymap', () => {
     expect(hit(live, 'p')).toMatchObject({ command: 'mode.edit' })
     live.dispatch('mode.edit')
 
-    // Tab and G carry their own, because `tools.set` and `view.set` take any
-    // value at any time and cannot gate themselves.
-    expect(hit(live, 'tab')).toMatchObject({ command: 'tools.set', args: { terrainMode: 'paint' } })
-    live.dispatch('tools.set', { terrainMode: 'paint' })
-    expect(hit(live, 'tab')).toMatchObject({ command: 'tools.set', args: { terrainMode: 'sculpt' } })
-
+    // G carries its own `when`, because `view.set` takes any value at any time and cannot gate itself.
     expect(hit(live, 'g')).toMatchObject({ command: 'view.set', args: { gameCamera: true } })
     live.dispatch('view.set', { gameCamera: true })
     expect(hit(live, 'g')).toMatchObject({ command: 'view.set', args: { gameCamera: false } })

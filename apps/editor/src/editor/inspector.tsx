@@ -10,7 +10,7 @@
  */
 
 import type { Atmosphere, CameraRig, DeepReadonly, MapObject, ReadonlyMapDoc, RgbaImage } from '@map-editor/document'
-import type { ToolsSnapshot } from '@map-editor/editor-host'
+import type { EditorParams } from './params'
 import type { Platform } from '@map-editor/registry'
 import { FileButton, InspectorHead, Note, Row, Section } from '@map-editor/ui'
 
@@ -26,7 +26,7 @@ import {
   useCoverageFlags,
 } from './panels'
 
-const TITLES: Record<ToolsSnapshot['tool'], string> = { select: 'Select', terrain: 'Terrain', object: 'Objects' }
+const TITLES: Record<string, string> = { select: 'Select', terrain: 'Terrain', object: 'Objects' }
 
 export function Inspector({
   doc,
@@ -50,8 +50,8 @@ export function Inspector({
   message,
 }: {
   doc: ReadonlyMapDoc
-  params: ToolsSnapshot
-  set: (changes: Partial<ToolsSnapshot>) => void
+  params: EditorParams
+  set: (changes: Partial<EditorParams>) => void
   platform: Platform
   selected: DeepReadonly<MapObject> | null
   deleteKbd?: string
@@ -78,7 +78,7 @@ export function Inspector({
 
   return (
     <>
-      <InspectorHead>{TITLES[params.tool]}</InspectorHead>
+      <InspectorHead>{TITLES[params.tool] ?? params.tool}</InspectorHead>
 
       <Section title="Selection" summary={selected ? selected.name : 'empty'} accent={selected !== null} defaultOpen>
         {selected ? (
@@ -98,7 +98,7 @@ export function Inspector({
         <Section title="Brush" summary={`${params.brush.size} · ${params.brush.shape}`}>
           <Row label="Size" value={`${params.brush.size} cells`} />
           <Row label="Shape" value={params.brush.shape} />
-          <FeaturePanels slot="inspector" tool={params.tool} doc={doc} params={params} set={set} platform={platform} />
+          <FeaturePanels slot="inspector" tool={params.tool} doc={doc} params={params} platform={platform} />
         </Section>
       ) : null}
 

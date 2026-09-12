@@ -12,7 +12,10 @@ import {
   type VoxelStructure,
 } from '@map-editor/document'
 import { createHost, type Host } from '@map-editor/editor-host'
+import type { TerrainParams } from '@map-editor/feature-terrain'
 import { afterEach, describe, expect, it } from 'vitest'
+
+import { features } from '../features'
 
 import { installKeyDispatcher, type KeyTarget } from './keys'
 
@@ -67,7 +70,7 @@ class FakeKeys implements KeyTarget {
 const started: Array<{ host: Host; remove: () => void }> = []
 
 function editor(): { host: Host; keys: FakeKeys } {
-  const host = createHost({ document: createDocument(createMap(8, 8)) })
+  const host = createHost({ features, document: createDocument(createMap(8, 8)) })
   const keys = new FakeKeys()
   const remove = installKeyDispatcher(host, { target: keys, platform: 'other' })
   started.push({ host, remove })
@@ -138,6 +141,7 @@ describe('the one keyboard dispatcher', () => {
   it('switches tools, resizes the brush and toggles the terrain mode', () => {
     const { host, keys } = editor()
     const tools = () => host.children.tools.getSnapshot()
+    const terrain = () => tools().context.features.terrain as unknown as TerrainParams
 
     keys.send('keydown', 'o')
     expect(tools().context.tool).toBe('object')
@@ -146,14 +150,14 @@ describe('the one keyboard dispatcher', () => {
 
     keys.send('keydown', ']')
     keys.send('keydown', ']')
-    expect(tools().context.brush.size).toBe(3)
+    expect(terrain().brush.size).toBe(3)
     keys.send('keydown', '[')
-    expect(tools().context.brush.size).toBe(2)
+    expect(terrain().brush.size).toBe(2)
 
     keys.send('keydown', 'Tab')
-    expect(tools().value).toBe('paint')
+    expect(terrain().terrainMode).toBe('paint')
     keys.send('keydown', 'Tab')
-    expect(tools().value).toBe('sculpt')
+    expect(terrain().terrainMode).toBe('sculpt')
     // Tab must not also move focus, which is what the old handler's bare
     // `preventDefault` was for.
     expect(keys.prevented.filter((key) => key === 'Tab')).toHaveLength(2)
@@ -225,7 +229,7 @@ describe('the one keyboard dispatcher', () => {
   })
 
   it('removes both listeners when disposed', () => {
-    const host = createHost({ document: createDocument(createMap(4, 4)) })
+    const host = createHost({ features, document: createDocument(createMap(4, 4)) })
     const keys = new FakeKeys()
     const remove = installKeyDispatcher(host, { target: keys, platform: 'other' })
     expect(keys.listenerCount).toBe(2)

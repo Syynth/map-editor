@@ -15,7 +15,7 @@ import {
   type ReadonlyMapDoc,
   type VoxelStructure,
 } from '@map-editor/document'
-import { commands, defineFeature, dispose, provideFeature, type HotHandle } from '@map-editor/registry'
+import { commands, defineFeature, dispose, provideFeature, type HotHandle, reserveOwner, tools as toolDeclarations } from '@map-editor/registry'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from 'xstate'
 
@@ -38,6 +38,10 @@ const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.
  * fails that test, the same way "declared but unhandled" is a dead letter.
  */
 const dispatched = new Set<string>()
+
+/** A declared tool with no feature behind it, for the tests that press with one. */
+const GHOST_OWNER = reserveOwner('ghost-feature')
+toolDeclarations.declare(GHOST_OWNER, { id: 'ghost', title: 'Ghost' })
 
 function makeHost(features?: readonly Feature[]): { host: Host; clock: SimulatedClock; dispatch: Host['dispatch'] } {
   const clock = new SimulatedClock()
@@ -291,35 +295,13 @@ describe('mode: the host\'s own top-level state', () => {
   })
 })
 
-describe('tools: eleven parameters, one command', () => {
-  it('patches any subset of the parameters at once', () => {
+describe('tools: the active tool and the sprite are the host\'s; every other parameter is a feature\'s slice', () => {
+  it('sets the tool and the sprite, together or apart', () => {
     const { host, dispatch } = makeHost()
-    const before = host.children.tools.getSnapshot().context
-
-    expect(dispatch('tools.set', { brush: { size: 5, shape: 'circle' }, tint: 0xff0000 })).toEqual({ ok: true })
-
+    expect(dispatch('tools.set', { tool: 'object', spriteName: 'rock' })).toEqual({ ok: true })
     const after = host.children.tools.getSnapshot().context
-    expect(after.brush).toEqual({ size: 5, shape: 'circle' })
-    expect(after.tint).toBe(0xff0000)
-    expect(after.sculptVerb).toBe(before.sculptVerb)
-    expect(after.spriteName).toBe(before.spriteName)
-  })
-
-  it('holds terrainMode as a state and the rest as context', () => {
-    const { host, dispatch } = makeHost()
-    expect(host.children.tools.getSnapshot().value).toBe('sculpt')
-    expect(host.contextKeys()['tools.terrainMode']).toBe('sculpt')
-
-    expect(dispatch('tools.set', { terrainMode: 'paint', paintVerb: 'tint' })).toEqual({ ok: true })
-
-    const snapshot = host.children.tools.getSnapshot()
-    expect(snapshot.value).toBe('paint')
-    expect(snapshot.context.paintVerb).toBe('tint')
-    expect('terrainMode' in snapshot.context).toBe(false)
-    expect(host.contextKeys()['tools.terrainMode']).toBe('paint')
-
-    expect(dispatch('tools.set', { terrainMode: 'sculpt' })).toEqual({ ok: true })
-    expect(host.children.tools.getSnapshot().value).toBe('sculpt')
+    expect(after.tool).toBe('object')
+    expect(after.spriteName).toBe('rock')
   })
 
   it('exposes the active tool as a key', () => {
@@ -329,34 +311,18 @@ describe('tools: eleven parameters, one command', () => {
     expect(host.contextKeys()['tools.tool']).toBe('object')
   })
 
-  it('rejects an out-of-range value and an unknown parameter, naming the path', () => {
+  it('refuses a tool nobody declared, and a parameter that is not the host\'s', () => {
     const { host, dispatch } = makeHost()
-    expect(dispatch('tools.set', { brush: { size: 99, shape: 'circle' } })).toMatchObject({
-      ok: false,
-      kind: 'invalid-args',
-      issues: [{ path: ['brush', 'size'] }],
-    })
-    expect(dispatch('tools.set', { brushSize: 3 })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    // Declared by no owner: not a tool; the transition is not taken.
+    dispatch('tools.set', { tool: 'lathe' })
+    expect(host.children.tools.getSnapshot().context.tool).toBe('select')
+    // A feature's parameter goes through the feature's own command, never here.
+    expect(dispatch('tools.set', { brush: { size: 5, shape: 'circle' } })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('tools.set', { tool: undefined })).toMatchObject({ ok: false, kind: 'invalid-args', issues: [{ path: ['tool'] }] })
     expect(dispatch('tools.set')).toMatchObject({ ok: false, kind: 'invalid-args' })
-    expect(host.children.tools.getSnapshot().context.brush).toEqual({ size: 1, shape: 'square' })
-  })
-
-  it('rejects an explicitly undefined parameter instead of writing undefined into context', () => {
-    // A key that is present with the value `undefined` is not a partial
-    // patch: it is not JSON, and spread into the context it would turn
-    // `brush` into `undefined` and the next `brush.size` into a throw. The
-    // schema names the key, the same as any other bad argument (#23).
-    const { host, dispatch } = makeHost()
-    const before = host.children.tools.getSnapshot().context
-
-    expect(dispatch('tools.set', { brush: undefined })).toMatchObject({ ok: false, kind: 'invalid-args', issues: [{ path: ['brush'] }] })
-    expect(dispatch('tools.set', { tile: 2, terrainMode: undefined })).toMatchObject({ ok: false, kind: 'invalid-args', issues: [{ path: ['terrainMode'] }] })
-
-    const after = host.children.tools.getSnapshot()
-    expect(after.context).toEqual(before)
-    expect(after.value).toBe('sculpt')
   })
 })
+
 
 describe('view and selection', () => {
   it('sets the toggles', () => {
@@ -534,10 +500,11 @@ describe('pointer input through the host', () => {
     // `toolContract` answers `undefined`, so the gesture actor spawns no
     // stroke — the same fall-through a declined press gets, rather than a
     // half-live stroke over a tool nothing implements.
+    // A tool some owner declared — the rail can show it — whose feature was never given to this host.
     const { host, dispatch } = makeHost()
-    dispatch('tools.set', { tool: 'terrain' })
-    expect(host.contextKeys()['tools.tool']).toBe('terrain')
-    expect(host.toolContract('terrain')).toBeUndefined()
+    dispatch('tools.set', { tool: 'ghost' })
+    expect(host.contextKeys()['tools.tool']).toBe('ghost')
+    expect(host.toolContract('ghost')).toBeUndefined()
 
     expect(host.input.pointerDown(pressAt(3, 3))).toBe('none')
     host.input.pointerUp({ x: 30, y: 30 })
@@ -727,7 +694,7 @@ describe('a child with a lifetime: dead letters are observable', () => {
   it('refuses to dispose a reserved owner, and leaves it running', () => {
     const { host, dispatch } = makeHost()
     expect(() => host.dispose('editor-host.tools')).toThrow(/reserved/)
-    expect(dispatch('tools.set', { tile: 3 })).toEqual({ ok: true })
+    expect(dispatch('tools.set', { spriteName: 'rock' })).toEqual({ ok: true })
   })
 })
 
@@ -862,7 +829,7 @@ describe('the host as a whole', () => {
   it('dead-letters every dispatch once stopped, and says so', () => {
     const { host, dispatch } = makeHost()
     host.stop()
-    expect(dispatch('tools.set', { tile: 1 })).toMatchObject({ ok: false, kind: 'unhandled' })
+    expect(dispatch('tools.set', { spriteName: 'rock' })).toMatchObject({ ok: false, kind: 'unhandled' })
     expect(host.deadLetters.at(-1)).toMatchObject({ reason: 'stopped', target: 'host' })
   })
 
@@ -881,30 +848,6 @@ describe('the host as a whole', () => {
 })
 
 describe('the relative and composite commands the keymap needs', () => {
-  it('resizes the brush by a delta, clamped at both ends', () => {
-    const { host, dispatch } = makeHost()
-    const size = () => host.children.tools.getSnapshot().context.brush.size
-    expect(size()).toBe(1)
-
-    expect(dispatch('brush.resize', { by: 4 })).toEqual({ ok: true })
-    expect(size()).toBe(5)
-    expect(dispatch('brush.resize', { by: -1 })).toEqual({ ok: true })
-    expect(size()).toBe(4)
-
-    // The clamp the `[` and `]` keydown handler used to carry, moved to the
-    // actor that owns the parameter: holding either key runs off neither end.
-    for (let i = 0; i < 20; i++) dispatch('brush.resize', { by: -1 })
-    expect(size()).toBe(1)
-    for (let i = 0; i < 20; i++) dispatch('brush.resize', { by: 1 })
-    expect(size()).toBe(12)
-  })
-
-  it('refuses a brush delta that is not an integer in range', () => {
-    const { dispatch } = makeHost()
-    expect(dispatch('brush.resize', { by: 99 })).toMatchObject({ ok: false, kind: 'invalid-args', issues: [{ path: ['by'] }] })
-    expect(dispatch('brush.resize', {})).toMatchObject({ ok: false, kind: 'invalid-args' })
-  })
-
   it('runs a composite in order, across owners', () => {
     // The `3` binding: one chord, two owners' commands. A binding carries one
     // `(id, args)`, so the composite is the argument.
@@ -1065,6 +1008,33 @@ describe('the sketch and structure commands, routed to the document actor', () =
     expect(host.reader.undoLabel()).toBe('Delete structure')
     dispatch('undo')
     expect(doc().structures[id]).toBeDefined()
+  })
+})
+
+describe('typed selection', () => {
+  it('selects a structure, deletes it as one, and comes back whole on undo', () => {
+    const { host, dispatch } = makeHost()
+    expect(dispatch('selection.select', { selection: { kind: 'structure', id: 'ground' } })).toEqual({ ok: true })
+    expect(host.children.view.getSnapshot().context.selection).toEqual({ kind: 'structure', id: 'ground' })
+    expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
+    expect(host.contextKeys()['view.hasSelection']).toBe(true)
+
+    expect(dispatch('selection.delete')).toEqual({ ok: true })
+    expect(host.reader.doc.structures.ground).toBeUndefined()
+    expect(host.children.view.getSnapshot().context.selection).toBeNull()
+    dispatch('undo')
+    expect(host.reader.doc.structures.ground).toBeDefined()
+  })
+
+  it('keeps the object case readable as before', () => {
+    const { host, dispatch } = makeHost()
+    apply(host, 'Add', addObject(host.reader.doc, OBJECT))
+    expect(dispatch('selection.set', { id: OBJECT.id })).toEqual({ ok: true })
+    const view = host.children.view.getSnapshot().context
+    expect(view.selection).toEqual({ kind: 'object', id: OBJECT.id })
+    expect(view.selectedObjectId).toBe(OBJECT.id)
+    expect(dispatch('selection.select', { selection: null })).toEqual({ ok: true })
+    expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
   })
 })
 

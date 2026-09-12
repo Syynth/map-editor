@@ -1,197 +1,99 @@
 /**
- * The tools actor: the eleven tool parameters (#11).
+ * The tools actor: which tool is active, and every feature's parameters.
  *
- * These are properties of the person editing, not of the map — which tool is
- * active, how big the brush is, which tile the paint brush lays down — so
- * none of it is serialised and none of it touches the document. They came
- * out of the 18-field `EditorState` that `App.tsx` held in one `useState`;
- * since #66 step 4 this actor IS that state, and the app assembles the panels'
- * object from this snapshot and the view actor's. The split is by owner and
- * lifetime, not for re-renders, which `useSelector` fixes on its own — and the
- * app has yet to take that half, since it still selects whole snapshots.
+ * The host owns two facts — the active tool and the object tool's sprite —
+ * and holds, without reading, one parameter slice per installed feature:
+ * the terrain feature's brush, verbs and modes live under `features.terrain`
+ * and are shaped by the terrain feature alone (its `<owner>.params` command
+ * validates them; the host only stores what arrives). A feature is seeded
+ * with its declared defaults when it is installed and reads its slice back
+ * through `FeatureDeps.params()`. Nothing terrain-shaped is declared here.
  *
- * `terrainMode` is a STATE and the rest is CONTEXT, deliberately (#11): the
- * mode changes what a pointer-drag means, so it is the one parameter whose
- * value is a different behaviour rather than a different number. Nothing is
- * nested further than that — availability comes from the predicate DSL, not
- * from machine shape, so a hierarchy would buy illegal-state-unrepresentable
- * at the cost of a transition per `brush.size` change.
- *
- * Two commands: `tools.set`, with a partial object of typed arguments (#8:
- * `(id, args)`, not one command per parameter). The schema is where the
- * argument discipline is enforced (#23): a stray key or an out-of-range size
- * is an `invalid-args` result before anything is sent, and the handler may
- * trust what arrives. Nothing here calls `enq` — the transition is pure
- * context — so v6 runs the body once (#2's `enq` constraint). `brush.resize`
- * is the second, and it is relative rather than absolute for the reason
- * spelled out beside its schema.
- *
- * `settings` is the same patch arriving by the HOST-INTERNAL door. The
- * eyedropper writes a tool parameter from inside a stroke effect, and
- * re-entering `dispatch` from there would run the registry's resolution
- * inside an enqueued effect; sending the sibling ref a hand-rolled
- * `{ type: 'command', id: 'tools.set', args }` instead was worse, because
- * `args: unknown` meant the cast, not the schema, decided what was legal and
- * a change to `toolSettings` would not have reached the call site. This event
- * carries `ToolSettings` as a TYPE, so it does. It is not a second command
- * path: it has no id, the registry never sees it, and nothing outside this
- * package holds a ref to send it — `dispatch` remains the only entry point
- * for anything a command is (#8).
+ * Any declared tool can be made active: the rail lists what the registry
+ * knows, and `tools.set { tool }` refuses an id no owner declared.
  */
 
-import { NO_RAMP } from '@map-editor/document'
 import { commands, defineContextKey, reserveOwner, tools } from '@map-editor/registry'
 import { setup, types } from 'xstate'
 import { z } from 'zod'
 
 export const TOOLS_OWNER = reserveOwner('editor-host.tools')
 
-/**
- * The rail's SUBJECTS (design ruling of 2026-09-12: a rail item is a thing
- * the artist works on, never a verb). `select` addresses what already exists,
- * whatever made it; `object` places; `terrain` is the feature's. There is no
- * camera tool: orbit, pan and zoom are gestures in every tool (the gesture
- * actor's business), so a rail item for them was a mode with nothing to do.
- */
-export type ToolId = 'select' | 'terrain' | 'object'
-export type TerrainMode = 'sculpt' | 'paint'
+/** A declared tool's id: `select` and `object` are the host's; the rest come from features. */
+export type ToolId = string
 
-/**
- * `tool` and `terrainMode` are what availability predicates ask about — a
- * sculpt verb is meaningless while painting — so they are context keys; the
- * numeric parameters are not, since no command is gated on a brush size.
- */
 export const toolKeys = {
   tool: defineContextKey<ToolId>(TOOLS_OWNER, 'tools.tool', 'select'),
-  terrainMode: defineContextKey<TerrainMode>(TOOLS_OWNER, 'tools.terrainMode', 'sculpt'),
 }
 
-/**
- * Ranges match what the panels offer: the brush slider runs 1–12, a ramp
- * direction is an index into `DIR_NAMES` or `NO_RAMP`, a tint is a packed
- * 24-bit colour. `material` and `tile` are indices into the document's
- * material list and the sheet, whose lengths this actor cannot see; the
- * lower bound is what it can check.
- *
- * Every field is `exactOptional` rather than the object being `.partial()`:
- * an absent key means "leave it alone", but a key present with the value
- * `undefined` is refused with the key's path, the same as an out-of-range
- * size. `.partial()` accepts explicit `undefined` and keeps the key, and
- * `applySettings` spreads what arrives, so it would have written `undefined`
- * over `brush` and the next `brush.size` would throw. `undefined` is not
- * JSON; the schema is where that rule is enforced (#23).
- */
 const toolSettings = z
   .object({
-    tool: z.enum(['select', 'terrain', 'object']).exactOptional(),
-    terrainMode: z.enum(['sculpt', 'paint']).exactOptional(),
-    sculptVerb: z.enum(['raise', 'flatten', 'ramp', 'water']).exactOptional(),
-    paintVerb: z.enum(['tile', 'material', 'tint']).exactOptional(),
-    strokeShape: z.enum(['brush', 'rect', 'fill']).exactOptional(),
-    brush: z.object({ size: z.int().min(1).max(12), shape: z.enum(['square', 'circle']) }).exactOptional(),
-    material: z.int().min(0).exactOptional(),
-    tile: z.int().min(0).exactOptional(),
-    tint: z.int().min(0).max(0xffffff).exactOptional(),
-    rampDir: z.int().min(NO_RAMP).max(3).exactOptional(),
-    // How far past a cell boundary the pointer travels before a sculpt stroke
-    // moves on to the next cell, in cells (0 is the exact boundary). A dial
-    // for the feel, on the way to a fixed number (ruling of 2026-09-12).
-    sculptDeadZone: z.number().min(0).max(0.5).exactOptional(),
+    tool: z.string().min(1).exactOptional(),
     spriteName: z.string().min(1).exactOptional(),
   })
   .strict()
 
 export type ToolSettings = z.infer<typeof toolSettings>
 
-/** The ten parameters held as context; `terrainMode` is the state. */
-export type ToolsContext = Required<Omit<ToolSettings, 'terrainMode'>>
+/** One feature's parameters, as the host holds them: shaped by the feature, opaque here. */
+export type FeatureParams = Record<string, unknown>
 
-/**
- * The brush size RELATIVELY (#8: one `camera.orbit` with `{axis, dir}` rather
- * than four commands). `tools.set` cannot express `[` and `]`: a binding's
- * arguments are static data authored before the editor runs, and `brush` is
- * set whole, so an absolute command would need one binding per size and would
- * still have to know the shape. The delta is plain serialisable data, so a
- * macro and a preferences file hold it as happily as a keybinding does.
- */
-const brushResize = z.object({ by: z.int().min(-12).max(12) }).strict()
+export interface ToolsContext {
+  readonly tool: ToolId
+  readonly spriteName: string
+  readonly features: Readonly<Record<string, FeatureParams>>
+}
 
-commands.declare(TOOLS_OWNER, { id: 'tools.set', title: 'Set Tool Parameters', category: 'Tools', args: toolSettings })
-commands.declare(TOOLS_OWNER, { id: 'brush.resize', title: 'Resize Brush', category: 'Tools', args: brushResize })
+commands.declare(TOOLS_OWNER, { id: 'tools.set', title: 'Set Tool', category: 'Tools', args: toolSettings })
 
-/**
- * The two tools whose strokes are the host's own (`strokes.ts`), declared
- * here so the rail enumerates them the same way it enumerates a feature's:
- * `tools.all()`, in declaration order, and this module is imported before
- * any feature is. Select is first on purpose — the rail reads top to bottom
- * and Select is the tool every other one returns to.
- */
 tools.declare(TOOLS_OWNER, { id: 'select', title: 'Select', icon: 'select' })
 tools.declare(TOOLS_OWNER, { id: 'object', title: 'Objects', icon: 'objects' })
 
-const initialTools: ToolsContext = {
-  tool: 'select',
-  sculptVerb: 'raise',
-  paintVerb: 'tile',
-  strokeShape: 'brush',
-  brush: { size: 1, shape: 'square' },
-  material: 0,
-  tile: 0,
-  tint: 0xffffff,
-  rampDir: NO_RAMP,
-  sculptDeadZone: 0.2,
-  spriteName: 'tree',
+function applySettings(settings: ToolSettings): { context: Partial<ToolsContext> } | undefined {
+  const next: { tool?: ToolId; spriteName?: string } = {}
+  if (settings.tool !== undefined) {
+    // A tool nobody declared is not a tool; the rail could never have shown it.
+    if (tools.ownerOf(settings.tool) === undefined) return undefined
+    next.tool = settings.tool
+  }
+  if (settings.spriteName !== undefined) next.spriteName = settings.spriteName
+  return { context: next }
 }
 
-/**
- * Apply a `tools.set`. The context patch is whatever the schema approved
- * minus `terrainMode`, which becomes a target instead — the same event can
- * change the mode and a verb at once, which is what a "switch to paint with
- * the tint brush" keybinding wants. `undefined` targets stay put.
- */
-function applySettings(settings: ToolSettings, current: TerrainMode): { target?: TerrainMode; context: Partial<ToolsContext> } {
-  const { terrainMode, ...context } = settings
-  return terrainMode !== undefined && terrainMode !== current ? { target: terrainMode, context } : { context }
-}
-
-/** The clamp the old `[`/`]` keydown handler carried, moved to the one place that owns the parameter. */
-function resizeBrush(brush: ToolsContext['brush'], by: number): { context: Partial<ToolsContext> } {
-  return { context: { brush: { ...brush, size: Math.min(12, Math.max(1, brush.size + by)) } } }
-}
-
-/** Both states route a command the same way; only the mode they resolve `terrainMode` against differs. */
-function runCommand(context: ToolsContext, event: { id: string; args: unknown }, mode: TerrainMode) {
-  if (event.id === 'tools.set') return applySettings(event.args as ToolSettings, mode)
-  if (event.id === 'brush.resize') return resizeBrush(context.brush, (event.args as { by: number }).by)
-  return undefined
-}
-
-export const toolsLogic = setup({
-  schemas: {
-    context: types<ToolsContext>(),
-    events: {
-      command: types<{ id: string; args: unknown }>(),
-      settings: types<{ settings: ToolSettings }>(),
-    },
-  },
-}).createMachine({
-  id: 'tools',
-  context: initialTools,
-  initial: 'sculpt',
-  states: {
-    sculpt: {
-      on: {
-        command: ({ context, event }) => runCommand(context, event, 'sculpt'),
-        settings: ({ event }) => applySettings(event.settings, 'sculpt'),
+/** The tools logic, seeded with each installed feature's default parameters. A closure, not `input`: `input` leaks into the inspector. */
+export function toolsLogicWith(seeds: Readonly<Record<string, FeatureParams>>) {
+  const initial: ToolsContext = { tool: 'select', spriteName: 'tree', features: { ...seeds } }
+  return setup({
+    schemas: {
+      context: types<ToolsContext>(),
+      events: {
+        command: types<{ id: string; args: unknown }>(),
+        settings: types<{ settings: ToolSettings }>(),
+        /** A feature changing its own parameters, through `FeatureDeps.setParams`. */
+        feature: types<{ owner: string; changes: FeatureParams }>(),
+        /** A feature installed after start, bringing its defaults; a slice already present is left alone. */
+        seed: types<{ owner: string; params: FeatureParams }>(),
       },
     },
-    paint: {
-      on: {
-        command: ({ context, event }) => runCommand(context, event, 'paint'),
-        settings: ({ event }) => applySettings(event.settings, 'paint'),
+  }).createMachine({
+    id: 'tools',
+    context: initial,
+    initial: 'ready',
+    states: {
+      ready: {
+        on: {
+          command: ({ event }) => (event.id === 'tools.set' ? applySettings(event.args as ToolSettings) : undefined),
+          settings: ({ event }) => applySettings(event.settings),
+          feature: ({ context, event }) => ({
+            context: { features: { ...context.features, [event.owner]: { ...context.features[event.owner], ...event.changes } } },
+          }),
+          seed: ({ context, event }) =>
+            context.features[event.owner] === undefined ? { context: { features: { ...context.features, [event.owner]: { ...event.params } } } } : undefined,
+        },
       },
     },
-  },
-})
+  })
+}
 
-export type ToolsLogic = typeof toolsLogic
+export const toolsLogic = toolsLogicWith({})
+export type ToolsLogic = ReturnType<typeof toolsLogicWith>

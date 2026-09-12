@@ -42,8 +42,7 @@ export function Rail({
           title={decl.title}
           kbd={chordFor('tools.set', { tool: decl.id }, platform)}
           active={tool === decl.id}
-          // A declared tool the actor cannot hold is a bug in whoever declared it; the cast is the app's to make (#35).
-          onClick={() => onTool(decl.id as ToolId)}
+          onClick={() => onTool(decl.id)}
         />
       ))}
       {PLANNED.map((entry) => (
