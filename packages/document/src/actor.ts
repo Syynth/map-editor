@@ -15,7 +15,7 @@
  * 1. THE STORE ARRIVES BY FACTORY CLOSURE, NEVER BY `input`. `input` rides
  *    the `xstate.init` event and reaches an inspector even when kept out of
  *    context — measured at 100,089 bytes for a 50k-entry store against 22 for
- *    a closure (#4). `documentLogic(writer)` closes over the handle; the
+ *    a closure (#4). `documentLogic(writer, reader)` closes over both; the
  *    machine's context is empty and stays that way.
  *
  * 2. EVERY WRITE IS `enq(() => writer.…)`, NEVER INLINE. On `6.0.0-alpha.53` a
@@ -41,7 +41,8 @@ import { setup, types } from 'xstate'
 // `undo` and `redo` at import, and the actor is what makes them handled.
 import './commands'
 import type { Patch } from './edits'
-import { writerOf, type DocumentWriter, type EditorStore } from './store'
+import { removeObjects } from './ops'
+import { writerOf, type DocumentReader, type DocumentWriter, type EditorStore } from './store'
 
 /**
  * What the actor accepts. Plain data throughout — a `Patch` addresses its
@@ -73,11 +74,18 @@ export type DocumentEvent =
   | CommandEvent
 
 /**
- * The machine, closed over a writer. Internal: the barrel exports only the
- * pre-wired `createDocumentActorLogic`, so the parameter type — the write
- * handle — is never namable outside this package.
+ * The machine, closed over a writer and the matching reader. Internal: the
+ * barrel exports only the pre-wired `createDocumentActorLogic`, so the
+ * parameter type — the write handle — is never namable outside this package.
+ *
+ * The reader is here because a command carries a REQUEST, not patches:
+ * `objects.delete({ ids })` has to be turned into the edit that removes them,
+ * and the op that does it reads the document. Read per event, never captured
+ * — the document is mutated in place, so a held `doc` is the live one anyway,
+ * but saying so at the call site is what keeps that true if it ever stops
+ * being.
  */
-export function documentLogic(writer: DocumentWriter) {
+export function documentLogic(writer: DocumentWriter, reader: DocumentReader) {
   return setup({
     schemas: {
       events: {
@@ -131,12 +139,21 @@ export function documentLogic(writer: DocumentWriter) {
           },
           command: ({ event }, enq) => {
             // Only the ids `commands.ts` declared can arrive here: the host
-            // routes by declaring owner, and this owner declared two. Anything
+            // routes by declaring owner, and this owner declared three. Anything
             // else is refused with the `undefined` guard shape rather than
             // dropped inside `enq`, so it takes no transition at all.
             if (event.id === 'undo') enq(() => writer.undo())
             else if (event.id === 'redo') enq(() => writer.redo())
-            else return undefined
+            else if (event.id === 'objects.delete') {
+              // Computed ABOVE the first `enq` call, so this runs twice — it
+              // is pure (`removeObjects` reads and returns, it does not
+              // write), which is the contract a v6 transition body has to
+              // keep. The empty case takes the `undefined` guard shape rather
+              // than enqueuing a write `apply` would prune anyway.
+              const patches = removeObjects(reader.doc, (event.args as { ids: string[] }).ids)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Delete object', patches))
+            } else return undefined
             return {}
           },
         },
@@ -152,7 +169,7 @@ export function documentLogic(writer: DocumentWriter) {
  * type never crosses the package boundary.
  */
 export function createDocumentActorLogic(store: EditorStore) {
-  return documentLogic(writerOf(store))
+  return documentLogic(writerOf(store), store.reader)
 }
 
 export type DocumentActorLogic = ReturnType<typeof createDocumentActorLogic>

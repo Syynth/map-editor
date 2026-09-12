@@ -52,6 +52,7 @@ import {
 import { saveAutosave } from './autosave'
 import type { EditorState } from './state'
 import { encodePngWithCanvas } from './rgba'
+import { installKeyDispatcher } from './keys'
 import { loadSheetFromFile } from './sheet'
 import { Viewport } from '@map-editor/viewport'
 
@@ -201,8 +202,6 @@ export default function App({ store }: { store: EditorStore }) {
       onPointerMove: (motion) => host.input.pointerMove(motion),
       onPointerUp: (release) => host.input.pointerUp(release),
       onStrokeMove: (pick, modifiers) => host.input.strokeMove(pick, modifiers),
-      onKeyDown: (key) => host.input.keyDown(key),
-      onKeyUp: (key) => host.input.keyUp(key),
       heldKeys: () => host.input.heldKeys(),
       onHover: (pick) => {
         setHover(pick.surface)
@@ -245,67 +244,11 @@ export default function App({ store }: { store: EditorStore }) {
   }, [])
 
   // --- keyboard -------------------------------------------------------------
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement
-      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
-
-      const key = event.key.toLowerCase()
-      if ((event.ctrlKey || event.metaKey) && key === 'z') {
-        event.preventDefault()
-        if (event.shiftKey) store.redo()
-        else store.undo()
-        return
-      }
-
-      switch (key) {
-        case '1':
-          set({ tool: 'terrain' })
-          break
-        case '2':
-          set({ tool: 'object' })
-          break
-        case '3':
-          set({ tool: 'camera', inspector: 'coverage' })
-          break
-        case 'tab':
-          event.preventDefault()
-          set({ terrainMode: stateRef.current.terrainMode === 'sculpt' ? 'paint' : 'sculpt' })
-          break
-        case '[':
-          set({ brush: { ...stateRef.current.brush, size: Math.max(1, stateRef.current.brush.size - 1) } })
-          break
-        case ']':
-          set({ brush: { ...stateRef.current.brush, size: Math.min(12, stateRef.current.brush.size + 1) } })
-          break
-        case 'g':
-          set({ gameCamera: !stateRef.current.gameCamera })
-          break
-        case 'p':
-          set({ playing: !stateRef.current.playing })
-          break
-        case 'delete':
-        case 'backspace': {
-          // Nothing during a drag. `keydown` is on `window` and pointer
-          // capture does not stop it, so this fires mid-stroke — and the
-          // object tool drags the SELECTED object, which is the one this
-          // would delete. The store refuses a concurrent write at an address
-          // the open stroke owns, so the delete would not land; clearing the
-          // selection anyway would leave the panel pointing at nothing while
-          // the object is still there. Let go of the mouse first.
-          if (store.inStroke) break
-          const id = stateRef.current.selectedObjectId
-          if (id && store.reader.doc.objects[id]) {
-            store.apply('Delete object', removeObject(store.reader.doc, id))
-            set({ selectedObjectId: null })
-          }
-          break
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [set, store])
+  // One listener for the whole editor, and it holds no key names: what is
+  // bound is declared in `editor-host`'s keymap and resolved through the
+  // registry (#14). The switch over `event.key` that used to be here, and the
+  // viewport's own `Set` of held keys, are both gone into it.
+  useEffect(() => installKeyDispatcher(host), [host])
 
   // --- push editor state into the viewport ----------------------------------
   useEffect(() => {

@@ -111,10 +111,13 @@ alone; do not route it through a machine.
         re-rendering every panel.
       - `exhaustive-deps` enabled for `App.tsx`: the viewport effect still
         carries a `[]` with a prose justification beside it.
-      - Commands for the eleven direct store calls left in `App.tsx` — the
-        undo/redo keybinding and buttons, object delete, edit and display fix,
-        camera rig, atmosphere, and the `replace` on load — which are the
-        second write path `EditorStore` stays exported for.
+      - Commands for the direct store calls left in `App.tsx` — the undo/redo
+        buttons, object edit and display fix, camera rig, atmosphere, and the
+        `replace` on load — which are the second write path `EditorStore` stays
+        exported for. The keybindings among them are gone: step 6 routed
+        undo/redo and Delete through `dispatch`, and object deletion has a
+        command (`objects.delete`, by stable id) that the inspector's own
+        button has yet to use.
       - `EditorStore` out of `packages/document`'s barrel and out of
         `main.tsx`, once nothing outside the document actor writes.
       - `apps/editor/src/editor/state.ts`'s type aliases deleted: `ToolId`,
@@ -179,7 +182,7 @@ three legitimate non-noop writes.
       has to key a patch and read its before-value while holding only `reader`.
 - [x] A stroke tick has its OWN VERB, so `apply` still always records. The
       first cut made "inside a stroke" a property of `apply`, and an ordinary
-      edit that landed mid-drag — `App`'s Delete keybinding is a `window`
+      edit that landed mid-drag — the Delete keybinding fires from a `window`
       keydown listener, which pointer capture does not stop — was applied and
       recorded by neither the history nor the stroke's map. Worse than a lost
       entry: `removeObject` patches `objects[id]` and `objectOrder`, so undoing
@@ -194,9 +197,10 @@ three legitimate non-noop writes.
       undo resurrects the object into `objects` while `objectOrder` — owned
       only by the other entry — stays without it. The same orphan, one step
       further along. So `apply` REFUSES a concurrent write, whole, at an
-      address the open stroke has already written, and `App` checks
-      `store.inStroke` before the Delete branch so it does not clear the
-      selection for a delete that will not land. Only that direction needs the
+      address the open stroke has already written, and the Delete keybinding
+      is gated on `host.stroking` so it does not clear the selection for a
+      delete that will not land — `App`'s `store.inStroke` check, moved into a
+      predicate that can also say why (#66 step 6). Only that direction needs the
       rule: a stroke that later crosses an address an ordinary edit already
       wrote records its before-value lazily, at the tick that first touches
       it, so those two entries already unwind newest-first in write order.
@@ -225,14 +229,22 @@ and §14 makes the extras spec a public contract other engines implement.
       most easily underestimated.
 
 ### Input
-- [ ] **A keymap registry.** Shortcuts are still raw `keydown` on `window` — one
-      listener in `App.tsx` for the tool shortcuts, one in `viewport.ts` that
-      now only forwards held keys to the gesture actor, whose context replaced
-      the viewport's `Set<string>` (#14: a modifier held while dragging is the
-      gesture actor's, not the keymap's). Needs declared bindings, conflict
-      detection and user rebinding. The Option+drag orbit binding was unreachable on a MacBook
-      trackpad precisely because bindings are scattered and undeclared; this
-      gets worse, not better, with more tools.
+- [x] **A keymap registry** (#14, #66 step 6). Bindings are declarations —
+      `(chord, command id, args, when)` — in one ordered list, scanned in
+      reverse with `core` < `tool` < `feature` < `user` as the whole ordering
+      mechanism. A binding whose condition is false FALLS THROUGH rather than
+      swallowing the key, and the condition is the binding's `when` ANDed with
+      the command's own, so a toggle is two bindings on one chord rather than a
+      handler that reads the current value. `unbind` deletes a rule so what sat
+      under it becomes reachable; `command: null` shadows, consuming the key.
+      Conflict detection runs at declare time for identical `(chord, when)`
+      only — possible at all because `disjoint(a, b)` can decide two predicates,
+      which is the thing Blender's `poll()` forecloses. The two `window`
+      listeners are one: `apps/editor/src/editor/keys.ts`, which forwards every
+      key to the gesture actor for the held set and resolves the chord half
+      only outside a text field. Still open: user rebinding and where it
+      persists (the preferences store below), and a palette or keybinding
+      editor over `keymap.bindingFor`.
 
 ### Platform
 - [ ] A file I/O abstraction. The browser File API is used today and Electron

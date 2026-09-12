@@ -72,6 +72,7 @@ import {
   type ReadonlyMapDoc,
 } from '@map-editor/document'
 import {
+  and,
   commands,
   dispose as disposeDeclarations,
   defineContextKey,
@@ -86,6 +87,7 @@ import {
   type OwnerId,
   type ToolContract,
 } from '@map-editor/registry'
+import { z } from 'zod'
 import {
   createActor,
   setup,
@@ -114,8 +116,49 @@ export const hostKeys = {
   mode: defineContextKey<Mode>(HOST_OWNER, 'host.mode', 'edit'),
 }
 
+/**
+ * Whether a pointer stroke is open. Minted under the gesture actor's owner
+ * because it is that actor's state, and it exists because a keybinding must
+ * be able to say "not mid-drag": `keydown` is on `window` and pointer capture
+ * does not stop it, so Delete fires in the middle of a drag, and the object
+ * tool drags the SELECTED object — the one Delete would remove. The store
+ * refuses a write at an address the open stroke owns, so the delete would not
+ * land while the selection cleared anyway. As a predicate the refusal happens
+ * one step earlier, with a reason, and the key falls through untouched.
+ */
+export const gestureKeys = {
+  stroking: defineContextKey(GESTURE_OWNER, 'host.stroking', false),
+}
+
+/**
+ * A binding binds ONE `(id, args)` — that is the shape every editor surveyed
+ * converged on (#5) — and some intents are two commands. `3` selects the
+ * camera tool AND opens the coverage panel, which are two owners' business.
+ * VS Code answers this with `runCommands`; so does this. The steps are plain
+ * serialisable data, so the composite is as storable as any other binding,
+ * and each step still goes through `resolveCommand` and its own schema: this
+ * is a sequence of dispatches, not a way around one.
+ */
+const runCommands = z
+  .object({ commands: z.array(z.object({ id: z.string().min(1), args: z.unknown().optional() })).min(1) })
+  .strict()
+
 commands.declare(HOST_OWNER, { id: 'mode.play', title: 'Enter Play Mode', category: 'Mode', when: hostKeys.mode.is('edit') })
 commands.declare(HOST_OWNER, { id: 'mode.edit', title: 'Leave Play Mode', category: 'Mode', when: hostKeys.mode.is('play') })
+commands.declare(HOST_OWNER, { id: 'commands.run', title: 'Run Commands', category: 'Commands', args: runCommands })
+/**
+ * "Delete what is selected" is a UI intent, and the UI is what turns it into
+ * arguments: this expands to `objects.delete({ ids })` plus `selection.set`,
+ * both id-addressed, both validated. No handler learns the selection from it
+ * (#11) — the expansion happens in `dispatch`, outside every actor, which is
+ * the same place a menu item filling in its own arguments would.
+ */
+commands.declare(HOST_OWNER, {
+  id: 'selection.delete',
+  title: 'Delete Selection',
+  category: 'Selection',
+  when: and(viewKeys.hasSelection.is(true), gestureKeys.stroking.is(false)),
+})
 
 /**
  * What the host hands a feature when it spawns it: the document's read path,
@@ -481,9 +524,11 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
         [...instances.values()].flatMap((instance) => (instance.keys ? Object.entries(instance.keys()) : [])),
       ),
       [hostKeys.mode.id]: actor.getSnapshot().value,
+      [gestureKeys.stroking.id]: children.gesture.getSnapshot().value === 'stroke',
       [toolKeys.tool.id]: tools.context.tool,
       [toolKeys.terrainMode.id]: tools.value,
       [viewKeys.hasSelection.id]: view.context.selectedObjectId !== null,
+      [viewKeys.gameCamera.id]: view.context.gameCamera,
       [documentKeys.canUndo.id]: reader.canUndo(),
       [documentKeys.canRedo.id]: reader.canRedo(),
     }
@@ -497,9 +542,45 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
     return actor.getSnapshot().context.children[owner]
   }
 
+  /**
+   * The two HOST_OWNER commands that are not a transition but a SEQUENCE of
+   * other dispatches (#14's `3` and Delete keybindings). They expand here,
+   * outside the machine, because expanding inside one would mean calling
+   * `dispatch` — and therefore re-entering the registry — from inside an
+   * enqueued effect. `null` means "not a composite"; an empty list means "a
+   * composite with nothing to do", which is what a selection that vanished
+   * between the availability check and here comes to.
+   */
+  function expand(id: string, args: unknown): readonly { readonly id: string; readonly args?: unknown }[] | null {
+    if (id === 'commands.run') return (args as { commands: { id: string; args?: unknown }[] }).commands
+    if (id !== 'selection.delete') return null
+    const selected = children.view.getSnapshot().context.selectedObjectId
+    // Read HERE and nowhere lower: what leaves this function is a list of ids
+    // (#2's argument convention), so nothing downstream can act on "whatever
+    // is selected" — including a replay of this dispatch tomorrow.
+    return selected === null ? [] : [{ id: 'objects.delete', args: { ids: [selected] } }, { id: 'selection.set', args: { id: null } }]
+  }
+
+  /** A composite may name a composite; the depth is what stops a preferences file from writing a loop. */
+  const MAX_EXPANSION_DEPTH = 8
+
   function dispatch(id: string, args?: unknown): DispatchResult {
+    return dispatchAt(id, args, 0)
+  }
+
+  function dispatchAt(id: string, args: unknown, depth: number): DispatchResult {
     const resolution = resolveCommand(id, args, contextKeys())
     if (!resolution.ok) return resolution
+    const steps = expand(id, resolution.args)
+    if (steps) {
+      if (depth >= MAX_EXPANSION_DEPTH)
+        return { ok: false, kind: 'unhandled', reason: `"${id}" expanded more than ${MAX_EXPANSION_DEPTH} levels deep; the composite refers to itself` }
+      for (const step of steps) {
+        const result = dispatchAt(step.id, step.args, depth + 1)
+        if (!result.ok) return result
+      }
+      return { ok: true }
+    }
     // Resolved, so declared, so owned.
     const owner = commands.ownerOf(id) as OwnerId
     // A feature whose logic was never installed has no ref at all, and

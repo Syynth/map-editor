@@ -200,6 +200,113 @@ export function evaluate(predicate: Predicate, snapshot: ContextSnapshot): Avail
   return holds(predicate.node, snapshot) ? { available: true } : { available: false, reason: explain(predicate.node, snapshot) }
 }
 
+/**
+ * A value standing for "anything nobody named". A predicate only ever compares
+ * a key against the values it mentions, so one witness outside that set is
+ * enough to represent every other value the key could hold.
+ */
+const OTHER = Symbol('other')
+type Candidate = KeyValue | typeof OTHER
+
+/** Beyond this many assignments the search gives up and reports "not provably disjoint" — the safe answer. */
+const SEARCH_LIMIT = 4096
+
+function mention(node: PredicateNode, into: Map<string, Set<KeyValue>>): void {
+  switch (node.op) {
+    case 'always':
+    case 'never':
+      return
+    case 'is': {
+      const values = into.get(node.key)
+      if (values) values.add(node.value)
+      else into.set(node.key, new Set([node.value]))
+      return
+    }
+    case 'not':
+      mention(node.of, into)
+      return
+    case 'and':
+    case 'or':
+      for (const child of node.of) mention(child, into)
+  }
+}
+
+/**
+ * The values each key has to be tried at. A key declared with a boolean
+ * default has a domain of exactly two, so no witness is needed and the search
+ * is EXACT for it; anything else gets the values the predicate mentions plus
+ * one witness for everything it does not.
+ */
+function domains(node: PredicateNode): Array<readonly [string, readonly Candidate[]]> {
+  const mentioned = new Map<string, Set<KeyValue>>()
+  mention(node, mentioned)
+  return [...mentioned].map(([key, values]) => {
+    const declared = definedKeys.get(key)
+    const candidates: readonly Candidate[] =
+      typeof declared?.defaultValue === 'boolean' ? [true, false] : [...values, OTHER]
+    return [key, candidates] as const
+  })
+}
+
+function holdsUnder(node: PredicateNode, assignment: ReadonlyMap<string, Candidate>): boolean {
+  switch (node.op) {
+    case 'always':
+      return true
+    case 'never':
+      return false
+    case 'is':
+      return assignment.get(node.key) === node.value
+    case 'not':
+      return !holdsUnder(node.of, assignment)
+    case 'and':
+      return node.of.every((child) => holdsUnder(child, assignment))
+    case 'or':
+      return node.of.some((child) => holdsUnder(child, assignment))
+  }
+}
+
+function satisfiable(node: PredicateNode): boolean {
+  const keys = domains(node)
+  let total = 1
+  for (const [, candidates] of keys) total *= candidates.length
+  // Giving up must err toward "satisfiable", because the only caller reads
+  // UNsatisfiable as "these two can never collide" and would suppress a real
+  // conflict on a search it never finished.
+  if (total > SEARCH_LIMIT) return true
+  for (let i = 0; i < total; i += 1) {
+    const assignment = new Map<string, Candidate>()
+    let rest = i
+    for (const [key, candidates] of keys) {
+      assignment.set(key, candidates[rest % candidates.length])
+      rest = Math.floor(rest / candidates.length)
+    }
+    if (holdsUnder(node, assignment)) return true
+  }
+  return false
+}
+
+/**
+ * Can these two ever hold at once? The question #14's conflict detection is
+ * built on, and the reason availability is typed data rather than Blender's
+ * `poll()`: two functions cannot be proven disjoint, two predicates over a
+ * declared vocabulary can.
+ *
+ * Decided by search rather than by rewriting to a normal form — the vocabulary
+ * a predicate touches is a handful of keys with a handful of values each, so
+ * enumerating the assignments is both exact and shorter than a DNF pass. It is
+ * exact whenever every key it mentions is boolean or every value it could take
+ * is named; where a key's domain is open (a string key, say) the witness above
+ * covers "some other value", which is enough for every predicate this DSL can
+ * build, since `is` is the only leaf that reads a key.
+ *
+ * One-directional error, on purpose: an answer of `true` means PROVEN
+ * disjoint, and a search that runs out of room answers `false`. A caller may
+ * therefore act on `true` and must treat `false` as "unknown or overlapping".
+ */
+export function disjoint(a: Predicate, b: Predicate): boolean {
+  return !satisfiable({ op: 'and', of: [a.node, b.node] })
+}
+
 function isKeyValue(value: unknown): value is KeyValue {
   return value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
 }

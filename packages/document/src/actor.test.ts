@@ -5,7 +5,7 @@ import { createDocumentActorLogic, documentLogic } from './actor'
 import { cellIndex, createMap, type ReadonlyMapDoc } from './document'
 import { inversePatch, type Patch } from './edits'
 import { raise } from './ops'
-import { createDocumentStore, EditorStore, type DocumentWriter } from './store'
+import { createDocumentStore, EditorStore, type DocumentReader, type DocumentWriter } from './store'
 
 /**
  * A writer that only counts. The guard tests below are about how many times
@@ -14,7 +14,7 @@ import { createDocumentStore, EditorStore, type DocumentWriter } from './store'
  * Counting the calls is the direct measurement; the real-store tests further
  * down are the same claim seen through `reader`.
  */
-function countingWriter(): { writer: DocumentWriter; calls: Record<keyof DocumentWriter, number> } {
+function countingWriter(): { writer: DocumentWriter; reader: DocumentReader; calls: Record<keyof DocumentWriter, number> } {
   const calls = { apply: 0, applyStrokeTick: 0, beginStroke: 0, endStroke: 0, undo: 0, redo: 0, replace: 0 }
   const writer: DocumentWriter = {
     apply: () => void (calls.apply += 1),
@@ -25,7 +25,11 @@ function countingWriter(): { writer: DocumentWriter; calls: Record<keyof Documen
     redo: () => void (calls.redo += 1),
     replace: () => void (calls.replace += 1),
   }
-  return { writer, calls }
+  // The actor takes a reader too, for the commands that carry a request
+  // rather than patches. These tests only send the raw verbs, so an empty
+  // document is enough.
+  const { reader } = createDocumentStore(createMap(4, 4))
+  return { writer, reader, calls }
 }
 
 const onePatch = (index: number) => [{ t: 'terrain' as const, field: 'height' as const, index, value: 5 }]
@@ -42,8 +46,8 @@ const onePatch = (index: number) => [{ t: 'terrain' as const, field: 'height' as
  */
 describe('document actor: every write goes through enq (#22)', () => {
   it('applies N patch events exactly N times, not 2N', () => {
-    const { writer, calls } = countingWriter()
-    const actor = createActor(documentLogic(writer)).start()
+    const { writer, reader, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer, reader)).start()
 
     const N = 7
     for (let i = 0; i < N; i++) actor.send({ type: 'patch', label: 'Raise', patches: onePatch(i) })
@@ -52,8 +56,8 @@ describe('document actor: every write goes through enq (#22)', () => {
   })
 
   it('applies N strokePatch events exactly N times, not 2N, and refuses the empty one', () => {
-    const { writer, calls } = countingWriter()
-    const actor = createActor(documentLogic(writer)).start()
+    const { writer, reader, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer, reader)).start()
 
     const N = 7
     for (let i = 0; i < N; i++) actor.send({ type: 'strokePatch', patches: onePatch(i) })
@@ -65,8 +69,8 @@ describe('document actor: every write goes through enq (#22)', () => {
   })
 
   it('applies nothing on the path the transition refuses', () => {
-    const { writer, calls } = countingWriter()
-    const actor = createActor(documentLogic(writer)).start()
+    const { writer, reader, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer, reader)).start()
 
     // An empty patch list is the "not enabled" branch: the body returns
     // `undefined` before it touches `enq`. An inline write above that return
@@ -84,8 +88,8 @@ describe('document actor: every write goes through enq (#22)', () => {
     // runs the body to compute the next snapshot and RETURNS the effects
     // instead of executing them — an `enq`'d write appears in that list and
     // does not happen; an inline one happens here, with nothing executed.
-    const { writer, calls } = countingWriter()
-    const logic = documentLogic(writer)
+    const { writer, reader, calls } = countingWriter()
+    const logic = documentLogic(writer, reader)
     const [initial] = initialTransition(logic)
 
     const [, actions] = transition(logic, initial, { type: 'patch', label: 'Raise', patches: onePatch(0) })
@@ -95,8 +99,8 @@ describe('document actor: every write goes through enq (#22)', () => {
   })
 
   it('routes each verb to exactly one call on the writer, and only that one', () => {
-    const { writer, calls } = countingWriter()
-    const actor = createActor(documentLogic(writer)).start()
+    const { writer, reader, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer, reader)).start()
 
     actor.send({ type: 'beginStroke', label: 'Stroke' })
     actor.send({ type: 'endStroke', patches: [], inverse: [] })

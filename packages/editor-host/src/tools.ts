@@ -17,12 +17,14 @@
  * from machine shape, so a hierarchy would buy illegal-state-unrepresentable
  * at the cost of a transition per `brush.size` change.
  *
- * One command, `tools.set`, with a partial object of typed arguments (#8:
+ * Two commands: `tools.set`, with a partial object of typed arguments (#8:
  * `(id, args)`, not one command per parameter). The schema is where the
  * argument discipline is enforced (#23): a stray key or an out-of-range size
  * is an `invalid-args` result before anything is sent, and the handler may
  * trust what arrives. Nothing here calls `enq` — the transition is pure
- * context — so v6 runs the body once (#2's `enq` constraint).
+ * context — so v6 runs the body once (#2's `enq` constraint). `brush.resize`
+ * is the second, and it is relative rather than absolute for the reason
+ * spelled out beside its schema.
  *
  * `settings` is the same patch arriving by the HOST-INTERNAL door. The
  * eyedropper writes a tool parameter from inside a stroke effect, and
@@ -93,7 +95,18 @@ export type ToolSettings = z.infer<typeof toolSettings>
 /** The ten parameters held as context; `terrainMode` is the state. */
 export type ToolsContext = Required<Omit<ToolSettings, 'terrainMode'>>
 
+/**
+ * The brush size RELATIVELY (#8: one `camera.orbit` with `{axis, dir}` rather
+ * than four commands). `tools.set` cannot express `[` and `]`: a binding's
+ * arguments are static data authored before the editor runs, and `brush` is
+ * set whole, so an absolute command would need one binding per size and would
+ * still have to know the shape. The delta is plain serialisable data, so a
+ * macro and a preferences file hold it as happily as a keybinding does.
+ */
+const brushResize = z.object({ by: z.int().min(-12).max(12) }).strict()
+
 commands.declare(TOOLS_OWNER, { id: 'tools.set', title: 'Set Tool Parameters', category: 'Tools', args: toolSettings })
+commands.declare(TOOLS_OWNER, { id: 'brush.resize', title: 'Resize Brush', category: 'Tools', args: brushResize })
 
 const initialTools: ToolsContext = {
   tool: 'terrain',
@@ -119,6 +132,18 @@ function applySettings(settings: ToolSettings, current: TerrainMode): { target?:
   return terrainMode !== undefined && terrainMode !== current ? { target: terrainMode, context } : { context }
 }
 
+/** The clamp the old `[`/`]` keydown handler carried, moved to the one place that owns the parameter. */
+function resizeBrush(brush: ToolsContext['brush'], by: number): { context: Partial<ToolsContext> } {
+  return { context: { brush: { ...brush, size: Math.min(12, Math.max(1, brush.size + by)) } } }
+}
+
+/** Both states route a command the same way; only the mode they resolve `terrainMode` against differs. */
+function runCommand(context: ToolsContext, event: { id: string; args: unknown }, mode: TerrainMode) {
+  if (event.id === 'tools.set') return applySettings(event.args as ToolSettings, mode)
+  if (event.id === 'brush.resize') return resizeBrush(context.brush, (event.args as { by: number }).by)
+  return undefined
+}
+
 export const toolsLogic = setup({
   schemas: {
     context: types<ToolsContext>(),
@@ -134,13 +159,13 @@ export const toolsLogic = setup({
   states: {
     sculpt: {
       on: {
-        command: ({ event }) => (event.id === 'tools.set' ? applySettings(event.args as ToolSettings, 'sculpt') : undefined),
+        command: ({ context, event }) => runCommand(context, event, 'sculpt'),
         settings: ({ event }) => applySettings(event.settings, 'sculpt'),
       },
     },
     paint: {
       on: {
-        command: ({ event }) => (event.id === 'tools.set' ? applySettings(event.args as ToolSettings, 'paint') : undefined),
+        command: ({ context, event }) => runCommand(context, event, 'paint'),
         settings: ({ event }) => applySettings(event.settings, 'paint'),
       },
     },

@@ -126,9 +126,13 @@ export interface ViewportHandlers {
   onPointerUp(release: { x: number; y: number }): void
   /** One tick of an open stroke: only sent while `onPointerMove` answers `'stroke'`. */
   onStrokeMove(pick: PickResult, modifiers: PointerModifiers): void
-  onKeyDown(key: string): void
-  onKeyUp(key: string): void
-  /** Keys held right now, lower-cased. Read every frame for WASD; the set itself lives in the gesture actor (#14). */
+  /**
+   * Keys held right now, lower-cased. Read every frame for WASD; the set
+   * itself lives in the gesture actor and is fed by the app's one keydown
+   * dispatcher (#14). This class installed its own `keydown`/`keyup` pair
+   * until #66 step 6 — two independent listeners on `window` was the thing
+   * that ticket exists to remove.
+   */
   heldKeys(): ReadonlySet<string>
   onHover(pick: PickResult): void
   onCameraChange(state: { yaw: number; pitch: number; distance: number; inBounds: boolean }): void
@@ -644,24 +648,12 @@ export class Viewport {
 
   private onContextMenu = (event: Event): void => event.preventDefault()
 
-  // Held keys belong to the gesture actor (#14), which is also what decides
-  // whether alt means eyedropper or orbit; this listener only reports.
-  private onKeyDown = (event: KeyboardEvent): void => {
-    this.handlers.onKeyDown(event.key.toLowerCase())
-  }
-
-  private onKeyUp = (event: KeyboardEvent): void => {
-    this.handlers.onKeyUp(event.key.toLowerCase())
-  }
-
   private attachEvents(): void {
     this.canvas.addEventListener('pointerdown', this.onPointerDown)
     this.canvas.addEventListener('pointermove', this.onPointerMove)
     window.addEventListener('pointerup', this.onPointerUp)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('contextmenu', this.onContextMenu)
-    window.addEventListener('keydown', this.onKeyDown)
-    window.addEventListener('keyup', this.onKeyUp)
     window.addEventListener('resize', this.resize)
   }
 
@@ -671,8 +663,6 @@ export class Viewport {
     window.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onContextMenu)
-    window.removeEventListener('keydown', this.onKeyDown)
-    window.removeEventListener('keyup', this.onKeyUp)
     window.removeEventListener('resize', this.resize)
   }
 

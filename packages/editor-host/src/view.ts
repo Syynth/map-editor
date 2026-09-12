@@ -29,8 +29,16 @@ import { z } from 'zod'
 
 export const VIEW_OWNER = reserveOwner('editor-host.view')
 
+/**
+ * `gameCamera` is a context key and the other two toggles are not, for one
+ * reason: `G` toggles it, and a toggle is two bindings on one chord, each
+ * gated on the value it flips away from (#14's fall-through). A key exists
+ * because a predicate needs to name it; the grid and the open inspector tab
+ * gate nothing, so neither gets one.
+ */
 export const viewKeys = {
   hasSelection: defineContextKey(VIEW_OWNER, 'view.hasSelection', false),
+  gameCamera: defineContextKey(VIEW_OWNER, 'view.gameCamera', false),
 }
 
 /**

@@ -17,6 +17,7 @@
     "@map-editor/feature-terrain": "workspace:*",
     "@map-editor/fixtures": "workspace:*",
     "@map-editor/geometry": "workspace:*",
+    "@map-editor/registry": "workspace:*",
     "@map-editor/runtime": "workspace:*",
     "@map-editor/ui": "workspace:*",
     "@map-editor/viewport": "workspace:*",
@@ -24,7 +25,6 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@map-editor/registry": "workspace:*",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",

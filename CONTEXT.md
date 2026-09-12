@@ -67,6 +67,27 @@ anything is selected, whether there is something to undo — that a
 declared, so a condition can only ever mention a key that exists, and a
 disabled control can say which key is the reason.
 
+## Chord
+
+One keypress, named: a key plus the modifiers held with it — `mod+z`,
+`shift+alt+x`. `mod` names whichever modifier is the platform's primary
+accelerator rather than naming a particular key. A [Binding](#binding) may
+take a SEQUENCE of chords, where the first is held until the next arrives.
+
+## Binding
+
+A [Chord](#chord) bound to a [Command](#command) and its arguments — never to
+a function, so the same pair is a keymap entry, a menu item's payload and a
+test's invocation.
+
+Bindings are an ordered list rather than a lookup: several may name the same
+chord, and the one that wins is the last whose condition holds. A binding
+whose condition is false yields to the one beneath it rather than consuming
+the keypress, which is what lets a layer add bindings without hiding the layer
+underneath. A binding may also **shadow** a chord — consume it and do nothing
+— or **unbind** one, which removes a rule so whatever sat under it becomes
+reachable again.
+
 ## Map
 
 The level being edited: terrain, paint, objects, and the settings that describe

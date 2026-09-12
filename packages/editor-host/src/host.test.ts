@@ -287,13 +287,15 @@ function pressAt(x: number, y: number, extra: Partial<PointerPress> = {}): Point
  */
 describe('pointer input through the host', () => {
   it('refuses a mid-drag delete of the object being dragged, so no orphan survives the undo', () => {
-    // Same keydown listener as the test above, but now the write collides:
-    // the object tool drags the SELECTED object, and Delete deletes the
+    // Same keyboard path as the test above, but now the write collides: the
+    // object tool drags the SELECTED object, and Delete deletes the
     // selection. Recorded independently they unwind backwards — the stroke's
     // entry pops first and writes `doc.objects[A]` while `objectOrder`, which
     // only the delete's entry owns, stays without it. The store refuses the
-    // colliding write and `App` skips the branch entirely (`store.inStroke`),
-    // so the drag is all that happened and one undo takes it back whole.
+    // colliding write, and `selection.delete` is unavailable mid-drag — the
+    // `store.inStroke` check `App.tsx` used to carry, now a predicate that
+    // says why — so the drag is all that happened and one undo takes it back
+    // whole.
     const { host, store, dispatch } = makeHost()
     dispatch('tools.set', { tool: 'object' })
     const object = { ...OBJECT, position: [1, 0, 1] as [number, number, number], anchorCell: [1, 1] as [number, number] }
@@ -310,6 +312,13 @@ describe('pointer input through the host', () => {
     expect(groundPlane(object.id)).toEqual([5, 5])
 
     expect(store.inStroke).toBe(true)
+    expect(host.contextKeys()['host.stroking']).toBe(true)
+    expect(dispatch('selection.delete')).toMatchObject({
+      ok: false,
+      kind: 'unavailable',
+      reason: expect.stringContaining('host.stroking') as string,
+    })
+    // And the store would have refused it even if the predicate had not.
     store.apply('Delete object', removeObject(doc, object.id))
     expect(doc.objectOrder).toEqual([object.id])
 
@@ -633,6 +642,145 @@ describe('the host as a whole', () => {
     expect(host.child('editor-host.gesture')).toBe(host.children.gesture)
     expect(host.input.gesture()).toBe('none')
     expect(() => host.dispose('editor-host.gesture')).toThrow(/reserved/)
+  })
+})
+
+describe('the relative and composite commands the keymap needs', () => {
+  it('resizes the brush by a delta, clamped at both ends', () => {
+    const { host, dispatch } = makeHost()
+    const size = () => host.children.tools.getSnapshot().context.brush.size
+    expect(size()).toBe(1)
+
+    expect(dispatch('brush.resize', { by: 4 })).toEqual({ ok: true })
+    expect(size()).toBe(5)
+    expect(dispatch('brush.resize', { by: -1 })).toEqual({ ok: true })
+    expect(size()).toBe(4)
+
+    // The clamp the `[` and `]` keydown handler used to carry, moved to the
+    // actor that owns the parameter: holding either key runs off neither end.
+    for (let i = 0; i < 20; i++) dispatch('brush.resize', { by: -1 })
+    expect(size()).toBe(1)
+    for (let i = 0; i < 20; i++) dispatch('brush.resize', { by: 1 })
+    expect(size()).toBe(12)
+  })
+
+  it('refuses a brush delta that is not an integer in range', () => {
+    const { dispatch } = makeHost()
+    expect(dispatch('brush.resize', { by: 99 })).toMatchObject({ ok: false, kind: 'invalid-args', issues: [{ path: ['by'] }] })
+    expect(dispatch('brush.resize', {})).toMatchObject({ ok: false, kind: 'invalid-args' })
+  })
+
+  it('runs a composite in order, across owners', () => {
+    // The `3` binding: one chord, two owners' commands. A binding carries one
+    // `(id, args)`, so the composite is the argument.
+    const { host, dispatch } = makeHost()
+    expect(
+      dispatch('commands.run', {
+        commands: [
+          { id: 'tools.set', args: { tool: 'camera' } },
+          { id: 'view.set', args: { inspector: 'coverage' } },
+        ],
+      }),
+    ).toEqual({ ok: true })
+    expect(host.children.tools.getSnapshot().context.tool).toBe('camera')
+    expect(host.children.view.getSnapshot().context.inspector).toBe('coverage')
+  })
+
+  it('stops a composite at the first step that refuses, and answers with that refusal', () => {
+    const { host, dispatch } = makeHost()
+    expect(
+      dispatch('commands.run', {
+        commands: [
+          { id: 'view.set', args: { showGrid: false } },
+          { id: 'view.set', args: { inspector: 'nonsense' } },
+          { id: 'tools.set', args: { tool: 'camera' } },
+        ],
+      }),
+    ).toMatchObject({ ok: false, kind: 'invalid-args' })
+    // The first step landed and the third never ran: a composite is a
+    // sequence of dispatches, not a transaction.
+    expect(host.children.view.getSnapshot().context.showGrid).toBe(false)
+    expect(host.children.tools.getSnapshot().context.tool).toBe('terrain')
+  })
+
+  it('refuses a composite that recurses instead of looping forever', () => {
+    const { dispatch } = makeHost()
+    const loop: { commands: { id: string; args: unknown }[] } = { commands: [] }
+    loop.commands.push({ id: 'commands.run', args: loop })
+    expect(dispatch('commands.run', loop)).toMatchObject({ ok: false, kind: 'unhandled', reason: expect.stringContaining('refers to itself') as string })
+  })
+})
+
+describe('deleting objects', () => {
+  function withObject(): ReturnType<typeof makeHost> & { object: MapObject } {
+    const made = makeHost()
+    made.store.apply('Add object', addObject(made.store.reader.doc, OBJECT))
+    return { ...made, object: OBJECT }
+  }
+
+  it('deletes by stable id, leaving objects and objectOrder agreeing', () => {
+    const { store, dispatch, object } = withObject()
+    expect(store.reader.doc.objectOrder).toEqual([object.id])
+
+    expect(dispatch('objects.delete', { ids: [object.id] })).toEqual({ ok: true })
+
+    expect(store.reader.doc.objects[object.id]).toBeUndefined()
+    expect(store.reader.doc.objectOrder).toEqual([])
+    expect(Object.keys(store.reader.doc.objects)).toEqual(store.reader.doc.objectOrder)
+  })
+
+  it('deletes several at once without one restoring another', () => {
+    // `removeObject` rebuilds the WHOLE order per call against a document
+    // that has not been written yet, so mapping it over two ids would have
+    // the second list still holding the first — and the last patch to land
+    // would put it back.
+    const { store, dispatch } = makeHost()
+    const second = { ...OBJECT, id: 'obj-2' }
+    store.apply('Add object', addObject(store.reader.doc, OBJECT))
+    store.apply('Add object', addObject(store.reader.doc, second))
+
+    expect(dispatch('objects.delete', { ids: [OBJECT.id, second.id] })).toEqual({ ok: true })
+    expect(store.reader.doc.objectOrder).toEqual([])
+    expect(Object.keys(store.reader.doc.objects)).toEqual([])
+  })
+
+  it('leaves the document alone when no id names anything', () => {
+    const { store, dispatch } = withObject()
+    const revision = store.reader.revision
+    expect(dispatch('objects.delete', { ids: ['nobody'] })).toEqual({ ok: true })
+    expect(store.reader.revision).toBe(revision)
+    // No entry pushed either: the top of the stack is still what put the
+    // object there, so an undo does not have a no-op to eat first.
+    expect(store.reader.undoLabel()).toBe('Add object')
+  })
+
+  it('refuses an empty or malformed id list', () => {
+    const { dispatch } = makeHost()
+    expect(dispatch('objects.delete', { ids: [] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('objects.delete', { id: 'obj-1' })).toMatchObject({ ok: false, kind: 'invalid-args' })
+  })
+
+  it('selection.delete fills the ids in from the selection and then clears it', () => {
+    // The whole point of the composite: what reaches a handler is
+    // `objects.delete({ ids })`. No actor learns what was selected (#11), and
+    // the expansion happens in `dispatch`, outside every machine.
+    const { host, store, dispatch, object } = withObject()
+    dispatch('selection.set', { id: object.id })
+
+    expect(dispatch('selection.delete')).toEqual({ ok: true })
+
+    expect(store.reader.doc.objects[object.id]).toBeUndefined()
+    expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
+    expect(host.contextKeys()['view.hasSelection']).toBe(false)
+  })
+
+  it('selection.delete is unavailable with nothing selected, and says so', () => {
+    const { dispatch } = makeHost()
+    expect(dispatch('selection.delete')).toMatchObject({
+      ok: false,
+      kind: 'unavailable',
+      reason: expect.stringContaining('view.hasSelection') as string,
+    })
   })
 })
 

@@ -18,7 +18,7 @@
  * receive, so narrowing it is a visible edit here.
  */
 
-export { GESTURE_OWNER, HOST_OWNER, createHost, hostKeys } from './host'
+export { GESTURE_OWNER, HOST_OWNER, createHost, gestureKeys, hostKeys } from './host'
 export type {
   Clock,
   DeadLetter,
@@ -32,6 +32,11 @@ export type {
   HostOptions,
   Mode,
 } from './host'
+
+// Side-effect-bearing: importing it declares the default keymap (#14). The
+// owner id is exported so a test can enumerate what it declared and an app
+// could dispose it to install a keymap of its own.
+export { CORE_KEYMAP_OWNER } from './keys'
 
 export { ORBIT_DRAG_THRESHOLD } from './gesture'
 export type { Gesture, PointerMotion, PointerPress, PointerRelease } from './gesture'
