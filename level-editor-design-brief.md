@@ -14,6 +14,14 @@ Guidance for implementation:
 - Prefer choices that are cheap to reverse. Where a decision is expensive to undo (file formats, the document model), keep it minimal and versioned.
 - State the assumptions you make, so they can be checked.
 
+> **Superseded, 2026-09-11.** The guidance above on *when to abstract* — hardcode first,
+> no plugin APIs or registries before two or three concrete cases — was written for the
+> exploratory prototype, and the prototype is finished. The foundation now being built
+> deliberately does the opposite, for reasons recorded in
+> [`docs/decision-log.md`](docs/decision-log.md) under *"The brief's 'hardcode first'
+> guidance is superseded"*. Everything else in this section, and the vision and firm
+> requirements below, still stand.
+
 Labels used throughout:
 
 - **Firm**: a requirement from the project owner.
