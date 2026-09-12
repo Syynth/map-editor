@@ -163,7 +163,7 @@ jobs:
       # apt-get would be a surprise there, and `--with-deps` is only ever
       # correct on the Linux runner this job actually runs on.
       - name: Install browsers
-        run: pnpm browsers -- --with-deps
+        run: pnpm browsers --with-deps
 
       # No separate "build workspace deps" step: every `packages/*` `exports`
       # its `./src/index.ts` directly (see e.g. `packages/viewport/package.json`)

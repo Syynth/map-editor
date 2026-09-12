@@ -31,6 +31,14 @@ describe('CI visual job', () => {
     const tourIndex = steps.findIndex((step) => /run:\s*pnpm tour\b/.test(step))
     expect(browsersIndex).toBeGreaterThanOrEqual(0)
     expect(tourIndex).toBeGreaterThan(browsersIndex)
+    // pnpm forwards every token after the script name verbatim, `--` included
+    // (see `pnpm help run`), so a lone `--` before `--with-deps` reaches
+    // Playwright's CLI as a literal argument rather than a separator and
+    // fails install with "Invalid installation targets: '--with-deps'" — the
+    // exact regex above still matched that broken line, which is why the
+    // invocation is pinned exactly here instead of just asserting the step
+    // exists.
+    expect(steps[browsersIndex]).toMatch(/run:\s*pnpm browsers --with-deps\s*$/m)
   })
 
   it('uploads the tour screenshots as a workflow artifact on every run, pass or fail', () => {

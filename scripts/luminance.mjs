@@ -10,6 +10,9 @@
  * have a Playwright `page`, not a live reference to the GL context, and
  * decoding a PNG through a 2D canvas sidesteps `preserveDrawingBuffer` and
  * tainted-canvas restrictions a direct `readPixels` would have to fight.
+ *
+ * @param {import('playwright').Page} page
+ * @param {{ x: number, y: number, width: number, height: number }} clip
  */
 export async function meanLuminance(page, clip) {
   const shot = await page.screenshot({ clip })
