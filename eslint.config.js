@@ -99,8 +99,11 @@ export default tseslint.config(
   // block reports `no-global-assign`. Scoped to the packages that actually run
   // in a browser, not the whole repo, so a Node-only package keeps
   // `no-global-assign`'s real signal on its own globals instead of losing it
-  // to a blanket `globals.browser`.
-  { files: ['apps/editor/src/**', 'packages/{ui,viewport,runtime}/src/**'], languageOptions: { globals: globals.browser } },
+  // to a blanket `globals.browser`. `fixtures` joined the list with #47, when
+  // the canvas-drawing placeholder generator moved there from `runtime`;
+  // `runtime` stays because it still runs in the browser even though nothing
+  // in it names a DOM global any more.
+  { files: ['apps/editor/src/**', 'packages/{ui,viewport,runtime,fixtures}/src/**'], languageOptions: { globals: globals.browser } },
   {
     // `**/` matters: a flat-config pattern with no slash matches only at the
     // config's own directory, and the app's Vite config now sits in

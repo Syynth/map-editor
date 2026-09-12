@@ -5,12 +5,15 @@
  * NOT lint-exempt, because its output is real data the editor loads and has to
  * satisfy the same invariants as anything else (see `eslint.config.js`).
  *
- * Issue #3 also parks procedural texture generation here. That half has not
- * moved: `packages/runtime` still generates its own placeholder sheet and
- * sprites, and prising them out means changing what crosses the boundary from
- * a canvas to raw pixels — a reshape, not a move.
+ * Two kinds of fixture live here. The sample map is pure document verbs. The
+ * placeholder art generator (#3 parked it here; #47 moved it) draws with a 2D
+ * canvas where one exists and hands back raw `RgbaImage`s, so `runtime` never
+ * sees the canvas — that is the boundary this package sits on the drawing side
+ * of. Where no canvas exists, `baked/` carries the same output pre-rendered as
+ * PNG; `pnpm bake` regenerates it.
  *
  * Written out rather than `export *`, matching the other packages.
  */
 
 export { createSampleMap } from './sample'
+export { SPRITE_NAMES, generateSprites, generateTerrainSheet } from './textures'

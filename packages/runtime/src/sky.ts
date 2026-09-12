@@ -13,9 +13,8 @@
 
 import * as THREE from 'three'
 
-import type { Atmosphere } from '@map-editor/document'
-import type { SpriteAsset } from './textures'
-import { canvasTexture } from './billboard'
+import type { Atmosphere, SpriteAsset } from '@map-editor/document'
+import { rgbaTexture } from './billboard'
 
 const SKY_VERTEX = /* glsl */ `
 varying vec3 vWorldDirection;
@@ -127,7 +126,7 @@ export class Sky {
     atmosphere.backdrop.forEach((card) => {
       const asset = sprites[card.sprite]
       if (!asset) return
-      const texture = canvasTexture(asset.facings[0], nearest)
+      const texture = rgbaTexture(asset.facings[0], nearest)
       texture.wrapS = THREE.RepeatWrapping
       const aspect = asset.widthTiles / asset.heightTiles
       const width = card.height * aspect

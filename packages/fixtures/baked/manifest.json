@@ -1,0 +1,145 @@
+{
+  "source": "createSampleMap() in packages/fixtures/src/sample.ts, drawn by packages/fixtures/src/textures.ts",
+  "regenerate": "pnpm bake",
+  "texelDensity": 16,
+  "materials": [
+    {
+      "name": "Grass",
+      "color": 6989903
+    },
+    {
+      "name": "Dirt",
+      "color": 9136965
+    },
+    {
+      "name": "Stone",
+      "color": 9342606
+    },
+    {
+      "name": "Sand",
+      "color": 14271102
+    }
+  ],
+  "sheet": {
+    "file": "sheet.png",
+    "width": 256,
+    "height": 80
+  },
+  "sprites": {
+    "tree": {
+      "widthTiles": 1.6,
+      "heightTiles": 2.4,
+      "emissive": false,
+      "frame": {
+        "width": 26,
+        "height": 38
+      },
+      "facings": [
+        "sprites/tree.0.png"
+      ]
+    },
+    "bush": {
+      "widthTiles": 1.1,
+      "heightTiles": 0.8,
+      "emissive": false,
+      "frame": {
+        "width": 18,
+        "height": 13
+      },
+      "facings": [
+        "sprites/bush.0.png"
+      ]
+    },
+    "rock": {
+      "widthTiles": 1.1,
+      "heightTiles": 0.9,
+      "emissive": false,
+      "frame": {
+        "width": 18,
+        "height": 14
+      },
+      "facings": [
+        "sprites/rock.0.png"
+      ]
+    },
+    "lamp": {
+      "widthTiles": 0.7,
+      "heightTiles": 2,
+      "emissive": true,
+      "frame": {
+        "width": 11,
+        "height": 32
+      },
+      "facings": [
+        "sprites/lamp.0.png"
+      ]
+    },
+    "barrel": {
+      "widthTiles": 0.9,
+      "heightTiles": 1.1,
+      "emissive": false,
+      "frame": {
+        "width": 14,
+        "height": 18
+      },
+      "facings": [
+        "sprites/barrel.0.png"
+      ]
+    },
+    "sign": {
+      "widthTiles": 1.2,
+      "heightTiles": 1.3,
+      "emissive": false,
+      "frame": {
+        "width": 19,
+        "height": 21
+      },
+      "facings": [
+        "sprites/sign.0.png",
+        "sprites/sign.1.png"
+      ]
+    },
+    "statue": {
+      "widthTiles": 1.2,
+      "heightTiles": 2.2,
+      "emissive": false,
+      "frame": {
+        "width": 19,
+        "height": 35
+      },
+      "facings": [
+        "sprites/statue.0.png",
+        "sprites/statue.1.png",
+        "sprites/statue.2.png",
+        "sprites/statue.3.png"
+      ]
+    },
+    "hero": {
+      "widthTiles": 1,
+      "heightTiles": 1.5,
+      "emissive": false,
+      "frame": {
+        "width": 16,
+        "height": 24
+      },
+      "facings": [
+        "sprites/hero.0.png",
+        "sprites/hero.1.png",
+        "sprites/hero.2.png",
+        "sprites/hero.3.png"
+      ]
+    },
+    "mountains": {
+      "widthTiles": 16,
+      "heightTiles": 4,
+      "emissive": false,
+      "frame": {
+        "width": 256,
+        "height": 64
+      },
+      "facings": [
+        "sprites/mountains.0.png"
+      ]
+    }
+  }
+}

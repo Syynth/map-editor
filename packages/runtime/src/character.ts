@@ -19,9 +19,9 @@ import {
   inBounds,
   type MapDoc,
   type MapObject,
+  type SpriteAsset,
 } from '@map-editor/document'
 import { ObjectView, type ObjectViewContext } from './billboard'
-import type { SpriteAsset } from './textures'
 
 const SPEED = 6
 /** Steepest slope the character can walk up, in world units per world unit. */

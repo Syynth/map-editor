@@ -18,10 +18,11 @@ import {
   type Atmosphere,
   type CameraRig,
   type MapObject,
+  type RgbaImage,
   type SurfaceAddress,
 } from '@map-editor/document'
-import { createSampleMap } from '@map-editor/fixtures'
-import { generateTerrainSheet, type PickResult } from '@map-editor/runtime'
+import { createSampleMap, generateSprites, generateTerrainSheet } from '@map-editor/fixtures'
+import type { PickResult } from '@map-editor/runtime'
 import { exportGltf } from '@map-editor/runtime/export'
 import { Note } from '@map-editor/ui'
 import {
@@ -34,6 +35,7 @@ import {
 } from './panels'
 import { initialEditorState, type EditorState } from './state'
 import { applyStroke, strokeCells, type StrokeContext } from './tools'
+import { encodePngWithCanvas } from './rgba'
 import { loadSheetFromFile } from './sheet'
 import { Viewport, type PointerModifiers } from '@map-editor/viewport'
 
@@ -73,7 +75,7 @@ export default function App() {
   const [camera, setCamera] = useState({ yaw: 45, pitch: 35, distance: 26, inBounds: true })
   const [stats, setStats] = useState({ fps: 0, triangles: 0, meshMs: 0 })
   const [softwareRenderer, setSoftwareRenderer] = useState(false)
-  const [sheet, setSheet] = useState<HTMLCanvasElement | null>(null)
+  const [sheet, setSheet] = useState<RgbaImage | null>(null)
   const [sheetWarning, setSheetWarning] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
@@ -83,18 +85,33 @@ export default function App() {
     setStateRaw((previous) => ({ ...previous, ...changes }))
   }, [])
 
-  // --- the generated template sheet -----------------------------------------
+  // --- the placeholder art --------------------------------------------------
+  // Generated here, in the composition root, and handed to the viewport and
+  // the exporter as inputs: `runtime` has no way to draw its own (#47). Memos
+  // rather than an effect so the viewport below can be constructed with them
+  // in the same commit; the effects then push replacements when the document's
+  // materials or texel density change. An artist's sheet, loaded further down,
+  // overrides the generated one until the next such change.
+  const generatedSheet = useMemo(
+    () => generateTerrainSheet(doc.materials, doc.texelDensity),
+    [doc.materials, doc.texelDensity],
+  )
+  const sprites = useMemo(() => generateSprites(doc.texelDensity), [doc.texelDensity])
+
   useEffect(() => {
-    const canvas = generateTerrainSheet(doc.materials, doc.texelDensity)
-    setSheet(canvas)
+    setSheet(generatedSheet)
     setSheetWarning(null)
-    viewportRef.current?.loadSheet(canvas)
-  }, [doc.materials, doc.texelDensity])
+    viewportRef.current?.loadSheet(generatedSheet)
+  }, [generatedSheet])
+
+  useEffect(() => {
+    viewportRef.current?.loadSprites(sprites)
+  }, [sprites])
 
   // --- viewport lifecycle ---------------------------------------------------
   useEffect(() => {
     if (!canvasRef.current) return
-    const viewport = new Viewport(canvasRef.current, store, {
+    const viewport = new Viewport(canvasRef.current, store, { sheet: generatedSheet, sprites }, {
       onStrokeStart: (pick, modifiers) => handleStroke(pick, modifiers, 'start'),
       onStrokeMove: (pick, modifiers) => handleStroke(pick, modifiers, 'move'),
       onStrokeEnd: () => {
@@ -142,7 +159,6 @@ export default function App() {
     scripting.__ops = { flatten, raise, removeObject, updateObject }
     scripting.__selectObject = (id: string | null) => set({ selectedObjectId: id })
     viewport.frameMap()
-    if (sheet) viewport.loadSheet(sheet)
     return () => {
       viewport.dispose()
       viewportRef.current = null
@@ -322,7 +338,15 @@ export default function App() {
   const onExport = useCallback(async () => {
     setMessage('Exporting…')
     try {
-      const blob = await exportGltf(store.doc, { merge: false })
+      // The generated sheet, as before #47 when the exporter generated its own:
+      // an artist's loaded sheet still previews but does not export.
+      const bytes = await exportGltf(store.doc, {
+        merge: false,
+        sheet: generatedSheet,
+        sprites,
+        encodePng: encodePngWithCanvas,
+      })
+      const blob = new Blob([bytes], { type: 'model/gltf-binary' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -333,15 +357,15 @@ export default function App() {
     } catch (error) {
       setMessage(`Export failed: ${String(error)}`)
     }
-  }, [store])
+  }, [store, generatedSheet, sprites])
 
   const onLoadSheet = useCallback(
     async (file: File) => {
       try {
         const result = await loadSheetFromFile(file, store.doc)
-        setSheet(result.canvas)
+        setSheet(result.image)
         setSheetWarning(result.warning)
-        viewportRef.current?.loadSheet(result.canvas)
+        viewportRef.current?.loadSheet(result.image)
       } catch (error) {
         setSheetWarning(String(error))
       }

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createMap } from '@map-editor/document'
-import { buildExportScene, exportGltf } from './export'
+import { createMap, defaultFacing, type RgbaImage, type SpriteAsset } from '@map-editor/document'
+import { buildExportScene, exportGltf, type ExportOptions } from './export'
 
 // `parse` needs to be reconfigurable per test (success vs. error), and
 // `vi.mock` factories are hoisted above imports, so the mock function itself
@@ -11,31 +11,87 @@ const { parseMock } = vi.hoisted(() => ({ parseMock: vi.fn() }))
 vi.mock('three/examples/jsm/exporters/GLTFExporter.js', () => ({
   GLTFExporter: class {
     parse = parseMock
+    register = vi.fn()
   },
 }))
 
-// `generateSprites`/`generateTerrainSheet` reach for `document.createElement('canvas')`
-// (see textures.ts) to paint placeholder art with real 2D drawing calls. This repo
-// has already ruled against giving Node a DOM to satisfy that — see the
-// "No native binary dependencies for tooling" entry in docs/decision-log.md,
-// which rejected `@napi-rs/canvas` for the export CLI on the same grounds:
-// "shimming a DOM into node so browser code can run is the wrong direction".
-// So this suite does not exercise the sprite/atlas path at all: the fixture
-// map below carries zero objects, which keeps `buildExportScene` out of
-// `atlasFor` (the other `document.createElement('canvas')` call site, inside
-// export.ts itself) entirely. What IS covered: the terrain half of the scene
-// graph (real geometry, no canvas involved) and the two behaviours #28 asks
-// for — `buildExportScene` returning synchronously, and `exportGltf` wrapping
-// a non-Error rejection. Pixel content, image embedding and the sprite/light
-// path are not covered by this file.
-vi.mock('./textures', () => ({
-  generateSprites: () => ({}),
-  generateTerrainSheet: () => ({}),
-}))
-vi.mock('./billboard', () => ({
-  resolveDisplayMode: () => 'fixed',
-  canvasTexture: () => ({}),
-}))
+// Nothing else is mocked. Before #47 this file had to stub out `./textures`
+// and `./billboard` because building the scene reached for
+// `document.createElement('canvas')`, which Node does not have and which this
+// repo has ruled against shimming in (see "No native binary dependencies for
+// tooling" in docs/decision-log.md). The sheet and sprites are inputs now, so
+// the fixtures below are raw pixels made by hand and the real texture, atlas
+// and sprite/light code runs under vitest's plain Node environment. That is
+// the acceptance test for the boundary: if anything in `buildExportScene`
+// touched a DOM API again, the sprite tests here would throw `document is not
+// defined`.
+
+function solid(width: number, height: number, rgba: [number, number, number, number]): RgbaImage {
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let i = 0; i < data.length; i += 4) data.set(rgba, i)
+  return { width, height, data }
+}
+
+function sprite(name: string, facings: number, emissive = false): SpriteAsset {
+  return {
+    name,
+    facings: Array.from({ length: facings }, (_, i) => solid(4, 6, [i * 40, 0, 0, 255])),
+    widthTiles: 1,
+    heightTiles: 1.5,
+    emissive,
+  }
+}
+
+const sprites: Record<string, SpriteAsset> = {
+  rock: sprite('rock', 1),
+  statue: sprite('statue', 4),
+  lamp: sprite('lamp', 1, true),
+}
+
+function options(overrides: Partial<ExportOptions> = {}): ExportOptions {
+  return {
+    merge: false,
+    sheet: solid(16, 5, [0, 255, 0, 255]),
+    sprites,
+    encodePng: () => Promise.resolve(new Uint8Array([0x89, 0x50, 0x4e, 0x47])),
+    ...overrides,
+  }
+}
+
+function withObjects(names: string[]) {
+  const doc = createMap(4, 4, 'Objects')
+  names.forEach((name, i) => {
+    const id = `o${i}`
+    doc.objects[id] = {
+      id,
+      name,
+      sprite: name,
+      position: [1 + i, 0, 1],
+      rotationY: 0,
+      scale: 1,
+      display: 'fixed',
+      facing: { ...defaultFacing(), facings: name === 'statue' ? 4 : 1 },
+      anchorCell: null,
+      seed: 0,
+      locked: false,
+      hidden: false,
+    }
+    doc.objectOrder.push(id)
+  })
+  return doc
+}
+
+interface TexturedNode {
+  name: string
+  material: { name: string; map: { image: { width: number; height: number; data: Uint8Array } } }
+  userData: { atlas: { frames: number } }
+}
+
+function nodeNamed(scene: { children: { name: string; children: unknown[] }[] }, root: string, name?: string) {
+  const group = scene.children.find((child) => child.name === root)
+  const nodes = (group?.children ?? []) as TexturedNode[]
+  return name === undefined ? nodes[0] : nodes.find((child) => child.name === name)
+}
 
 beforeEach(() => {
   parseMock.mockReset()
@@ -47,13 +103,13 @@ describe('buildExportScene', () => {
     // `async` with nothing to await, which silently changed its return type
     // to `Promise<Scene>`. Revert that fix and this goes back to failing.
     const doc = createMap(4, 4, 'Sync Check')
-    const result = buildExportScene(doc, { merge: false })
+    const result = buildExportScene(doc, options())
     expect(result).not.toBeInstanceOf(Promise)
   })
 
   it('builds a terrain root and no water root when the map has no water', () => {
     const doc = createMap(4, 4, 'Structure Check')
-    const scene = buildExportScene(doc, { merge: false })
+    const scene = buildExportScene(doc, options())
 
     const terrain = scene.children.find((child) => child.name === 'Terrain')
     const water = scene.children.find((child) => child.name === 'Water')
@@ -66,6 +122,37 @@ describe('buildExportScene', () => {
     const extras = scene.userData.mapEditor as { extrasVersion: number; name: string }
     expect(extras.name).toBe('Structure Check')
     expect(extras.extrasVersion).toBe(1)
+  })
+
+  it('textures the terrain with the supplied sheet, not a generated one', () => {
+    const sheet = solid(16, 5, [7, 8, 9, 255])
+    const scene = buildExportScene(createMap(4, 4), options({ sheet }))
+    const terrain = nodeNamed(scene, 'Terrain')
+    // Same bytes, not a copy: the texture is a view over the caller's image.
+    expect(terrain?.material.map.image.data.buffer).toBe(sheet.data.buffer)
+  })
+
+  it('builds sprite nodes, atlases and lights without a canvas', () => {
+    // Would have thrown `document is not defined` before #47: `atlasFor`
+    // created a canvas for every multi-facing sprite.
+    const doc = withObjects(['statue', 'lamp'])
+    const scene = buildExportScene(doc, options())
+
+    const statue = nodeNamed(scene, 'Objects', 'statue')
+    // Four 4px facings side by side.
+    expect(statue?.material.map.image.width).toBe(16)
+    expect(statue?.material.map.image.height).toBe(6)
+    expect(statue?.userData.atlas.frames).toBe(4)
+
+    // An emissive prop carries its own punctual light.
+    expect(nodeNamed(scene, 'Objects', 'lamp_light')).toBeDefined()
+  })
+
+  it('falls back to the rock sprite for a name the library lacks', () => {
+    const doc = withObjects(['nonesuch'])
+    const node = nodeNamed(buildExportScene(doc, options()), 'Objects')
+    expect(node?.userData.atlas.frames).toBe(1)
+    expect(node?.material.name).toBe('sprite_nonesuch')
   })
 })
 
@@ -80,8 +167,8 @@ describe('exportGltf', () => {
     })
     const doc = createMap(4, 4, 'Error Check')
 
-    await expect(exportGltf(doc, { merge: false })).rejects.toBeInstanceOf(Error)
-    await expect(exportGltf(doc, { merge: false })).rejects.toThrow('boom')
+    await expect(exportGltf(doc, options())).rejects.toBeInstanceOf(Error)
+    await expect(exportGltf(doc, options())).rejects.toThrow('boom')
   })
 
   it('falls back to a fixed message when the rejection has no .message', async () => {
@@ -95,17 +182,20 @@ describe('exportGltf', () => {
     })
     const doc = createMap(4, 4, 'String Rejection Check')
 
-    await expect(exportGltf(doc, { merge: false })).rejects.toBeInstanceOf(Error)
-    await expect(exportGltf(doc, { merge: false })).rejects.toThrow('glTF export failed')
+    await expect(exportGltf(doc, options())).rejects.toBeInstanceOf(Error)
+    await expect(exportGltf(doc, options())).rejects.toThrow('glTF export failed')
   })
 
-  it('resolves to a binary blob on success', async () => {
+  it('resolves to the .glb bytes on success', async () => {
     parseMock.mockImplementation((_scene: unknown, onDone: (result: ArrayBuffer) => void) => {
       onDone(new ArrayBuffer(4))
     })
     const doc = createMap(4, 4, 'Success Check')
 
-    const blob = await exportGltf(doc, { merge: false })
-    expect(blob.type).toBe('model/gltf-binary')
+    const bytes = await exportGltf(doc, options())
+    // An `ArrayBuffer`, not a `Blob`: `Blob` is a DOM type and this package
+    // compiles without `DOM`. Wrapping for download is the editor's job.
+    expect(bytes).toBeInstanceOf(ArrayBuffer)
+    expect(bytes.byteLength).toBe(4)
   })
 })

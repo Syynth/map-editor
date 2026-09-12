@@ -7,15 +7,20 @@
  * "engine-agnostic" really means other people implementing that spec.
  *
  * glTF is strictly an output. Nothing round-trips back into editable data.
+ *
+ * Like the scene, the exporter draws nothing (#47): the sheet and sprites are
+ * required inputs, and the one step that needs an image codec — PNG-encoding
+ * the embedded textures — is a function the caller supplies. The editor hands
+ * in a canvas; a headless caller hands in a pure-JS encoder.
  */
 
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
-import { allChunkKeys, type MapDoc } from '@map-editor/document'
+import { allChunkKeys, type MapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
 import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
-import { resolveDisplayMode, canvasTexture } from './billboard'
-import { generateSprites, generateTerrainSheet, type SpriteAsset } from './textures'
+import { resolveDisplayMode, rgbaTexture } from './billboard'
+import { atlasFor, embedPngImages, type PngEncoder } from './images'
 
 /** Bump when the shape of anything under `extras` changes. */
 export const EXTRAS_VERSION = 1
@@ -23,8 +28,12 @@ export const EXTRAS_VERSION = 1
 export interface ExportOptions {
   /** Merge static geometry per chunk for fewer draw calls, losing identity. */
   merge: boolean
-  /** Supply the artist's sheet instead of the generated placeholder. */
-  sheet?: HTMLCanvasElement
+  /** The template sheet the terrain samples — generated or the artist's. */
+  sheet: RgbaImage
+  /** Keyed by `MapObject.sprite`; an unknown name falls back to `rock`. */
+  sprites: Record<string, SpriteAsset>
+  /** Encodes each embedded texture. See `PngEncoder` for who supplies what. */
+  encodePng: PngEncoder
 }
 
 function geometryFrom(buffers: MeshBuffers): THREE.BufferGeometry {
@@ -65,20 +74,6 @@ function spriteExtras(asset: SpriteAsset, doc: MapDoc, object: MapDoc['objects']
   }
 }
 
-/** Pack an object's facings side by side into one atlas. */
-function atlasFor(asset: SpriteAsset): HTMLCanvasElement {
-  if (asset.facings.length === 1) return asset.facings[0]
-  const first = asset.facings[0]
-  const canvas = document.createElement('canvas')
-  canvas.width = first.width * asset.facings.length
-  canvas.height = first.height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('2D canvas unavailable')
-  ctx.imageSmoothingEnabled = false
-  asset.facings.forEach((facing, index) => ctx.drawImage(facing, index * first.width, 0))
-  return canvas
-}
-
 // Synchronous: nothing here awaits. An async signature that never suspends
 // only costs the caller a microtask tick, but it also lied about the return
 // type, which is the thing #28 flagged.
@@ -88,8 +83,7 @@ export function buildExportScene(doc: MapDoc, options: ExportOptions): THREE.Sce
   const nearest = doc.filtering === 'nearest'
 
   // --- terrain --------------------------------------------------------------
-  const sheet = options.sheet ?? generateTerrainSheet(doc.materials, doc.texelDensity)
-  const sheetTexture = canvasTexture(sheet, nearest)
+  const sheetTexture = rgbaTexture(options.sheet, nearest)
   const terrainMaterial = new THREE.MeshStandardMaterial({
     map: sheetTexture,
     vertexColors: true,
@@ -183,7 +177,7 @@ export function buildExportScene(doc: MapDoc, options: ExportOptions): THREE.Sce
   if (waterRoot.children.length > 0) scene.add(waterRoot)
 
   // --- objects --------------------------------------------------------------
-  const sprites = generateSprites(doc.texelDensity)
+  const sprites = options.sprites
   const objectRoot = new THREE.Group()
   objectRoot.name = 'Objects'
 
@@ -191,8 +185,7 @@ export function buildExportScene(doc: MapDoc, options: ExportOptions): THREE.Sce
     const object = doc.objects[id]
     if (!object || object.hidden) continue
     const asset = sprites[object.sprite] ?? sprites.rock
-    const atlas = atlasFor(asset)
-    const texture = canvasTexture(atlas, nearest)
+    const texture = rgbaTexture(atlasFor(asset), nearest)
 
     const width = asset.widthTiles * object.scale
     const height = asset.heightTiles * object.scale
@@ -280,36 +273,44 @@ export function buildExportScene(doc: MapDoc, options: ExportOptions): THREE.Sce
   return scene
 }
 
-export async function exportGltf(doc: MapDoc, options: ExportOptions): Promise<Blob> {
+function messageOf(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    return error.message
+  }
+  return 'glTF export failed'
+}
+
+/**
+ * Resolves to the `.glb` bytes. An `ArrayBuffer` rather than a `Blob` because
+ * `Blob` is a DOM type and this package compiles without `DOM`; the editor
+ * wraps it for download, a CLI would write it to disk.
+ */
+export async function exportGltf(doc: MapDoc, options: ExportOptions): Promise<ArrayBuffer> {
   const scene = buildExportScene(doc, options)
   const exporter = new GLTFExporter()
+  exporter.register(embedPngImages(options.encodePng))
 
-  const binary = await new Promise<ArrayBuffer>((resolve, reject) => {
+  return new Promise<ArrayBuffer>((resolve, reject) => {
     exporter.parse(
       scene,
       (result) => resolve(result as ArrayBuffer),
-      // The typings call this an `ErrorEvent`; three's own exporter actually
+      // The typings call this an `ErrorEvent` — a DOM type this package cannot
+      // even see now (#47), and not what arrives anyway: three's own exporter
       // rejects with whatever `writeAsync` threw, which is usually already an
       // `Error` — but rejecting with a non-Error, unobserved by any test, is
       // exactly what #28 flagged. When it's a string (three's `.catch(onError)`
-      // passes one straight through), `error.message` is `undefined` and would
-      // otherwise produce an empty `Error` with no clue what failed — so fall
+      // passes one straight through), there is no `.message` and the result
+      // would otherwise be an empty `Error` with no clue what failed — so fall
       // back to a fixed message rather than surface that.
-      (error) =>
-        reject(
-          error instanceof Error
-            ? error
-            : new Error(typeof error.message === 'string' ? error.message : 'glTF export failed'),
-        ),
+      (error: unknown) => reject(error instanceof Error ? error : new Error(messageOf(error))),
       {
         binary: true,
         includeCustomExtensions: true,
         // Lossless PNG; the mapping table is explicit about avoiding KTX2 and
-        // Basis, which would smear pixel art.
+        // Basis, which would smear pixel art. The encoding itself is
+        // `options.encodePng`'s, via the plugin registered above.
         embedImages: true,
       },
     )
   })
-
-  return new Blob([binary], { type: 'model/gltf-binary' })
 }

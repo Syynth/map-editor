@@ -53,6 +53,8 @@ export type {
   TerrainData,
 } from './document'
 
+export type { RgbaImage, SpriteAsset } from './image'
+
 export { History, applyPatches, pruneNoops } from './edits'
 export type { DocField, Edit, PaintLayer, Patch, TerrainField } from './edits'
 

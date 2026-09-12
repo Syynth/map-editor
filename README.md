@@ -20,11 +20,20 @@ pnpm bench         # mesher throughput
 pnpm shoot         # drive it headless and save screenshots to shots/
 pnpm tour          # capture the 25-step guided walkthrough to shots/tour/
 pnpm probe         # measure whether post-processing survives on this GPU
+pnpm bake          # re-render packages/fixtures/baked/ (the sample map's placeholder art as PNG)
 ```
 
 `shoot`, `tour` and `probe` default to a SwiftShader software renderer, for
 parity with CI; add `--gpu` (e.g. `pnpm tour --gpu`) to drive the real GPU
-backend instead.
+backend instead. `bake` always uses the software renderer so two machines
+produce byte-identical PNGs; it drives the editor's dev-only `/bake.html` in a
+headless browser because the placeholder generator draws with a 2D canvas and
+the repo has ruled against giving Node one. Run it whenever the sample map's
+materials or texel density, or a sprite's footprint, change — two tests
+(`tests/baked-fixtures.test.ts`, `packages/fixtures/src/baked.test.ts`) fail
+until you do. A headless consumer reads the PNGs with a pure-JS decoder and
+hands the pixels to `RuntimeScene` / `exportGltf` as `RgbaImage`s; the runtime
+itself never touches a canvas.
 
 ## What works
 
