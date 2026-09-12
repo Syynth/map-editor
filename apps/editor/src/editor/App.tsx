@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import {
-  EditorStore,
   LoadError,
   SURFACE_CLIFF,
   brushCells,
@@ -17,16 +16,25 @@ import {
   updateObject,
   type Atmosphere,
   type CameraRig,
+  type EditorStore,
   type MapObject,
   type RgbaImage,
   type SurfaceAddress,
 } from '@map-editor/document'
-import { createSampleMap } from '@map-editor/fixtures'
+import {
+  strokeCells,
+  useHost,
+  useHostSelector,
+  useToolsSelector,
+  useViewSelector,
+  type Host,
+  type ToolSettings,
+  type ViewSettings,
+} from '@map-editor/editor-host'
 // The canvas-drawing generator lives behind its own subpath (#48): re-exporting it
 // from the package root would force `DOM` into every consumer's tsconfig, including
 // `apps/export-cli`'s, whose whole point is compiling without it.
 import { generateSprites, generateTerrainSheet } from '@map-editor/fixtures/textures'
-import type { PickResult } from '@map-editor/runtime'
 import { exportGltf } from '@map-editor/runtime/export'
 import { Note } from '@map-editor/ui'
 import {
@@ -37,31 +45,59 @@ import {
   Outliner,
   ToolPanel,
 } from './panels'
-import { initialEditorState, type EditorState } from './state'
-import { applyStroke, strokeCells, type StrokeContext } from './tools'
+import { saveAutosave } from './autosave'
+import type { EditorState } from './state'
 import { encodePngWithCanvas } from './rgba'
 import { loadSheetFromFile } from './sheet'
-import { Viewport, type PointerModifiers } from '@map-editor/viewport'
+import { Viewport } from '@map-editor/viewport'
 
-const AUTOSAVE_KEY = 'map-editor:autosave'
+/** The eleven tool parameters, which is exactly what `tools.set` takes. */
+const TOOL_FIELDS = [
+  'tool',
+  'terrainMode',
+  'sculptVerb',
+  'paintVerb',
+  'strokeShape',
+  'brush',
+  'material',
+  'tile',
+  'tint',
+  'rampDir',
+  'spriteName',
+] as const satisfies ReadonlyArray<keyof ToolSettings & keyof EditorState>
 
-function loadAutosave() {
-  try {
-    const text = localStorage.getItem(AUTOSAVE_KEY)
-    if (text) return deserialize(text)
-  } catch {
-    // A corrupt or stale autosave should never stop the editor opening.
-  }
-  // Defaults look decent: a first run opens a landscape, not a flat plane.
-  return createSampleMap()
+const VIEW_FIELDS = ['showGrid', 'gameCamera', 'inspector'] as const satisfies ReadonlyArray<
+  keyof ViewSettings & keyof EditorState
+>
+
+/**
+ * Pull the keys a command owns out of a `set` patch, dropping the ones that
+ * are absent. The schemas are `.strict()` with `exactOptional` fields (#23):
+ * a key present with the value `undefined` is refused just as loudly as a
+ * stray one, so "absent" has to mean absent.
+ */
+function pick<K extends keyof EditorState>(changes: Partial<EditorState>, keys: readonly K[]): Partial<Pick<EditorState, K>> {
+  const out: Partial<Pick<EditorState, K>> = {}
+  for (const key of keys) if (changes[key] !== undefined) out[key] = changes[key]
+  return out
 }
 
-export default function App() {
-  // React 19's useRef demands an initial value, so the lazy-construct guard
-  // below now carries the null itself.
-  const storeRef = useRef<EditorStore | null>(null)
-  if (!storeRef.current) storeRef.current = new EditorStore(loadAutosave())
-  const store = storeRef.current
+/**
+ * `dispatch` never throws (#8) — it answers with a result — so a refusal has
+ * to be looked at or it is swallowed. Every call below is the app dispatching
+ * its own declared command with arguments it built, so a refusal is a bug
+ * here rather than anything a user did.
+ */
+function report(id: string, result: ReturnType<Host['dispatch']>): void {
+  if (result.ok) return
+  const why = result.kind === 'invalid-args' ? result.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') : result.reason
+  console.warn(`[editor] ${id} refused: ${result.kind} — ${why}`)
+}
+
+export default function App({ store }: { store: EditorStore }) {
+  // Built at the composition root (`main.tsx`), never here: the viewport is
+  // handed `host.input` before React has rendered anything.
+  const host = useHost()
 
   const revision = useSyncExternalStore(store.subscribe, store.getSnapshot)
   const doc = store.reader.doc
@@ -70,7 +106,23 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<Viewport | null>(null)
 
-  const [state, setStateRaw] = useState<EditorState>(initialEditorState)
+  // `EditorState`'s sixteen fields are no longer a `useState`: eleven belong
+  // to the host's tools actor, four to its view actor, and `playing` IS the
+  // host's mode. What is assembled here is a VIEW of those three snapshots in
+  // the shape the panels already take. One owner per field, so nothing has to
+  // be mirrored — the stroke actor reads the same tool parameters the panels
+  // show, and the eyedropper writing a tile back is a `tools.set` that
+  // re-renders this by the ordinary route. Selecting the whole snapshot is
+  // deliberate: its identity is stable between transitions, so this
+  // re-renders exactly when one of the three actors moves.
+  const toolsSnapshot = useToolsSelector((snapshot) => snapshot)
+  const viewSnapshot = useViewSelector((snapshot) => snapshot)
+  const playing = useHostSelector((snapshot) => snapshot.value === 'play')
+
+  const state = useMemo<EditorState>(
+    () => ({ ...toolsSnapshot.context, terrainMode: toolsSnapshot.value, ...viewSnapshot.context, playing }),
+    [toolsSnapshot, viewSnapshot, playing],
+  )
   const stateRef = useRef(state)
   stateRef.current = state
 
@@ -83,11 +135,29 @@ export default function App() {
   const [sheetWarning, setSheetWarning] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
-  const strokeRef = useRef<StrokeContext | null>(null)
+  /**
+   * The panels' one write verb, unchanged in shape and now ROUTED rather than
+   * stored: each group of fields goes to the command that owns it, and a
+   * panel needs to know nothing about which actor that is.
+   */
+  const set = useCallback(
+    (changes: Partial<EditorState>) => {
+      const tools = pick(changes, TOOL_FIELDS)
+      if (Object.keys(tools).length > 0) report('tools.set', host.dispatch('tools.set', tools))
 
-  const set = useCallback((changes: Partial<EditorState>) => {
-    setStateRaw((previous) => ({ ...previous, ...changes }))
-  }, [])
+      const view = pick(changes, VIEW_FIELDS)
+      if (Object.keys(view).length > 0) report('view.set', host.dispatch('view.set', view))
+
+      // `in`, not a truthiness test: clearing the selection is `null`.
+      if ('selectedObjectId' in changes) report('selection.set', host.dispatch('selection.set', { id: changes.selectedObjectId ?? null }))
+
+      if (changes.playing !== undefined) {
+        const id = changes.playing ? 'mode.play' : 'mode.edit'
+        report(id, host.dispatch(id))
+      }
+    },
+    [host],
+  )
 
   // --- the placeholder art --------------------------------------------------
   // Generated here, in the composition root, and handed to the viewport and
@@ -115,28 +185,28 @@ export default function App() {
   // --- viewport lifecycle ---------------------------------------------------
   useEffect(() => {
     if (!canvasRef.current) return
+    // Pointer input is not a command: it goes straight to the host's gesture
+    // actor, which answers with what the press turned out to be (#11). What
+    // used to be here — a `strokeRef` holding the anchor, the flatten height
+    // and the last cell, and a rectangle's release commit — is the stroke
+    // actor's context now, and dies with the stroke.
     const viewport = new Viewport(canvasRef.current, store, { sheet: generatedSheet, sprites }, {
-      onStrokeStart: (pick, modifiers) => handleStroke(pick, modifiers, 'start'),
-      onStrokeMove: (pick, modifiers) => handleStroke(pick, modifiers, 'move'),
-      onStrokeEnd: () => {
-        const context = strokeRef.current
-        if (context) {
-          // Rectangles commit once, on release.
-          if (stateRef.current.strokeShape === 'rect' && context.anchor && hoverRef.current) {
-            applyStroke(context, { surface: hoverRef.current, point: null, objectId: null, distance: 0 }, lastModifiers.current, 'end')
-          }
-          store.endStroke()
-        }
-        strokeRef.current = null
+      onPointerDown: (press) => {
+        host.input.pointerDown(press)
       },
+      onPointerMove: (motion) => host.input.pointerMove(motion),
+      onPointerUp: (release) => host.input.pointerUp(release),
+      onStrokeMove: (pick, modifiers) => host.input.strokeMove(pick, modifiers),
+      onKeyDown: (key) => host.input.keyDown(key),
+      onKeyUp: (key) => host.input.keyUp(key),
+      heldKeys: () => host.input.heldKeys(),
       onHover: (pick) => {
-        hoverRef.current = pick.surface
         setHover(pick.surface)
         const current = stateRef.current
         if (pick.surface && current.tool === 'terrain' && !current.playing) {
-          setHoverCells(
-            strokeCells(store.reader.doc, current, pick.surface, strokeRef.current?.anchor ?? null),
-          )
+          // The same cells the stroke will touch, grown from the same origin
+          // — read off the open stroke rather than recomputed from a copy.
+          setHoverCells(strokeCells(store.reader.doc, current, pick.surface, host.input.strokeOrigin()))
         } else {
           setHoverCells([])
         }
@@ -169,39 +239,6 @@ export default function App() {
     }
     // Intentionally created once: the viewport reads live state through refs.
   }, [])
-
-  const hoverRef = useRef<SurfaceAddress | null>(null)
-  const lastModifiers = useRef<PointerModifiers>({ shift: false, alt: false, ctrl: false, button: 0 })
-
-  const handleStroke = useCallback(
-    (pick: PickResult, modifiers: PointerModifiers, phase: 'start' | 'move' | 'end') => {
-      lastModifiers.current = modifiers
-      const current = stateRef.current
-
-      if (phase === 'start') {
-        const address = pick.surface
-        const anchorHeight =
-          address && inBounds(store.reader.doc.size, address.x, address.y)
-            ? store.reader.doc.terrain.height[cellIndex(store.reader.doc.size, address.x, address.y)]
-            : 0
-        strokeRef.current = {
-          store,
-          state: current,
-          setState: set,
-          anchor: address ? [address.x, address.y] : null,
-          anchorHeight,
-          lastCell: null,
-        }
-        store.beginStroke('Edit')
-      }
-
-      const context = strokeRef.current
-      if (!context) return
-      context.state = current
-      applyStroke(context, pick, modifiers, phase)
-    },
-    [set, store],
-  )
 
   // --- keyboard -------------------------------------------------------------
   useEffect(() => {
@@ -245,6 +282,14 @@ export default function App() {
           break
         case 'delete':
         case 'backspace': {
+          // Nothing during a drag. `keydown` is on `window` and pointer
+          // capture does not stop it, so this fires mid-stroke — and the
+          // object tool drags the SELECTED object, which is the one this
+          // would delete. The store refuses a concurrent write at an address
+          // the open stroke owns, so the delete would not land; clearing the
+          // selection anyway would leave the panel pointing at nothing while
+          // the object is still there. Let go of the mouse first.
+          if (store.inStroke) break
           const id = stateRef.current.selectedObjectId
           if (id && store.reader.doc.objects[id]) {
             store.apply('Delete object', removeObject(store.reader.doc, id))
@@ -276,13 +321,7 @@ export default function App() {
 
   // --- autosave -------------------------------------------------------------
   useEffect(() => {
-    const handle = setTimeout(() => {
-      try {
-        localStorage.setItem(AUTOSAVE_KEY, serialize(store.reader.doc))
-      } catch {
-        // Quota or a private window; autosave is a convenience, not a promise.
-      }
-    }, 1200)
+    const handle = setTimeout(() => saveAutosave(store.reader.doc), 1200)
     return () => clearTimeout(handle)
   }, [revision, store])
 
@@ -565,7 +604,11 @@ export default function App() {
           {stats.meshMs.toFixed(1)}ms
           {softwareRenderer ? ' · software GL, post-processing off' : ''}
         </span>
-        <span>{store.reader.undoLabel() ?? 'nothing to undo'}</span>
+        {/* Gated on `canUndo`, not on the label: mid-drag the store refuses
+            undo and reports `canUndo` false while `undoLabel` still names the
+            entry underneath the stroke, so naming it here would advertise
+            something the disabled button beside it will not do. */}
+        <span>{store.reader.canUndo() ? store.reader.undoLabel() : 'nothing to undo'}</span>
       </footer>
     </div>
   )

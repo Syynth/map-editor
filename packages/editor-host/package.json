@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@map-editor/document": "workspace:*",
+    "@map-editor/geometry": "workspace:*",
     "@map-editor/registry": "workspace:*",
     "@xstate/react": "7.0.0-alpha.2",
     "xstate": "6.0.0-alpha.53",

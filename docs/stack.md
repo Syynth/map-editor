@@ -75,21 +75,51 @@ alone; do not route it through a machine.
       context menus, dropdowns, dialogs, tooltips, popovers.
 
 ### Adopt XState
-- [ ] Start with `Viewport.dragging` — the `'none' | 'stroke' | 'orbit' | 'pan'
+- [x] Start with `Viewport.dragging` — the `'none' | 'stroke' | 'orbit' | 'pan'
       | 'pending'` union and its transitions across three pointer handlers. It
       is the clearest existing machine and the one that has already produced a
-      bug.
+      bug. Done in #66 step 4, as a SPLIT rather than a move: arbitration (which
+      button with which modifier, the threshold, the alt press replayed as a
+      click) is `editor-host`'s gesture actor; the per-frame yaw, pitch and pan
+      deltas stayed in `viewport.ts`, which now asks the actor what gesture is
+      in progress and applies deltas against the answer. The bug went with it —
+      the replayed click picks at the press, not at the release.
 - [ ] Tool modes as hierarchical states: terrain(sculpt/paint) × verbs, objects,
       camera.
 - [x] Edit versus play as a top-level state: the host actor's `edit`/`play`
-      (#66 step 3). `App.tsx` still holds its own `playing` flag until step 7
-      rewires it; input interpretation follows then.
+      (#66 step 3). Since step 4 it is the only copy: `App.tsx` derives
+      `playing` from the host's mode, and the gesture actor reads it per press
+      to decide whether a left press starts a stroke — middle, right and
+      alt+drag still orbit and pan in play mode, as they always did.
 - [ ] Async work as actors: worker meshing, file load/save, glTF export,
       autosave — with cancellation, progress and failure handling.
-- [ ] Move the 18-field `EditorState` out of the single `useState` in `App.tsx`,
-      so changing brush size stops re-rendering every panel. The owners exist
-      — the `tools` and `view` actors in `editor-host` (#66 step 3) — and the
-      move is step 7.
+- [x] Move the 18-field `EditorState` out of the single `useState` in `App.tsx`.
+      Done in #66 step 4, because the stroke actor reads the tool parameters
+      and the eyedropper writes them back, and two copies of those would have
+      drifted within one drag: the sixteen fields now belong to the `tools`
+      actor (eleven), the `view` actor (four) and the host's own mode
+      (`playing`), and `App` assembles the object the panels take from their
+      snapshots. `set` routes each group to `tools.set`, `view.set`,
+      `selection.set` or `mode.play`/`mode.edit`.
+- [ ] Finish the App rewire (#66 step 7). Step 4 took the state ownership half
+      early — it had to, since the stroke actor reads the tool parameters and
+      the eyedropper writes them back — so step 7 is smaller than it was, but
+      it is NOT done. What it still owes, explicitly:
+      - Panels select the fields they read (`useToolsSelector`,
+        `useViewSelector`) instead of every one of them taking the single
+        `state` object `App` assembles, so changing brush size stops
+        re-rendering every panel.
+      - `exhaustive-deps` enabled for `App.tsx`: the viewport effect still
+        carries a `[]` with a prose justification beside it.
+      - Commands for the eleven direct store calls left in `App.tsx` — the
+        undo/redo keybinding and buttons, object delete, edit and display fix,
+        camera rig, atmosphere, and the `replace` on load — which are the
+        second write path `EditorStore` stays exported for.
+      - `EditorStore` out of `packages/document`'s barrel and out of
+        `main.tsx`, once nothing outside the document actor writes.
+      - `apps/editor/src/editor/state.ts`'s type aliases deleted: `ToolId`,
+        `TerrainMode`, `SculptVerb`, `PaintVerb` and `StrokeShape` now
+        duplicate `editor-host`'s, which are the ones the schemas derive from.
 - [ ] Establish the machine/store boundary in code review terms, so the document
       never drifts into machine context.
 
@@ -134,15 +164,54 @@ ticks produced **3,780 patches and 3,780 inverses across 260 unique addresses �
 patch every tick, and `pruneNoops` does not catch it because 0 -> 1 -> 2 -> 3 is
 three legitimate non-noop writes.
 
-- [ ] Compact per address within a stroke: keep the **last** forward value and
+- [x] Compact per address within a stroke: keep the **last** forward value and
       the **first** inverse value. Lossless, because intermediate states inside
       one stroke are never observable — the whole drag is a single undo entry.
-- [ ] Natural home is the stroke actor's context, as a
-      `Map<addressKey, { first, last }>` flushed as one command on `endStroke`.
-- [ ] Patches must still **apply immediately** so terrain deforms mid-drag. Only
-      the undo record is compacted; this is not buffer-then-apply.
-- [ ] Add a regression test asserting committed patch count equals unique
-      addresses touched.
+      An address whose last value equals its first is dropped entirely: a cell
+      put back where it started is not part of the edit.
+- [x] Natural home is the stroke actor's context, as a
+      `Map<addressKey, { first, last }>` flushed on `endStroke` (#66 step 4).
+      The store stopped accumulating rather than learning to compact: a tick
+      arrives as `applyStrokeTick`, which APPLIES but does not RECORD, and the
+      entry the store pushes is the record the actor hands it, so there is
+      exactly one owner of the stroke's history. `patchAddress` and
+      `inversePatch` moved into `packages/document`'s barrel for it — the actor
+      has to key a patch and read its before-value while holding only `reader`.
+- [x] A stroke tick has its OWN VERB, so `apply` still always records. The
+      first cut made "inside a stroke" a property of `apply`, and an ordinary
+      edit that landed mid-drag — `App`'s Delete keybinding is a `window`
+      keydown listener, which pointer capture does not stop — was applied and
+      recorded by neither the history nor the stroke's map. Worse than a lost
+      entry: `removeObject` patches `objects[id]` and `objectOrder`, so undoing
+      the stroke afterwards could restore the object without its order entry.
+      Pinned at both levels — `document.test.ts` through the store, and
+      `host.test.ts` through `createHost` + `host.input`.
+- [x] The own-verb fix stops the write being lost; it does not by itself make
+      two entries over ONE address unwind correctly. A mid-drag `Delete object`
+      of the very object being dragged (the object tool drags the selection,
+      and Delete deletes the selection) records two independent entries whose
+      stack order disagrees with the order they were written, and the first
+      undo resurrects the object into `objects` while `objectOrder` — owned
+      only by the other entry — stays without it. The same orphan, one step
+      further along. So `apply` REFUSES a concurrent write, whole, at an
+      address the open stroke has already written, and `App` checks
+      `store.inStroke` before the Delete branch so it does not clear the
+      selection for a delete that will not land. Only that direction needs the
+      rule: a stroke that later crosses an address an ordinary edit already
+      wrote records its before-value lazily, at the tick that first touches
+      it, so those two entries already unwind newest-first in write order.
+- [x] The other half of the stroke contract: `undo` and `redo` are REFUSED
+      while a stroke is open, and `canUndo`/`canRedo` report false, because the
+      entry the drag will produce does not exist yet. This replaced a
+      close-the-stroke-and-undo, which left the rest of the drag with no record
+      at all. The editor's footer reads `canUndo()` before it names the entry,
+      so it does not advertise an undo the disabled button will not perform.
+- [x] Patches must still **apply immediately** so terrain deforms mid-drag. Only
+      the undo record is compacted; this is not buffer-then-apply. Pinned by a
+      test that asserts the height moved and `canUndo()` is still false on
+      every tick.
+- [x] Add a regression test asserting committed patch count equals unique
+      addresses touched — `packages/editor-host/src/stroke.test.ts`.
 
 ### Schema and validation
 Brief §13 makes generated forms from engine-defined types a **firm requirement**,
@@ -156,9 +225,12 @@ and §14 makes the extras spec a public contract other engines implement.
       most easily underestimated.
 
 ### Input
-- [ ] **A keymap registry.** Shortcuts are currently raw `keydown` on `window`
-      into a `Set<string>`. Needs declared bindings, conflict detection and user
-      rebinding. The Option+drag orbit binding was unreachable on a MacBook
+- [ ] **A keymap registry.** Shortcuts are still raw `keydown` on `window` — one
+      listener in `App.tsx` for the tool shortcuts, one in `viewport.ts` that
+      now only forwards held keys to the gesture actor, whose context replaced
+      the viewport's `Set<string>` (#14: a modifier held while dragging is the
+      gesture actor's, not the keymap's). Needs declared bindings, conflict
+      detection and user rebinding. The Option+drag orbit binding was unreachable on a MacBook
       trackpad precisely because bindings are scattered and undeclared; this
       gets worse, not better, with more tools.
 

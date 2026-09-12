@@ -154,6 +154,9 @@ importers:
       '@map-editor/document':
         specifier: workspace:*
         version: link:../../packages/document
+      '@map-editor/editor-host':
+        specifier: workspace:*
+        version: link:../../packages/editor-host
       '@map-editor/fixtures':
         specifier: workspace:*
         version: link:../../packages/fixtures
@@ -241,6 +244,9 @@ importers:
       '@map-editor/document':
         specifier: workspace:*
         version: link:../document
+      '@map-editor/geometry':
+        specifier: workspace:*
+        version: link:../geometry
       '@map-editor/registry':
         specifier: workspace:*
         version: link:../registry

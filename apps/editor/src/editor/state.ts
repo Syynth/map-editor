@@ -9,9 +9,15 @@
  * with their own verbs, not a plugin registry. The brief is explicit that the
  * shared framework should be extracted once three or four tools exist, and
  * right now there are three.
+ *
+ * What is left is the SHAPE the panels take, not a store: since #66 step 4
+ * every field is owned by an actor in `editor-host` — eleven by `tools`, four
+ * by `view`, and `playing` is the host's own mode — and `App` assembles this
+ * object from their snapshots. The initial values went with them, which is
+ * why there is no `initialEditorState` here any more.
  */
 
-import { NO_RAMP, type Brush } from '@map-editor/document'
+import type { Brush } from '@map-editor/document'
 
 export type ToolId = 'terrain' | 'object' | 'camera'
 export type TerrainMode = 'sculpt' | 'paint'
@@ -39,25 +45,4 @@ export interface EditorState {
   playing: boolean
   /** Which right-hand panel is showing. */
   inspector: 'properties' | 'coverage' | 'atmosphere' | 'outliner'
-}
-
-export function initialEditorState(): EditorState {
-  return {
-    tool: 'terrain',
-    terrainMode: 'sculpt',
-    sculptVerb: 'raise',
-    paintVerb: 'tile',
-    strokeShape: 'brush',
-    brush: { size: 1, shape: 'square' },
-    material: 0,
-    tile: 0,
-    tint: 0xffffff,
-    rampDir: NO_RAMP,
-    spriteName: 'tree',
-    selectedObjectId: null,
-    showGrid: true,
-    gameCamera: false,
-    playing: false,
-    inspector: 'properties',
-  }
 }

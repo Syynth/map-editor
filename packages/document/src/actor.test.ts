@@ -3,6 +3,7 @@ import { createActor, initialTransition, transition } from 'xstate'
 
 import { createDocumentActorLogic, documentLogic } from './actor'
 import { cellIndex, createMap, type ReadonlyMapDoc } from './document'
+import { inversePatch, type Patch } from './edits'
 import { raise } from './ops'
 import { createDocumentStore, EditorStore, type DocumentWriter } from './store'
 
@@ -14,9 +15,10 @@ import { createDocumentStore, EditorStore, type DocumentWriter } from './store'
  * down are the same claim seen through `reader`.
  */
 function countingWriter(): { writer: DocumentWriter; calls: Record<keyof DocumentWriter, number> } {
-  const calls = { apply: 0, beginStroke: 0, endStroke: 0, undo: 0, redo: 0, replace: 0 }
+  const calls = { apply: 0, applyStrokeTick: 0, beginStroke: 0, endStroke: 0, undo: 0, redo: 0, replace: 0 }
   const writer: DocumentWriter = {
     apply: () => void (calls.apply += 1),
+    applyStrokeTick: () => void (calls.applyStrokeTick += 1),
     beginStroke: () => void (calls.beginStroke += 1),
     endStroke: () => void (calls.endStroke += 1),
     undo: () => void (calls.undo += 1),
@@ -47,6 +49,19 @@ describe('document actor: every write goes through enq (#22)', () => {
     for (let i = 0; i < N; i++) actor.send({ type: 'patch', label: 'Raise', patches: onePatch(i) })
 
     expect(calls.apply).toBe(N)
+  })
+
+  it('applies N strokePatch events exactly N times, not 2N, and refuses the empty one', () => {
+    const { writer, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer)).start()
+
+    const N = 7
+    for (let i = 0; i < N; i++) actor.send({ type: 'strokePatch', patches: onePatch(i) })
+    actor.send({ type: 'strokePatch', patches: [] })
+
+    expect(calls.applyStrokeTick).toBe(N)
+    // A stroke tick never reaches the always-recording verb.
+    expect(calls.apply).toBe(0)
   })
 
   it('applies nothing on the path the transition refuses', () => {
@@ -84,11 +99,11 @@ describe('document actor: every write goes through enq (#22)', () => {
     const actor = createActor(documentLogic(writer)).start()
 
     actor.send({ type: 'beginStroke', label: 'Stroke' })
-    actor.send({ type: 'endStroke' })
+    actor.send({ type: 'endStroke', patches: [], inverse: [] })
     actor.send({ type: 'undo' })
     actor.send({ type: 'redo' })
 
-    expect(calls).toEqual({ apply: 0, beginStroke: 1, endStroke: 1, undo: 1, redo: 1, replace: 0 })
+    expect(calls).toEqual({ apply: 0, applyStrokeTick: 0, beginStroke: 1, endStroke: 1, undo: 1, redo: 1, replace: 0 })
   })
 })
 
@@ -107,17 +122,27 @@ describe('document actor over a real store', () => {
     expect(store.reader.doc.terrain.height[index]).toBe(before + 3)
   })
 
-  it('closes one Edit per stroke, so one undo unwinds every tick', () => {
+  it('closes one Edit per stroke — the record it is handed — so one undo unwinds every tick', () => {
     const store = new EditorStore(createMap(8, 8))
     const actor = createActor(createDocumentActorLogic(store)).start()
     const doc = store.reader.doc
     const before = doc.terrain.height.slice()
 
+    // The record is the sender's: inverses read before each patch lands, as
+    // the stroke actor in `editor-host` does per tick (#11).
+    const patches: Patch[] = []
+    const inverse: Patch[] = []
     actor.send({ type: 'beginStroke', label: 'Raise' })
     for (let i = 0; i < 5; i++) {
-      actor.send({ type: 'patch', label: 'Raise', patches: raise(doc, [[i, 0]], 1) })
+      const tick = raise(doc, [[i, 0]], 1)
+      patches.push(...tick)
+      inverse.push(...tick.map((patch) => inversePatch(doc, patch)))
+      actor.send({ type: 'strokePatch', patches: tick })
+      // Applied on arrival: the drag is visible before it is an undo entry.
+      expect(doc.terrain.height[cellIndex(doc.size, i, 0)]).toBe(before[i] + 1)
+      expect(store.reader.canUndo()).toBe(false)
     }
-    actor.send({ type: 'endStroke' })
+    actor.send({ type: 'endStroke', patches, inverse })
     expect(store.reader.canUndo()).toBe(true)
     expect(store.reader.undoLabel()).toBe('Raise')
 

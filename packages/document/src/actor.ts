@@ -50,14 +50,24 @@ import { writerOf, type DocumentWriter, type EditorStore } from './store'
  *
  * `command` is the host's route in (#8): the same `undo`/`redo` the raw
  * events carry, arriving as a dispatched command so a keybinding, a menu and
- * a test reach the write handle by one path. The raw events stay for callers
- * that hold the ref directly — the stroke actor (#66 step 4) will send
- * `patch` per tick without a command in between.
+ * a test reach the write handle by one path. The raw events are for callers
+ * that hold the ref directly — the stroke actor in `editor-host` (#11, #66
+ * step 4) sends `strokePatch` per tick without a command in between, and
+ * closes with `endStroke` carrying the record it compacted per address.
+ * Patches are applied as they arrive; the record is only what history keeps.
+ *
+ * `strokePatch` is a SEPARATE VERB from `patch` on purpose. When "inside a
+ * stroke" was a property of `apply` instead, an ordinary edit that happened
+ * to land mid-drag — the Delete keybinding fires on `window` during a pointer
+ * drag — was applied and recorded by nothing: not by the history, and not by
+ * the stroke actor's map, which only holds patches the stroke itself
+ * produced. `patch` now always records; a stroke tick says so in its type.
  */
 export type DocumentEvent =
   | { type: 'patch'; label: string; patches: Patch[] }
+  | { type: 'strokePatch'; patches: Patch[] }
   | { type: 'beginStroke'; label: string }
-  | { type: 'endStroke' }
+  | { type: 'endStroke'; patches: Patch[]; inverse: Patch[] }
   | { type: 'undo' }
   | { type: 'redo' }
   | CommandEvent
@@ -72,8 +82,9 @@ export function documentLogic(writer: DocumentWriter) {
     schemas: {
       events: {
         patch: types<{ label: string; patches: Patch[] }>(),
+        strokePatch: types<{ patches: Patch[] }>(),
         beginStroke: types<{ label: string }>(),
-        endStroke: types<void>(),
+        endStroke: types<{ patches: Patch[]; inverse: Patch[] }>(),
         undo: types<void>(),
         redo: types<void>(),
         command: types<{ id: string; args: unknown }>(),
@@ -95,12 +106,19 @@ export function documentLogic(writer: DocumentWriter) {
             enq(() => writer.apply(event.label, event.patches))
             return {}
           },
+          strokePatch: ({ event }, enq) => {
+            // Same refusal as `patch`, and for the same reason: the empty list
+            // is the "not enabled" shape, taken before `enq` is touched.
+            if (event.patches.length === 0) return undefined
+            enq(() => writer.applyStrokeTick(event.patches))
+            return {}
+          },
           beginStroke: ({ event }, enq) => {
             enq(() => writer.beginStroke(event.label))
             return {}
           },
-          endStroke: (_, enq) => {
-            enq(() => writer.endStroke())
+          endStroke: ({ event }, enq) => {
+            enq(() => writer.endStroke({ patches: event.patches, inverse: event.inverse }))
             return {}
           },
           undo: (_, enq) => {

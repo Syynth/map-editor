@@ -14,6 +14,13 @@
  *
  * Two commands: `view.set` for the toggles and `selection.set` for the id.
  * Both are pure context patches; nothing here calls `enq`.
+ *
+ * `select` is the same write arriving by the host-internal door, for the
+ * object tool, which selects from inside a stroke effect where re-entering
+ * `dispatch` would run the registry's resolution inside an enqueued effect.
+ * It carries the id as a TYPE rather than as `args: unknown`, so the shape is
+ * checked at the call site instead of by a cast. It is not a second command
+ * path — no id, no registry, and no ref outside this package to send it (#8).
  */
 
 import { commands, defineContextKey, reserveOwner } from '@map-editor/registry'
@@ -56,7 +63,10 @@ commands.declare(VIEW_OWNER, { id: 'selection.set', title: 'Select Object', cate
 export const viewLogic = setup({
   schemas: {
     context: types<ViewContext>(),
-    events: { command: types<{ id: string; args: unknown }>() },
+    events: {
+      command: types<{ id: string; args: unknown }>(),
+      select: types<{ id: string | null }>(),
+    },
   },
 }).createMachine({
   id: 'view',
@@ -70,6 +80,7 @@ export const viewLogic = setup({
           if (event.id === 'selection.set') return { context: { selectedObjectId: (event.args as z.infer<typeof selection>).id } }
           return undefined
         },
+        select: ({ event }) => ({ context: { selectedObjectId: event.id } }),
       },
     },
   },

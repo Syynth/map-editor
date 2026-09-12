@@ -12,13 +12,21 @@
  *
  * The host owns `mode` as its top-level state — `edit` or `play` (#11) — and
  * the lifetimes of its children: the document actor (the one holder of the
- * write path, #13), the long-lived `tools` and `view` actors, and one actor
- * per installed feature. Children are held in context as refs, and a STALE
- * REF IS RETAINED, NEVER NULLED: a send to a stopped ref dead-letters with
- * `reason: 'stopped'` and the router stays `active`, while a send to
- * `undefined` is a silent no-op (#15, measured on alpha.53). Retaining is
- * what makes "declared but nobody is listening" observable as an `unhandled`
- * result instead of vanishing.
+ * write path, #13), the long-lived `tools`, `view` and `gesture` actors, and
+ * one actor per installed feature. The gesture actor in turn spawns one
+ * stroke actor per pointer-down (`gesture.ts`, `stroke.ts`). Children are
+ * held in context as refs, and a STALE REF IS RETAINED, NEVER NULLED: a send
+ * to a stopped ref dead-letters with `reason: 'stopped'` and the router stays
+ * `active`, while a send to `undefined` is a silent no-op (#15, measured on
+ * alpha.53). Retaining is what makes "declared but nobody is listening"
+ * observable as an `unhandled` result instead of vanishing.
+ *
+ * Pointer input is NOT a command. It reaches the gesture actor through
+ * `Host.input`, whose methods the viewport's handlers are: a press or a move
+ * is not something a keybinding or a palette invokes, and its answer — which
+ * gesture this is — is read back synchronously so the viewport can apply its
+ * per-frame deltas against it. `dispatch` stays the only entry point for
+ * everything a command is.
  *
  * Three constraints from the map shape the code and are easy to undo by
  * accident:
@@ -28,8 +36,10 @@
  *    nothing the size of a document can reach an inspector (#4).
  * 2. EVERY EFFECT GOES THROUGH `enq`. A v6 transition body re-runs from the
  *    top the moment it touches `enq` (#2), so the routing bodies below are
- *    pure apart from `enq.sendTo` / `enq.stop`, and the dead-letter count the
- *    dispatcher reads is taken outside the machine, after `send` returns.
+ *    pure apart from `enq.sendTo` / `enq.stop`, and the dead letters the
+ *    dispatcher reads are taken outside the machine, after `send` returns —
+ *    and matched to the routed command's event, not counted, because a stroke
+ *    actor sending internally can dead-letter for reasons of its own.
  * 3. TEARDOWN IS NEVER IN `exit`: exit actions do not run when an actor is
  *    stopped (xstate#4630). `dispose(owner)` orders it explicitly — revoke
  *    declarations, send `dispose`, stop the ref (#21 §5) — and `stop()` is a
@@ -45,6 +55,7 @@ import {
   DOCUMENT_OWNER,
   createDocumentActorLogic,
   documentKeys,
+  type Cell,
   type DocumentActorLogic,
   type DocumentReader,
   type EditorStore,
@@ -72,10 +83,14 @@ import {
   type InspectionEvent,
 } from 'xstate'
 
+import { gestureLogic, type Gesture, type GestureLogic, type PointerMotion, type PointerPress, type PointerRelease } from './gesture'
+import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps } from './strokes'
 import { TOOLS_OWNER, toolKeys, toolsLogic, type ToolsLogic } from './tools'
 import { VIEW_OWNER, viewKeys, viewLogic, type ViewLogic } from './view'
 
 export const HOST_OWNER = reserveOwner('editor-host')
+/** The gesture actor declares no commands; the id is the key its ref is held under. */
+export const GESTURE_OWNER = reserveOwner('editor-host.gesture')
 
 export type Mode = 'edit' | 'play'
 
@@ -152,14 +167,55 @@ function hostLogic(store: EditorStore, features: readonly Feature[]) {
     // Spawned from the logic values, not from string source keys: on
     // alpha.53 `spawn('key')` inside the initial-context factory reaches a
     // logic with no `initialTransition` and the child starts in `error`.
-    context: ({ spawn }) => ({
-      children: {
-        [DOCUMENT_OWNER]: spawn(documentLogic, { id: 'document' }),
-        [TOOLS_OWNER]: spawn(toolsLogic, { id: 'tools' }),
-        [VIEW_OWNER]: spawn(viewLogic, { id: 'view' }),
-        ...Object.fromEntries(features.map((feature) => [feature.owner, spawn(feature.logic, { id: feature.owner })])),
-      },
-    }),
+    context: ({ spawn }) => {
+      const document = spawn(documentLogic, { id: 'document' })
+      const tools = spawn(toolsLogic, { id: 'tools' })
+      const view = spawn(viewLogic, { id: 'view' })
+      // The gesture actor's stroke children write through the document ref
+      // and read tool parameters from the tools ref, so its logic is built
+      // here, closed over the sibling refs — a factory closure, the same
+      // mechanism that keeps the store off `input` (#4).
+      //
+      // The eyedropper's tool write and the object tool's selection leave
+      // through `settings` and `select`: TYPED HOST-INTERNAL EVENTS, not
+      // commands. They run inside a stroke's enqueued effect, where calling
+      // `dispatch` would re-enter the registry from within an effect; and a
+      // hand-rolled `{ type: 'command', id, args }` at the sibling ref — what
+      // this was — skipped `resolveCommand`, `validateArgs` and availability
+      // while looking exactly like the entry point #8 settled on, with
+      // `args: unknown` letting a cast rather than the schema decide what was
+      // legal. The typed events carry `ToolSettings` and the id as types, so
+      // a change to the schema's shape reaches these call sites, and nothing
+      // here pretends to be a command. `dispatch` stays the only way IN.
+      const strokeDeps: StrokeDeps = {
+        reader: store.reader,
+        tools: () => {
+          const snapshot = tools.getSnapshot()
+          return { ...snapshot.context, terrainMode: snapshot.value }
+        },
+        setTools: (settings) => tools.send({ type: 'settings', settings }),
+        select: (id) => view.send({ type: 'select', id }),
+      }
+      const gesture = spawn(
+        gestureLogic({
+          reader: store.reader,
+          document,
+          // #11: a handler never reads ambient selection; the host fills the
+          // id in at the press, the way a UI fills in a command's argument.
+          strokeFor: (sample) => createStrokeHandler(strokeDeps, sample, view.getSnapshot().context.selectedObjectId),
+        }),
+        { id: 'gesture' },
+      )
+      return {
+        children: {
+          [DOCUMENT_OWNER]: document,
+          [TOOLS_OWNER]: tools,
+          [VIEW_OWNER]: view,
+          [GESTURE_OWNER]: gesture,
+          ...Object.fromEntries(features.map((feature) => [feature.owner, spawn(feature.logic, { id: feature.owner })])),
+        },
+      }
+    },
     initial: 'edit',
     states: {
       edit: {
@@ -203,6 +259,29 @@ export interface HostChildren {
   readonly document: ActorRefFrom<DocumentActorLogic>
   readonly tools: ActorRefFrom<ToolsLogic>
   readonly view: ActorRefFrom<ViewLogic>
+  readonly gesture: ActorRefFrom<GestureLogic>
+}
+
+/**
+ * The pointer and key port the viewport drives (#11). Each pointer method
+ * answers with the gesture the press has become, read straight off the
+ * gesture actor after the send — xstate processes a send synchronously when
+ * the actor is idle — so the viewport applies orbit and pan deltas against
+ * the actor's decision without holding a copy of it. All arrows: the viewport
+ * stores them detached from `Host`.
+ */
+export interface EditorInput {
+  pointerDown(press: PointerPress): Gesture
+  pointerMove(motion: PointerMotion): Gesture
+  pointerUp(release: PointerRelease): void
+  /** The pick under the pointer while `pointerMove` answers `'stroke'`; the viewport picks only then. */
+  strokeMove(pick: PickSample, modifiers: PointerModifiers): void
+  keyDown(key: string): void
+  keyUp(key: string): void
+  heldKeys(): ReadonlySet<string>
+  gesture(): Gesture
+  /** The cell the open stroke began on — what a rectangle preview grows from — or `null` outside a stroke. */
+  strokeOrigin(): Cell | null
 }
 
 export interface Host {
@@ -210,6 +289,7 @@ export interface Host {
   /** The document's read path (#13): what a panel selects from and what a test asserts through. */
   readonly reader: DocumentReader
   readonly children: HostChildren
+  readonly input: EditorInput
   /** Every undelivered event since the host started, oldest first. */
   readonly deadLetters: readonly DeadLetter[]
   /** THE SINGLE ENTRY POINT. Plain serialisable arguments; never throws. */
@@ -251,6 +331,31 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
     document: initial[DOCUMENT_OWNER] as ActorRefFrom<DocumentActorLogic>,
     tools: initial[TOOLS_OWNER] as ActorRefFrom<ToolsLogic>,
     view: initial[VIEW_OWNER] as ActorRefFrom<ViewLogic>,
+    gesture: initial[GESTURE_OWNER] as ActorRefFrom<GestureLogic>,
+  }
+
+  const { gesture } = children
+  const currentGesture = (): Gesture => gesture.getSnapshot().value
+  const input: EditorInput = {
+    // `editing` is derived per press from the live mode, never held (#8).
+    pointerDown: (press) => {
+      gesture.send({ type: 'pointer.down', ...press, editing: actor.getSnapshot().value === 'edit' })
+      return currentGesture()
+    },
+    pointerMove: (motion) => {
+      gesture.send({ type: 'pointer.move', ...motion })
+      return currentGesture()
+    },
+    pointerUp: (release) => gesture.send({ type: 'pointer.up', ...release }),
+    strokeMove: (pick, modifiers) => gesture.send({ type: 'stroke.move', sample: { pick, modifiers } }),
+    keyDown: (key) => gesture.send({ type: 'key.down', key }),
+    keyUp: (key) => gesture.send({ type: 'key.up', key }),
+    heldKeys: () => gesture.getSnapshot().context.held,
+    gesture: currentGesture,
+    strokeOrigin: () => {
+      const snapshot = gesture.getSnapshot()
+      return snapshot.value === 'stroke' ? (snapshot.context.stroke?.getSnapshot().context.origin ?? null) : null
+    },
   }
 
   function contextKeys(): ContextSnapshot {
@@ -282,8 +387,15 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
       return { ok: false, kind: 'unhandled', reason: `"${id}" is declared by "${owner}", whose actor was never started` }
     const before = deadLetters.length
     actor.send({ type: 'command', owner, id, args: resolution.args })
-    if (deadLetters.length > before)
-      return { ok: false, kind: 'unhandled', reason: `"${id}" is declared by "${owner}", whose actor has stopped (${deadLetters[before].reason})` }
+    // Matched to THIS command's event, not counted: a dead letter that lands
+    // during the send but carries some other event — a stroke actor's late
+    // `move` to a child that finished, say — is somebody else's news, and
+    // attributing it here would report a delivered command as unhandled.
+    // The undelivered event is the routed form (`{ type: 'command', id }`) at
+    // a child, or the host-bound form with `owner` when the host itself has
+    // stopped; both carry `type` and `id`.
+    const undelivered = deadLetters.slice(before).find((letter) => letter.event.type === 'command' && letter.event.id === id)
+    if (undelivered) return { ok: false, kind: 'unhandled', reason: `"${id}" is declared by "${owner}", whose actor has stopped (${undelivered.reason})` }
     return { ok: true }
   }
 
@@ -296,6 +408,7 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
     actor,
     reader,
     children,
+    input,
     deadLetters,
     dispatch,
     contextKeys,

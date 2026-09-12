@@ -17,7 +17,7 @@
  * makes a brush stroke a flat list of small writes which coalesce cleanly.
  */
 
-import type { MapDoc, MapObject } from './document'
+import type { MapDoc, MapObject, ReadonlyMapDoc } from './document'
 
 export type TerrainField = 'height' | 'material' | 'ramp' | 'water'
 export type PaintLayer = 'top' | 'cliff' | 'tint'
@@ -36,39 +36,81 @@ export interface Edit {
   inverse: Patch[]
 }
 
+/** An `Edit` without its label: what a stroke hands back on release, labelled by the store from `beginStroke`. */
+export type StrokeRecord = Pick<Edit, 'patches' | 'inverse'>
+
+/**
+ * The slot a patch writes, as a key. Two patches with equal keys overwrite
+ * each other, which is what makes per-address compaction lossless: within
+ * one stroke only the last forward value and the first before-value can ever
+ * be observed (#11). The stroke actor in `editor-host` keys its map on this.
+ */
+export function patchAddress(patch: Patch): string {
+  switch (patch.t) {
+    case 'terrain':
+      return `terrain:${patch.field}:${patch.index}`
+    case 'paint':
+      return `paint:${patch.layer}:${patch.key}`
+    case 'object':
+      return `object:${patch.id}`
+    case 'objectOrder':
+      return 'objectOrder'
+    case 'doc':
+      return `doc:${patch.field}`
+  }
+}
+
+/**
+ * The patch that would undo `patch` were it applied to `doc` now: the
+ * before-value at its address. Reads only, so it takes the readonly view and
+ * a holder of `reader` can compute an inverse BEFORE sending the forward
+ * patch — the stroke actor needs exactly that to record `first` without ever
+ * seeing the writer.
+ *
+ * The two casts re-wrap values the readonly view narrowed: the inverse puts
+ * the same object or array reference back wholesale, and `DeepReadonly` is a
+ * promise about who writes, not a different runtime shape.
+ */
+export function inversePatch(doc: ReadonlyMapDoc, patch: Patch): Patch {
+  switch (patch.t) {
+    case 'terrain':
+      return { t: 'terrain', field: patch.field, index: patch.index, value: doc.terrain[patch.field][patch.index] }
+    case 'paint':
+      return { t: 'paint', layer: patch.layer, key: patch.key, value: doc.paint[patch.layer][patch.key] }
+    case 'object':
+      return { t: 'object', id: patch.id, value: doc.objects[patch.id] as MapObject | undefined }
+    case 'objectOrder':
+      return { t: 'objectOrder', value: doc.objectOrder as string[] }
+    case 'doc':
+      return { t: 'doc', field: patch.field, value: (doc as unknown as Record<string, unknown>)[patch.field] }
+  }
+}
+
 /** Apply one patch, returning the patch that undoes it. */
 function applyPatch(doc: MapDoc, patch: Patch): Patch {
+  const inverse = inversePatch(doc, patch)
   switch (patch.t) {
-    case 'terrain': {
-      const arr = doc.terrain[patch.field]
-      const before = arr[patch.index]
-      arr[patch.index] = patch.value
-      return { t: 'terrain', field: patch.field, index: patch.index, value: before }
-    }
+    case 'terrain':
+      doc.terrain[patch.field][patch.index] = patch.value
+      break
     case 'paint': {
       const layer = doc.paint[patch.layer]
-      const before = layer[patch.key]
       if (patch.value === undefined) delete layer[patch.key]
       else layer[patch.key] = patch.value
-      return { t: 'paint', layer: patch.layer, key: patch.key, value: before }
+      break
     }
-    case 'object': {
-      const before = doc.objects[patch.id]
+    case 'object':
       if (patch.value === undefined) delete doc.objects[patch.id]
       else doc.objects[patch.id] = patch.value
-      return { t: 'object', id: patch.id, value: before }
-    }
-    case 'objectOrder': {
-      const before = doc.objectOrder
+      break
+    case 'objectOrder':
       doc.objectOrder = patch.value
-      return { t: 'objectOrder', value: before }
-    }
-    case 'doc': {
-      const before = (doc as unknown as Record<string, unknown>)[patch.field]
+      break
+    case 'doc':
       ;(doc as unknown as Record<string, unknown>)[patch.field] = patch.value
-      return { t: 'doc', field: patch.field, value: before }
-    }
+      break
   }
+  return inverse
 }
 
 /**

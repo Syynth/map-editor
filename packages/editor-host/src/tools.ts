@@ -4,9 +4,11 @@
  * These are properties of the person editing, not of the map — which tool is
  * active, how big the brush is, which tile the paint brush lays down — so
  * none of it is serialised and none of it touches the document. They came
- * out of the 18-field `EditorState` that `App.tsx` still holds in one
- * `useState` (#66 step 7 rewires it onto this actor); the split is by owner
- * and lifetime, not for re-renders, which `useSelector` fixes on its own.
+ * out of the 18-field `EditorState` that `App.tsx` held in one `useState`;
+ * since #66 step 4 this actor IS that state, and the app assembles the panels'
+ * object from this snapshot and the view actor's. The split is by owner and
+ * lifetime, not for re-renders, which `useSelector` fixes on its own — and the
+ * app has yet to take that half, since it still selects whole snapshots.
  *
  * `terrainMode` is a STATE and the rest is CONTEXT, deliberately (#11): the
  * mode changes what a pointer-drag means, so it is the one parameter whose
@@ -21,6 +23,18 @@
  * is an `invalid-args` result before anything is sent, and the handler may
  * trust what arrives. Nothing here calls `enq` — the transition is pure
  * context — so v6 runs the body once (#2's `enq` constraint).
+ *
+ * `settings` is the same patch arriving by the HOST-INTERNAL door. The
+ * eyedropper writes a tool parameter from inside a stroke effect, and
+ * re-entering `dispatch` from there would run the registry's resolution
+ * inside an enqueued effect; sending the sibling ref a hand-rolled
+ * `{ type: 'command', id: 'tools.set', args }` instead was worse, because
+ * `args: unknown` meant the cast, not the schema, decided what was legal and
+ * a change to `toolSettings` would not have reached the call site. This event
+ * carries `ToolSettings` as a TYPE, so it does. It is not a second command
+ * path: it has no id, the registry never sees it, and nothing outside this
+ * package holds a ref to send it — `dispatch` remains the only entry point
+ * for anything a command is (#8).
  */
 
 import { NO_RAMP } from '@map-editor/document'
@@ -108,7 +122,10 @@ function applySettings(settings: ToolSettings, current: TerrainMode): { target?:
 export const toolsLogic = setup({
   schemas: {
     context: types<ToolsContext>(),
-    events: { command: types<{ id: string; args: unknown }>() },
+    events: {
+      command: types<{ id: string; args: unknown }>(),
+      settings: types<{ settings: ToolSettings }>(),
+    },
   },
 }).createMachine({
   id: 'tools',
@@ -118,11 +135,13 @@ export const toolsLogic = setup({
     sculpt: {
       on: {
         command: ({ event }) => (event.id === 'tools.set' ? applySettings(event.args as ToolSettings, 'sculpt') : undefined),
+        settings: ({ event }) => applySettings(event.settings, 'sculpt'),
       },
     },
     paint: {
       on: {
         command: ({ event }) => (event.id === 'tools.set' ? applySettings(event.args as ToolSettings, 'paint') : undefined),
+        settings: ({ event }) => applySettings(event.settings, 'paint'),
       },
     },
   },

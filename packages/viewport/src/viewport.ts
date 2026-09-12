@@ -85,13 +85,51 @@ export interface PointerModifiers {
   shift: boolean
   alt: boolean
   ctrl: boolean
+}
+
+/**
+ * Which gesture a press turned out to be — the arbitration actor's answer,
+ * not a flag this class keeps (#11). The `dragging` union that used to live
+ * here SPLIT: deciding which gesture a press is, and replaying an alt press
+ * that never travelled as a click, went to `editor-host`'s gesture actor;
+ * the per-frame yaw, pitch and pan deltas stayed, because sixty round trips
+ * a second through an actor is not what an actor is for.
+ */
+export type Gesture = 'none' | 'pending' | 'stroke' | 'orbit' | 'pan'
+
+export interface PointerPress {
+  x: number
+  y: number
+  /** DOM button: 0 left, 1 middle, 2 right. */
   button: number
+  modifiers: PointerModifiers
+  /**
+   * What is under a left press, picked HERE and picked ONCE. The old code
+   * kept the press event and re-picked it at release to replay an alt click,
+   * against a scene the drag may have moved; carrying the pick with the press
+   * is what makes the replay land on the cell that was actually pressed.
+   */
+  pick: PickResult | null
+}
+
+export interface PointerMotion {
+  x: number
+  y: number
+  modifiers: PointerModifiers
 }
 
 export interface ViewportHandlers {
-  onStrokeStart(pick: PickResult, modifiers: PointerModifiers): void
+  /** A press on the canvas. What gesture it became is not answered here: a press moves nothing, and the next move asks. */
+  onPointerDown(press: PointerPress): void
+  /** Motion anywhere; the answer is the gesture now in progress, which is what the deltas below are applied against. */
+  onPointerMove(motion: PointerMotion): Gesture
+  onPointerUp(release: { x: number; y: number }): void
+  /** One tick of an open stroke: only sent while `onPointerMove` answers `'stroke'`. */
   onStrokeMove(pick: PickResult, modifiers: PointerModifiers): void
-  onStrokeEnd(): void
+  onKeyDown(key: string): void
+  onKeyUp(key: string): void
+  /** Keys held right now, lower-cased. Read every frame for WASD; the set itself lives in the gesture actor (#14). */
+  heldKeys(): ReadonlySet<string>
   onHover(pick: PickResult): void
   onCameraChange(state: { yaw: number; pitch: number; distance: number; inBounds: boolean }): void
   onStats(stats: { fps: number; triangles: number; meshMs: number }): void
@@ -108,11 +146,6 @@ export interface ViewportOptions {
   hover: SurfaceAddress | null
   selectedObjectId: string | null
 }
-
-/** How far an alt+left press must travel before it counts as an orbit drag
- *  rather than an eyedropper click. Small enough that a deliberate drag is
- *  never swallowed, large enough to absorb trackpad jitter during a tap. */
-const ORBIT_DRAG_THRESHOLD = 4
 
 const DEFAULT_OPTIONS: ViewportOptions = {
   brushPreview: [],
@@ -172,12 +205,7 @@ export class Viewport {
   private selectionBox: THREE.Box3Helper
 
   private character: Character | null = null
-  private keys = new Set<string>()
 
-  private dragging: 'none' | 'stroke' | 'orbit' | 'pan' | 'pending' = 'none'
-  /** An alt+left press that has not yet moved far enough to count as an orbit.
-   *  Held here so a click can still reach the eyedropper on release. */
-  private pending: { x: number; y: number; event: PointerEvent } | null = null
   private lastPointer = { x: 0, y: 0 }
   private frameHandle = 0
   private lastTime = performance.now()
@@ -545,7 +573,6 @@ export class Viewport {
       shift: event.shiftKey,
       alt: event.altKey,
       ctrl: event.ctrlKey || event.metaKey,
-      button: (event as PointerEvent).button ?? 0,
     }
   }
 
@@ -558,27 +585,18 @@ export class Viewport {
     this.canvas.setPointerCapture(event.pointerId)
     this.lastPointer = { x: event.clientX, y: event.clientY }
 
-    // Middle drags orbit and right drags pan, but a MacBook trackpad has no
-    // middle button, so alt+drag orbits as well — the Maya/Unity gesture. Alt
-    // is also the eyedropper, so the press is held as 'pending' until it moves
-    // far enough to be a drag; a release before that is treated as the click.
-    if (event.button === 1) {
-      this.dragging = 'orbit'
-      return
-    }
-    if (event.button === 2) {
-      this.dragging = 'pan'
-      return
-    }
-    if (event.button === 0 && event.altKey) {
-      this.dragging = 'pending'
-      this.pending = { x: event.clientX, y: event.clientY, event }
-      return
-    }
-    if (event.button !== 0 || this.options.playing) return
-
-    this.dragging = 'stroke'
-    this.handlers.onStrokeStart(this.pickAt(event), this.modifiers(event))
+    // Which gesture this is, is not decided here any more. A left press is
+    // picked unconditionally — including an alt press, which may yet turn out
+    // to be an eyedropper click rather than an orbit — because the pick has to
+    // be taken at the press to be the press's, and one raycast per click is
+    // not worth arbitrating over.
+    this.handlers.onPointerDown({
+      x: event.clientX,
+      y: event.clientY,
+      button: event.button,
+      modifiers: this.modifiers(event),
+      pick: event.button === 0 ? this.pickAt(event) : null,
+    })
   }
 
   private onPointerMove = (event: PointerEvent): void => {
@@ -586,46 +604,36 @@ export class Viewport {
     const dy = event.clientY - this.lastPointer.y
     this.lastPointer = { x: event.clientX, y: event.clientY }
 
-    if (this.dragging === 'pending' && this.pending) {
-      const moved = Math.hypot(event.clientX - this.pending.x, event.clientY - this.pending.y)
-      if (moved < ORBIT_DRAG_THRESHOLD) return
-      this.dragging = 'orbit'
-      this.pending = null
-    }
-    if (this.dragging === 'orbit') {
+    const gesture = this.handlers.onPointerMove({ x: event.clientX, y: event.clientY, modifiers: this.modifiers(event) })
+    // An alt press that crossed the threshold on THIS event answers 'orbit',
+    // so its first frame of travel turns the camera rather than being eaten.
+    if (gesture === 'orbit') {
       this.orbit.yaw = wrapDegrees(this.orbit.yaw - dx * 0.4)
       this.orbit.pitch = Math.min(89, Math.max(-5, this.orbit.pitch + dy * 0.3))
       return
     }
-    if (this.dragging === 'pan') {
+    if (gesture === 'pan') {
       const yaw = this.orbit.yaw * (Math.PI / 180)
       const scale = this.orbit.distance * 0.0016
       this.orbit.target.x -= (Math.cos(yaw) * dx - Math.sin(yaw) * dy) * scale
       this.orbit.target.z += (Math.sin(yaw) * dx + Math.cos(yaw) * dy) * scale
       return
     }
+    // Still undeclared: no hover either, exactly as before — an alt press
+    // jittering under the threshold must not repaint the highlight.
+    if (gesture === 'pending') return
     if (this.options.playing) return
 
     const pick = this.pickAt(event)
     this.handlers.onHover(pick)
-    if (this.dragging === 'stroke') this.handlers.onStrokeMove(pick, this.modifiers(event))
+    if (gesture === 'stroke') this.handlers.onStrokeMove(pick, this.modifiers(event))
   }
 
   private onPointerUp = (event: PointerEvent): void => {
     if (this.canvas.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId)
     }
-    if (this.dragging === 'stroke') this.handlers.onStrokeEnd()
-    if (this.dragging === 'pending' && this.pending && !this.options.playing) {
-      // Never moved: replay it as the click it turned out to be. Picking uses
-      // the press position, not the release position, so a stray pixel of
-      // travel cannot land the eyedropper on a different cell.
-      const press = this.pending.event
-      this.handlers.onStrokeStart(this.pickAt(press), this.modifiers(press))
-      this.handlers.onStrokeEnd()
-    }
-    this.pending = null
-    this.dragging = 'none'
+    this.handlers.onPointerUp({ x: event.clientX, y: event.clientY })
   }
 
   private onWheel = (event: WheelEvent): void => {
@@ -636,12 +644,14 @@ export class Viewport {
 
   private onContextMenu = (event: Event): void => event.preventDefault()
 
+  // Held keys belong to the gesture actor (#14), which is also what decides
+  // whether alt means eyedropper or orbit; this listener only reports.
   private onKeyDown = (event: KeyboardEvent): void => {
-    this.keys.add(event.key.toLowerCase())
+    this.handlers.onKeyDown(event.key.toLowerCase())
   }
 
   private onKeyUp = (event: KeyboardEvent): void => {
-    this.keys.delete(event.key.toLowerCase())
+    this.handlers.onKeyUp(event.key.toLowerCase())
   }
 
   private attachEvents(): void {
@@ -712,9 +722,10 @@ export class Viewport {
 
     // --- play mode ---------------------------------------------------------
     if (this.options.playing && this.character) {
+      const keys = this.handlers.heldKeys()
       const input = {
-        forward: (this.keys.has('w') ? 1 : 0) - (this.keys.has('s') ? 1 : 0),
-        strafe: (this.keys.has('d') ? 1 : 0) - (this.keys.has('a') ? 1 : 0),
+        forward: (keys.has('w') ? 1 : 0) - (keys.has('s') ? 1 : 0),
+        strafe: (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0),
       }
       this.character.update(doc, input, this.orbit.yaw, dt, this.viewContext())
       // The camera trails the character rather than the map centre.
