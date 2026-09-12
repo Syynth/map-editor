@@ -116,13 +116,16 @@ export default tseslint.config(
     // enforced anything. `rules-of-hooks` only (call order, conditional
     // hooks): it has zero violations here, so turning it on costs nothing
     // and catches a real class of bug. `exhaustive-deps` is deliberately
-    // NOT enabled — the three sites above genuinely violate it on purpose
-    // (documented at each site: a revision counter standing in for an
-    // object that never changes identity), and #11's actor migration
-    // deletes all three rather than restructuring them to satisfy the rule.
-    // Do not "fix" this by turning `exhaustive-deps` on; it deletes itself
-    // when #11 lands.
-    files: ['**/*.tsx'],
+    // NOT enabled — the three sites that would flag document two different
+    // shapes, each on purpose: `App.tsx:364` and `panels.tsx:534` key a
+    // `useMemo` on a revision counter standing in for a document that's
+    // mutated in place and never changes identity, while `App.tsx:151` is a
+    // mount-once `useEffect` that intentionally reads live state through
+    // refs rather than the dependency array. #11's actor migration deletes
+    // all three rather than restructuring them to satisfy the rule. Do not
+    // "fix" this by turning `exhaustive-deps` on; it deletes itself when
+    // #11 lands.
+    files: ['**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
     rules: { 'react-hooks/rules-of-hooks': 'error' },
   },
@@ -147,13 +150,5 @@ export default tseslint.config(
     // `apps/editor/`.
     files: ['**/*.config.{ts,js}', 'eslint.config.js'],
     languageOptions: { globals: globals.node },
-  },
-  {
-    // The Playwright drivers are Node scripts that also contain browser code:
-    // every `page.evaluate` / `addInitScript` callback is serialised and run in
-    // the page, so `window` and `document` are genuinely in scope there. Both
-    // global sets, or `no-undef` fires on bodies that are correct.
-    files: ['scripts/**'],
-    languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 )

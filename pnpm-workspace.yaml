@@ -21,17 +21,24 @@ packages:
 #
 # This flag makes no difference to *re-verifying an already-committed*
 # lockfile against the window — that path (what `pnpm install
-# --lockfile-only` or `--frozen-lockfile` does against the two entries below,
-# both still inside the window as of this commit) hard-fails with
+# --lockfile-only` or `--frozen-lockfile` does against the entry below, still
+# inside the window as of this commit) hard-fails with
 # `ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION` either way, strict or not, which is
-# exactly why these two are committed as explicit excludes rather than left
-# for pnpm to silently paper over.
+# exactly why it is committed as an explicit exclude rather than left for
+# pnpm to silently paper over.
 #
-# Both versions below were pinned by the toolchain-baseline commit and were
-# re-checked against the npm registry's publish timestamps when #39 landed —
-# both still fall inside the 24h window as of this commit, so neither is
-# dropped yet. Drop each entry once its version has aged past the window — the
-# guard is only meaningful for the next package we add.
+# `@types/three@0.186.0` was pinned by the toolchain-baseline commit and was
+# re-checked against the npm registry's publish timestamp when #39 landed —
+# still falls inside the 24h window as of this commit, so it isn't dropped
+# yet. Drop it once its version has aged past the window — the guard is only
+# meaningful for the next package we add.
+#
+# `xstate@6.0.0-alpha.53` was removed from this list: `git grep xstate --
+# '**/package.json'` and `grep xstate pnpm-lock.yaml` both return nothing at
+# this commit, so there is no lockfile entry left for this exclude to guard —
+# an exclude that re-verifies nothing is exactly the silent drift #39 exists
+# to catch. Re-add it, dated against the registry, if #11's actor migration
+# re-pins xstate inside the window.
 #
 # CI does not cache pnpm's `lockfile-verified.jsonl` (the file that records
 # which lockfile entries have already cleared this check) for the same reason
@@ -41,7 +48,6 @@ packages:
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - '@types/three@0.186.0'
-  - xstate@6.0.0-alpha.53
 
 # #55: `engineStrict` gates a DEPENDENCY's declared `engines` reached through
 # the dependency graph (pnpm CHANGELOG, 12.0.0) — it does not check this

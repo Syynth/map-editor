@@ -32,8 +32,10 @@
   // `tsc --listFiles` confirms zero files from `scripts/` enter the program.
   // Turning them on would mean `allowJs` + `checkJs` against 770 lines of
   // unannotated Playwright drivers under this config's `strict`, which is a
-  // real lift, not a two-line fix; ESLint's `scripts/**` globals block is
-  // already what keeps them honest. Add the entry back, with `allowJs` and
-  // `checkJs`, the day someone is willing to pay for that.
+  // real lift, not a two-line fix. `scripts/**` is also inside ESLint's
+  // `OUTSIDE_THE_SYSTEM` global ignore (#38), so nothing — neither tsc nor
+  // ESLint — currently checks these files; that is an accepted gap, not a
+  // backstop. Add the entry back, with `allowJs` and `checkJs`, the day
+  // someone is willing to pay for that.
   "include": ["tests", "vitest.config.ts"]
 }
