@@ -16,6 +16,7 @@
  */
 
 import type { Feature } from '@map-editor/editor-host'
+import { sketchFeature } from '@map-editor/feature-sketch'
 import { terrainFeature } from '@map-editor/feature-terrain'
 
-export const features: readonly Feature[] = [terrainFeature]
+export const features: readonly Feature[] = [terrainFeature, sketchFeature]

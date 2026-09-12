@@ -148,7 +148,7 @@ export default tseslint.config(
   // the canvas-drawing placeholder generator moved there from `runtime`;
   // `runtime` stays because it still runs in the browser even though nothing
   // in it names a DOM global any more.
-  { files: ['apps/editor/src/**', 'packages/{ui,viewport,runtime,fixtures}/src/**'], languageOptions: { globals: globals.browser } },
+  { files: ['apps/editor/src/**', 'packages/{ui,viewport,runtime,fixtures,feature-sketch}/src/**'], languageOptions: { globals: globals.browser } },
   {
     // `**/` matters: a flat-config pattern with no slash matches only at the
     // config's own directory, and the app's Vite config now sits in

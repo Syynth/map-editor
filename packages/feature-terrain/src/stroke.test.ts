@@ -47,6 +47,7 @@ function stub(doc: ReadonlyMapDoc, overrides: Partial<TerrainParams> = {}) {
     params: () => params,
     setParams: (changes) => void (params = { ...params, ...changes }),
     apply: (label, patches) => void applied.push({ label, patches }),
+    select: () => undefined,
   }
   return { deps, applied, current: () => params }
 }

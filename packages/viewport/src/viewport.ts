@@ -183,6 +183,14 @@ export interface ViewportOptions {
   selectedObjectId: string | null
   /** The height range drawn, in half-tiles, or `null` for all of it — the layer view. */
   layers: LayerRange | null
+  /** The sketch being drawn or edited: its points in world space, whether its outline closes, and which point is selected. */
+  sketch: SketchOverlay | null
+}
+
+export interface SketchOverlay {
+  readonly points: ReadonlyArray<readonly [number, number, number]>
+  readonly closed: boolean
+  readonly selected: number | null
 }
 
 const DEFAULT_OPTIONS: ViewportOptions = {
@@ -193,6 +201,7 @@ const DEFAULT_OPTIONS: ViewportOptions = {
   hover: null,
   selectedObjectId: null,
   layers: null,
+  sketch: null,
 }
 
 /**
@@ -243,6 +252,9 @@ export class Viewport {
   private gridLines: THREE.LineSegments | null = null
   private brushMesh: THREE.Mesh
   private hoverMesh: THREE.Mesh
+  private sketchLine: THREE.Line
+  private sketchPoints: THREE.Points
+  private sketchSelected: THREE.Points
   private selectionBox: THREE.Box3Helper
 
   private character: Character | null = null
@@ -340,8 +352,15 @@ export class Viewport {
     this.hoverMesh.renderOrder = 901
     this.selectionBox = new THREE.Box3Helper(new THREE.Box3(), new THREE.Color(0x7fd4ff))
     this.selectionBox.visible = false
+    // The sketch under the Sketch tool: its outline, its points, the selected point. Drawn on top of everything.
+    this.sketchLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xe9a23b, depthTest: false }))
+    this.sketchLine.renderOrder = 950
+    this.sketchPoints = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0xe9a23b, size: 9, sizeAttenuation: false, depthTest: false }))
+    this.sketchPoints.renderOrder = 951
+    this.sketchSelected = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0xffffff, size: 13, sizeAttenuation: false, depthTest: false }))
+    this.sketchSelected.renderOrder = 952
 
-    this.overlay.add(this.brushMesh, this.hoverMesh, this.selectionBox)
+    this.overlay.add(this.brushMesh, this.hoverMesh, this.selectionBox, this.sketchLine, this.sketchPoints, this.sketchSelected)
     this.scene.scene.add(this.overlay)
     this.rebuildGrid()
 
@@ -633,6 +652,25 @@ export class Viewport {
     this.hoverMesh.visible = points.length > 0 && !this.playing
   }
 
+  private updateSketch(): void {
+    const sketch = this.options.sketch
+    const visible = sketch !== null && sketch.points.length > 0 && !this.playing
+    this.sketchLine.visible = visible && sketch.points.length > 1
+    this.sketchPoints.visible = visible
+    this.sketchSelected.visible = visible && sketch.selected !== null && sketch.points[sketch.selected] !== undefined
+    if (!visible) return
+    const flat = (list: ReadonlyArray<readonly [number, number, number]>) => new THREE.Float32BufferAttribute(list.flatMap((p) => [p[0], p[1], p[2]]), 3)
+    const outline = sketch.closed && sketch.points.length > 2 ? [...sketch.points, sketch.points[0]] : sketch.points
+    this.sketchLine.geometry.setAttribute('position', flat(outline))
+    this.sketchLine.geometry.computeBoundingSphere()
+    this.sketchPoints.geometry.setAttribute('position', flat(sketch.points))
+    this.sketchPoints.geometry.computeBoundingSphere()
+    if (sketch.selected !== null && sketch.points[sketch.selected]) {
+      this.sketchSelected.geometry.setAttribute('position', flat([sketch.points[sketch.selected]]))
+      this.sketchSelected.geometry.computeBoundingSphere()
+    }
+  }
+
   private updateSelection(): void {
     const id = this.options.selectedObjectId
     if (!id || this.playing) {
@@ -861,6 +899,7 @@ export class Viewport {
     this.updateBrushPreview()
     this.updateHover()
     this.updateSelection()
+    this.updateSketch()
 
     if (!this.softwareRenderer) {
       this.bloom.strength = doc.atmosphere.bloom

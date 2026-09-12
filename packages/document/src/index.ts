@@ -115,7 +115,7 @@ export {
   topPaint,
 } from './paint'
 export type { DocumentReader } from './store'
-export { inversePatch, patchAddress } from './edits'
+export { applyPatches, inversePatch, patchAddress } from './edits'
 export type { Patch, SketchField, SketchPatch, StrokeRecord, StructureMetaPatch } from './edits'
 export { createDocument } from './actor'
 export type { DocumentActorLogic, DocumentEvent, DocumentSource } from './actor'

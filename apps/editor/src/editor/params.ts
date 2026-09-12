@@ -5,9 +5,10 @@
  * is the one place this merged view may be typed.
  */
 import type { ToolsSnapshot } from '@map-editor/editor-host'
+import type { SketchParams } from '@map-editor/feature-sketch'
 import type { TerrainParams } from '@map-editor/feature-terrain'
 
-export type EditorParams = ToolsSnapshot & TerrainParams
+export type EditorParams = ToolsSnapshot & TerrainParams & SketchParams
 
 /** Spread every feature's slice over the host's fields; a later feature's key shadows an earlier one's, so features namespace their names. */
 export function mergeParams(snapshot: ToolsSnapshot): EditorParams {

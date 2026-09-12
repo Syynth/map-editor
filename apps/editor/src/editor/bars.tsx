@@ -9,6 +9,7 @@
  * name, the sprite library) are things only the app holds.
  */
 
+import type { Selection } from '@map-editor/editor-host'
 import type { EditorParams } from './params'
 import { useHost } from '@map-editor/editor-host'
 import type { ReadonlyMapDoc, MapObject, DeepReadonly } from '@map-editor/document'
@@ -38,12 +39,14 @@ export function FeaturePanels({
   doc,
   params,
   platform,
+  selection,
 }: {
   slot: PanelSlot
   tool: string
   doc: ReadonlyMapDoc
   params: EditorParams
   platform: Platform
+  selection: Selection | null
 }) {
   const host = useHost()
   const owner = tools.ownerOf(tool)
@@ -61,8 +64,8 @@ export function FeaturePanels({
         .all()
         .filter((decl) => panels.ownerOf(decl.id) === owner && (decl.slot ?? 'inspector') === slot && evaluate(decl.when ?? always, keys).available)
         .map((decl) => {
-          const Component = decl.component as ComponentType<TerrainPanelProps>
-          return <Component key={decl.id} doc={doc} params={params} set={setOwn} platform={platform} />
+          const Component = decl.component as ComponentType<TerrainPanelProps & { dispatch?: (id: string, args?: unknown) => void; selection?: Selection | null }>
+          return <Component key={decl.id} doc={doc} params={params} set={setOwn} platform={platform} dispatch={(id, args) => void host.dispatch(id, args)} selection={selection} />
         })}
     </>
   )
