@@ -7,10 +7,12 @@ import { describe, expect, it } from 'vitest'
  * exports what has a consumer outside the package, plus the types needed to
  * name what those consumers receive.
  *
- * Only `runtime`'s barrel is checked. `document` republishes everything on
- * purpose until the document actor lands (#13 is when `History`/`applyPatches`
- * go internal), and `geometry`'s surface was judged fine as is — both per #50.
- * Add a package here the day its barrel is meant to be narrow.
+ * Only `runtime`'s barrel is checked. `document`'s barrel gave up the write
+ * machinery when the document actor landed (#13: `History`, `applyPatches`,
+ * `pruneNoops` and the `Patch` family are internal now) but still carries
+ * exports with no outside consumer, so it is not held to this test yet; and
+ * `geometry`'s surface was judged fine as is — both per #50. Add a package
+ * here the day its barrel is meant to be narrow.
  *
  * "Consumer" means a file outside `packages/runtime` that imports the name
  * from `@map-editor/runtime`. Matching import statements rather than grepping

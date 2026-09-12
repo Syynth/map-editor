@@ -38,6 +38,35 @@ Feature modules live in-tree today. The term exists to name the seam, which is
 what makes a future plugin possible: a plugin is a feature module that happens
 to live outside the repository.
 
+## Owner
+
+Whoever declared a thing: the identity a [Feature module](#feature-module) or
+a built-in package presents when it registers a [Command](#command), a panel,
+a tool or a keybinding, and the unit those registrations are torn down by —
+all of an owner's at once, none of anyone else's. A feature module is one kind
+of owner; a built-in package is the other, and a built-in is never torn down.
+
+The word is owner rather than feature so that a package which is not a feature
+— the document, say — can declare its own commands.
+
+## Host
+
+The root of the editor's running behaviour: the one place every
+[Command](#command) is dispatched to, and the owner of the lifetimes of the
+actors that handle them. A command goes *down* from the host to the actor of
+the [Owner](#owner) that declared it, never sideways between actors, so a
+keypress that does nothing has exactly one place to be looked for.
+
+The host also holds the editor's **mode**: editing, or playing the level.
+
+## Context key
+
+A named fact about the editor's current state — which mode it is in, whether
+anything is selected, whether there is something to undo — that a
+[Command](#command)'s availability may be conditioned on. The vocabulary is
+declared, so a condition can only ever mention a key that exists, and a
+disabled control can say which key is the reason.
+
 ## Map
 
 The level being edited: terrain, paint, objects, and the settings that describe

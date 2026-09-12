@@ -10,7 +10,7 @@
  * ring of edge tiles around the whole level.
  */
 
-import { DIR_VECTORS, cellIndex, inBounds, type MapDoc } from './document'
+import { DIR_VECTORS, cellIndex, inBounds, type ReadonlyMapDoc } from './document'
 
 export const MASK_NORTH = 1
 export const MASK_EAST = 2
@@ -20,7 +20,7 @@ export const MASK_WEST = 8
 /** Direction index -> mask bit. DIR_VECTORS order is E, S, W, N. */
 const DIR_TO_BIT = [MASK_EAST, MASK_SOUTH, MASK_WEST, MASK_NORTH]
 
-export function autotileMask(doc: MapDoc, x: number, y: number): number {
+export function autotileMask(doc: ReadonlyMapDoc, x: number, y: number): number {
   const index = cellIndex(doc.size, x, y)
   const material = doc.terrain.material[index]
   const height = doc.terrain.height[index]

@@ -17,7 +17,8 @@ import {
   defaultFacing,
   groundHeight,
   inBounds,
-  type MapDoc,
+  type DeepReadonly,
+  type ReadonlyMapDoc,
   type MapObject,
   type SpriteAsset,
 } from '@map-editor/document'
@@ -38,7 +39,7 @@ export class Character {
   /** Degrees; the direction the character is moving, in world space. */
   heading = 0
 
-  private object: MapObject
+  private object: DeepReadonly<MapObject>
 
   constructor(asset: SpriteAsset, context: ObjectViewContext, start: THREE.Vector3) {
     this.object = {
@@ -63,7 +64,7 @@ export class Character {
    * @param cameraYaw  degrees; input is interpreted relative to the camera, as
    *                   in most third-person games
    */
-  update(doc: MapDoc, input: CharacterInput, cameraYaw: number, dt: number, context: ObjectViewContext): void {
+  update(doc: ReadonlyMapDoc, input: CharacterInput, cameraYaw: number, dt: number, context: ObjectViewContext): void {
     const yaw = cameraYaw * (Math.PI / 180)
     // Screen-relative movement: forward walks away from the camera.
     const forwardX = -Math.sin(yaw)

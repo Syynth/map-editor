@@ -20,7 +20,8 @@ import {
   cellIndex,
   inBounds,
   type CameraRig,
-  type MapDoc,
+  type DeepReadonly,
+  type ReadonlyMapDoc,
   type MapObject,
 } from '@map-editor/document'
 import { resolveDisplayMode } from './billboard'
@@ -70,7 +71,7 @@ export interface HiddenSurfaces {
   hiddenFaces: number
 }
 
-function analyseObject(object: MapObject, rig: CameraRig, yaws: number[]): ObjectCoverage {
+function analyseObject(object: DeepReadonly<MapObject>, rig: DeepReadonly<CameraRig>, yaws: number[]): ObjectCoverage {
   const mode = resolveDisplayMode(object, rig)
   const facings = object.facing.facings
 
@@ -133,7 +134,7 @@ function analyseObject(object: MapObject, rig: CameraRig, yaws: number[]): Objec
  * Cliff faces no permitted camera angle can see. A face pointing in direction
  * d is visible from yaw y when the camera stands on its outward side.
  */
-function analyseHiddenSurfaces(doc: MapDoc, yaws: number[]): HiddenSurfaces {
+function analyseHiddenSurfaces(doc: ReadonlyMapDoc, yaws: number[]): HiddenSurfaces {
   // Direction the camera sits in, for each sampled yaw.
   const eyes = yaws.map((yaw) => [Math.sin(yaw * DEG), Math.cos(yaw * DEG)] as const)
 
@@ -163,7 +164,7 @@ function analyseHiddenSurfaces(doc: MapDoc, yaws: number[]): HiddenSurfaces {
   return { totalFaces, hiddenFaces }
 }
 
-export function analyseCoverage(doc: MapDoc, rig: CameraRig): CoverageReport {
+export function analyseCoverage(doc: ReadonlyMapDoc, rig: DeepReadonly<CameraRig>): CoverageReport {
   const yaws = sampleYawEnvelope(rig, 48)
   const objects = doc.objectOrder
     .map((id) => doc.objects[id])

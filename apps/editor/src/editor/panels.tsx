@@ -9,7 +9,8 @@ import {
   makeAtmosphere,
   type Atmosphere,
   type CameraRig,
-  type MapDoc,
+  type DeepReadonly,
+  type ReadonlyMapDoc,
   type MapObject,
   type RgbaImage,
 } from '@map-editor/document'
@@ -30,7 +31,7 @@ export function TilePalette({
   selected,
   onSelect,
 }: {
-  doc: MapDoc
+  doc: ReadonlyMapDoc
   sheet: RgbaImage | null
   selected: number
   onSelect: (tile: number) => void
@@ -86,7 +87,7 @@ export function ToolPanel({
   onLoadSheet,
   sheetWarning,
 }: {
-  doc: MapDoc
+  doc: ReadonlyMapDoc
   state: EditorState
   sheet: RgbaImage | null
   set: (changes: Partial<EditorState>) => void
@@ -258,7 +259,7 @@ export function ObjectInspector({
   onChange,
   onDelete,
 }: {
-  object: MapObject | null
+  object: DeepReadonly<MapObject> | null
   onChange: (changes: Partial<MapObject>) => void
   onDelete: () => void
 }) {
@@ -420,7 +421,7 @@ export function CameraPanel({
   onSweep,
   onPreview,
 }: {
-  rig: CameraRig
+  rig: DeepReadonly<CameraRig>
   onChange: (changes: Partial<CameraRig>) => void
   onSweep: () => void
   onPreview: () => void
@@ -526,7 +527,7 @@ export function CoveragePanel({
   onFix,
   onSelect,
 }: {
-  doc: MapDoc
+  doc: ReadonlyMapDoc
   /**
    * The store's revision counter. The document is mutated in place, so `doc`
    * never changes identity and memoising on it alone would freeze this readout
@@ -588,7 +589,7 @@ export function AtmospherePanel({
   atmosphere,
   onChange,
 }: {
-  atmosphere: Atmosphere
+  atmosphere: DeepReadonly<Atmosphere>
   onChange: (changes: Partial<Atmosphere>) => void
 }) {
   return (
@@ -603,7 +604,9 @@ export function AtmospherePanel({
               ...makeAtmosphere(preset),
               fogNear: atmosphere.fogNear,
               fogFar: atmosphere.fogFar,
-              backdrop: atmosphere.backdrop,
+              // Copied, not aliased: the change becomes a patch value the store
+              // installs as-is, and the document it came from is read-only.
+              backdrop: atmosphere.backdrop.map((card) => ({ ...card })),
             })
           }
           options={Object.keys(ATMOSPHERE_PRESETS).map((name) => ({ value: name, label: name }))}
@@ -711,7 +714,7 @@ export function Outliner({
   onSelect,
   onChange,
 }: {
-  doc: MapDoc
+  doc: ReadonlyMapDoc
   selectedId: string | null
   onSelect: (id: string) => void
   onChange: (id: string, changes: Partial<MapObject>) => void

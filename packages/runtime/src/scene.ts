@@ -20,7 +20,7 @@
 
 import * as THREE from 'three'
 
-import { allChunkKeys, type MapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
+import { allChunkKeys, type ReadonlyMapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
 import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
 import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
 import { Sky, sunDirection } from './sky'
@@ -80,9 +80,9 @@ export class RuntimeScene {
   private sun = new THREE.DirectionalLight(0xffffff, 1)
   private hemisphere = new THREE.HemisphereLight(0xffffff, 0x444444, 1)
   private pointLights = new Map<string, THREE.PointLight>()
-  private doc: MapDoc
+  private doc: ReadonlyMapDoc
 
-  constructor(doc: MapDoc, assets: SceneAssets) {
+  constructor(doc: ReadonlyMapDoc, assets: SceneAssets) {
     this.doc = doc
     this.sheet = assets.sheet
     this.sprites = assets.sprites
@@ -130,7 +130,7 @@ export class RuntimeScene {
    * with `refreshSheet` / `setSprites`. Filtering IS answered here, because it
    * is a document setting applied to art the scene already holds.
    */
-  setDocument(doc: MapDoc): void {
+  setDocument(doc: ReadonlyMapDoc): void {
     const filteringChanged = doc.filtering !== this.doc.filtering
     this.doc = doc
     if (filteringChanged) {

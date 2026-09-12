@@ -9,6 +9,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@map-editor/registry": "workspace:*",
+    "xstate": "6.0.0-alpha.53"
+  },
   "devDependencies": {
     "typescript": "6.0.3",
     "vitest": "^5.0.0"

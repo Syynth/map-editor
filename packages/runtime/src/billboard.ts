@@ -14,7 +14,7 @@
 
 import * as THREE from 'three'
 
-import type { CameraRig, MapObject, RgbaImage, SpriteAsset } from '@map-editor/document'
+import type { CameraRig, DeepReadonly, MapObject, RgbaImage, SpriteAsset } from '@map-editor/document'
 import { wrapDegrees, yawIsFree } from './camera'
 
 const DEG = Math.PI / 180
@@ -64,7 +64,7 @@ export function rgbaTexture(image: RgbaImage, nearest: boolean): THREE.DataTextu
  * Resolve `auto` against the rig, per brief section 8: a camera that barely
  * rotates can use a cheap fixed plane; one that orbits needs a billboard.
  */
-export function resolveDisplayMode(object: MapObject, rig: CameraRig): Exclude<MapObject['display'], 'auto'> {
+export function resolveDisplayMode(object: DeepReadonly<MapObject>, rig: DeepReadonly<CameraRig>): Exclude<MapObject['display'], 'auto'> {
   if (object.display !== 'auto') return object.display
   const span = yawIsFree(rig) ? 360 : Math.abs(rig.bounds.yawMax - rig.bounds.yawMin)
   if (span <= 20) return 'fixed'
@@ -77,7 +77,7 @@ export function resolveDisplayMode(object: MapObject, rig: CameraRig): Exclude<M
  * Returns the image index plus whether it must be drawn mirrored.
  */
 export function pickFacing(
-  object: MapObject,
+  object: DeepReadonly<MapObject>,
   cameraYaw: number,
   current: number | null,
 ): { index: number; mirrored: boolean } {
@@ -107,7 +107,7 @@ export function pickFacing(
   return { index, mirrored: false }
 }
 
-function planeGeometry(width: number, height: number, hinge: MapObject['facing']['hinge']): THREE.PlaneGeometry {
+function planeGeometry(width: number, height: number, hinge: DeepReadonly<MapObject>['facing']['hinge']): THREE.PlaneGeometry {
   const geometry = new THREE.PlaneGeometry(width, height)
   // Pivot defaults to bottom-centre; the hinge moves the rotation axis.
   let offsetX = 0
@@ -134,7 +134,7 @@ function makeMaterial(texture: THREE.Texture, emissive: boolean): THREE.MeshStan
 }
 
 export interface ObjectViewContext {
-  rig: CameraRig
+  rig: DeepReadonly<CameraRig>
   nearest: boolean
   /** Play mode uses movement direction; the editor uses camera yaw. */
   facingOverride?: number | null
@@ -163,9 +163,9 @@ export class ObjectView {
   private pendingMirrored = false
   private fade = 0
 
-  object: MapObject
+  object: DeepReadonly<MapObject>
 
-  constructor(object: MapObject, asset: SpriteAsset, context: ObjectViewContext) {
+  constructor(object: DeepReadonly<MapObject>, asset: SpriteAsset, context: ObjectViewContext) {
     this.object = object
     this.asset = asset
     this.material = makeMaterial(rgbaTexture(asset.facings[0], context.nearest), asset.emissive)
@@ -174,7 +174,7 @@ export class ObjectView {
   }
 
   /** Rebuild geometry. Called on creation and whenever the object changes shape. */
-  rebuild(object: MapObject, asset: SpriteAsset, context: ObjectViewContext): void {
+  rebuild(object: DeepReadonly<MapObject>, asset: SpriteAsset, context: ObjectViewContext): void {
     this.object = object
     this.asset = asset
     this.mode = resolveDisplayMode(object, context.rig)
@@ -370,7 +370,7 @@ export class ObjectView {
     // pop-up book effect possible; nothing else to do beyond the pivot offset.
   }
 
-  setPosition(position: [number, number, number]): void {
+  setPosition(position: readonly [number, number, number]): void {
     this.group.position.set(...position)
   }
 

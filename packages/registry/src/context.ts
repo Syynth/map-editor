@@ -1,0 +1,222 @@
+/**
+ * The availability predicate DSL (#5, #8, #3's handoff).
+ *
+ * Availability is a closed, analysable predicate language over a declared
+ * vocabulary of context keys — not arbitrary functions. Blender's `poll()` is a
+ * function, so two operators' availability can never be proven disjoint and
+ * keymap conflict detection is impossible in principle; VS Code's `when` is a
+ * parsed string, analysable but stringly-typed. This is the third option: typed
+ * data. A predicate can only ever mention a key minted by `defineContextKey`,
+ * so an undeclared key is a type error at the call site and a parse error in
+ * a preferences file, and two predicates can be compared symbolically instead
+ * of being run.
+ *
+ * Three consumers shape the surface:
+ *   - a disabled control must say WHY (standing constraint), so evaluation
+ *     returns a reason, not a boolean;
+ *   - a palette re-evaluates only what changed, so a predicate lists the keys
+ *     it depends on (`keys()`, VS Code's invalidation shape);
+ *   - a future preferences file stores predicates, so a predicate serialises
+ *     to plain JSON (`toJSON`) and parses back against the live vocabulary.
+ *
+ * The scoped holder that reads focus from the DOM lives in `ui`, not here (#3):
+ * this file is the pure resolver and compiles without `DOM`.
+ */
+
+/** Values a key may take: JSON scalars, so a snapshot and a predicate both serialise as-is. */
+export type KeyValue = string | number | boolean | null
+
+/**
+ * The serialisable form of a predicate. `is` is the only leaf that reads a
+ * key, which is what keeps `disjoint`-style analysis to one base case.
+ */
+export type PredicateNode =
+  | { readonly op: 'always' }
+  | { readonly op: 'never' }
+  | { readonly op: 'is'; readonly key: string; readonly value: KeyValue }
+  | { readonly op: 'not'; readonly of: PredicateNode }
+  | { readonly op: 'and'; readonly of: readonly PredicateNode[] }
+  | { readonly op: 'or'; readonly of: readonly PredicateNode[] }
+
+export interface Predicate {
+  readonly node: PredicateNode
+  not(): Predicate
+  /** The key ids this predicate reads, sorted and unique — the invalidation set. */
+  keys(): readonly string[]
+  /** `JSON.stringify` hook, so a predicate drops into a preferences file unchanged. */
+  toJSON(): PredicateNode
+}
+
+export interface ContextKey<T extends KeyValue> {
+  readonly id: string
+  /** What the key reads as when a snapshot does not carry it. */
+  readonly defaultValue: T
+  is(value: T): Predicate
+}
+
+/** The live values, keyed by key id. An absent key reads as its default. */
+export type ContextSnapshot = Readonly<Record<string, KeyValue>>
+
+export type Availability = { readonly available: true } | { readonly available: false; readonly reason: string }
+
+const definedKeys = new Map<string, ContextKey<KeyValue>>()
+
+function wrap(node: PredicateNode): Predicate {
+  return {
+    node,
+    not: () => wrap({ op: 'not', of: node }),
+    keys: () => [...collectKeys(node, new Set())].sort(),
+    toJSON: () => node,
+  }
+}
+
+function collectKeys(node: PredicateNode, into: Set<string>): Set<string> {
+  switch (node.op) {
+    case 'always':
+    case 'never':
+      return into
+    case 'is':
+      into.add(node.key)
+      return into
+    case 'not':
+      return collectKeys(node.of, into)
+    case 'and':
+    case 'or':
+      for (const child of node.of) collectKeys(child, into)
+      return into
+  }
+}
+
+/**
+ * A `false` default must not make a `ContextKey<false>`: TypeScript keeps the
+ * literal when the constraint contains its primitive, and a flag whose `is`
+ * only accepts `false` is useless. Booleans and numbers widen; strings keep
+ * their literal so `defineContextKey<'edit' | 'play'>(…)` stays a closed union
+ * — the analysable shape conflict detection needs.
+ */
+type Widen<T extends KeyValue> = T extends boolean ? boolean : T extends number ? number : T
+
+/**
+ * Mint a key. The vocabulary is declared-but-extensible (#3's handoff to #8):
+ * any package may add a key, but a predicate can only be built from one that
+ * exists, and two definitions of one id throw because the second would either
+ * disagree about the default or silently alias the first.
+ */
+export function defineContextKey<T extends KeyValue>(id: string, defaultValue: T): ContextKey<Widen<T>> {
+  if (definedKeys.has(id)) throw new Error(`context key "${id}" is already defined`)
+  const key: ContextKey<Widen<T>> = {
+    id,
+    defaultValue: defaultValue as Widen<T>,
+    is: (value) => wrap({ op: 'is', key: id, value }),
+  }
+  definedKeys.set(id, key)
+  return key
+}
+
+export const always: Predicate = wrap({ op: 'always' })
+export const never: Predicate = wrap({ op: 'never' })
+
+export function and(...of: readonly Predicate[]): Predicate {
+  return wrap({ op: 'and', of: of.map((p) => p.node) })
+}
+
+export function or(...of: readonly Predicate[]): Predicate {
+  return wrap({ op: 'or', of: of.map((p) => p.node) })
+}
+
+export function not(of: Predicate): Predicate {
+  return of.not()
+}
+
+function read(snapshot: ContextSnapshot, key: string): KeyValue | undefined {
+  return key in snapshot ? snapshot[key] : definedKeys.get(key)?.defaultValue
+}
+
+function holds(node: PredicateNode, snapshot: ContextSnapshot): boolean {
+  switch (node.op) {
+    case 'always':
+      return true
+    case 'never':
+      return false
+    case 'is':
+      return read(snapshot, node.key) === node.value
+    case 'not':
+      return !holds(node.of, snapshot)
+    case 'and':
+      return node.of.every((child) => holds(child, snapshot))
+    case 'or':
+      return node.of.some((child) => holds(child, snapshot))
+  }
+}
+
+/**
+ * Why a predicate fails, in words, for a disabled control's tooltip. Returns
+ * the first unsatisfied clause rather than the whole tree: a tooltip wants one
+ * reason, not a proof. Only called on a node that does not hold.
+ */
+function explain(node: PredicateNode, snapshot: ContextSnapshot): string {
+  switch (node.op) {
+    case 'always':
+      return 'unavailable'
+    case 'never':
+      return 'never available'
+    case 'is':
+      return `requires ${node.key} to be ${JSON.stringify(node.value)} (it is ${JSON.stringify(read(snapshot, node.key))})`
+    case 'not':
+      return node.of.op === 'is'
+        ? `requires ${node.of.key} not to be ${JSON.stringify(node.of.value)}`
+        : 'requires a condition that currently holds to be false'
+    case 'and': {
+      const failing = node.of.find((child) => !holds(child, snapshot))
+      return failing ? explain(failing, snapshot) : 'unavailable'
+    }
+    case 'or':
+      return node.of.length === 0 ? 'never available' : node.of.map((child) => explain(child, snapshot)).join(', or ')
+  }
+}
+
+/** Pure: reads only the snapshot and the key defaults, so a test needs no DOM and no actor. */
+export function evaluate(predicate: Predicate, snapshot: ContextSnapshot): Availability {
+  return holds(predicate.node, snapshot) ? { available: true } : { available: false, reason: explain(predicate.node, snapshot) }
+}
+
+function isKeyValue(value: unknown): value is KeyValue {
+  return value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
+}
+
+function parseNode(input: unknown, path: string): PredicateNode {
+  if (typeof input !== 'object' || input === null || !('op' in input)) throw new Error(`${path}: expected a predicate node`)
+  const op: unknown = input.op
+  switch (op) {
+    case 'always':
+    case 'never':
+      return { op }
+    case 'is': {
+      const key: unknown = 'key' in input ? input.key : undefined
+      const value: unknown = 'value' in input ? input.value : undefined
+      if (typeof key !== 'string') throw new Error(`${path}.key: expected a key id`)
+      // Rejecting an undeclared key here is what makes a stored predicate as
+      // safe as an authored one: the type system cannot see a preferences file.
+      if (!definedKeys.has(key)) throw new Error(`${path}.key: unknown context key "${key}"`)
+      if (!isKeyValue(value)) throw new Error(`${path}.value: expected a string, number, boolean or null`)
+      return { op, key, value }
+    }
+    case 'not': {
+      const of: unknown = 'of' in input ? input.of : undefined
+      return { op, of: parseNode(of, `${path}.of`) }
+    }
+    case 'and':
+    case 'or': {
+      const of: unknown = 'of' in input ? input.of : undefined
+      if (!Array.isArray(of)) throw new Error(`${path}.of: expected an array`)
+      return { op, of: of.map((child: unknown, i) => parseNode(child, `${path}.of[${i}]`)) }
+    }
+    default:
+      throw new Error(`${path}.op: unknown operator ${JSON.stringify(op)}`)
+  }
+}
+
+/** The inverse of `toJSON`: rebuilds a predicate from stored data, refusing anything that names a key nobody defined. */
+export function parsePredicate(input: unknown): Predicate {
+  return wrap(parseNode(input, 'predicate'))
+}

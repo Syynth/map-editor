@@ -81,36 +81,51 @@ alone; do not route it through a machine.
       bug.
 - [ ] Tool modes as hierarchical states: terrain(sculpt/paint) × verbs, objects,
       camera.
-- [ ] Edit versus play as a top-level state that changes input interpretation.
+- [x] Edit versus play as a top-level state: the host actor's `edit`/`play`
+      (#66 step 3). `App.tsx` still holds its own `playing` flag until step 7
+      rewires it; input interpretation follows then.
 - [ ] Async work as actors: worker meshing, file load/save, glTF export,
       autosave — with cancellation, progress and failure handling.
 - [ ] Move the 18-field `EditorState` out of the single `useState` in `App.tsx`,
-      so changing brush size stops re-rendering every panel.
+      so changing brush size stops re-rendering every panel. The owners exist
+      — the `tools` and `view` actors in `editor-host` (#66 step 3) — and the
+      move is step 7.
 - [ ] Establish the machine/store boundary in code review terms, so the document
       never drifts into machine context.
 
 ### Close the document's write and read paths
-- [ ] `createDocumentStore()` returns `{ reader, writer }`; only the machine is
-      constructed with `writer`. Keep `writer` out of `core`'s public exports
-      once it is its own package.
-- [ ] Type the public document as `ReadonlyMapDoc` (a deep-readonly mapped
+- [x] `createDocumentStore()` returns `{ reader, writer }`; only the machine is
+      constructed with `writer`. Neither `createDocumentStore` nor the writer
+      type is in `packages/document`'s barrel; the package exposes the
+      pre-wired `createDocumentActorLogic(store)` instead (#13, #66 step 2).
+      `EditorStore` itself stays exported, with its verbs public, only because
+      `App.tsx` still writes through it directly — a documented, temporary
+      second write path that #66 step 7 removes.
+- [x] Type the public document as `ReadonlyMapDoc` (a deep-readonly mapped
       type). Verified to reject indexed assignment, record assignment, array
       mutation and property replacement, while leaving reads untouched — the
-      arrays are plain `number[]`, so no branding tricks are needed.
-- [ ] A single `useDocument(selector)` hook that subscribes to the revision.
+      arrays are plain `number[]`, so no branding tricks are needed. Held by a
+      typecheck-time test in `packages/document/src/actor.test.ts`.
+- [x] A single `useDocument(selector)` hook that subscribes to the revision.
       Closes both read hazards at once: memoising on `doc` never recomputes
       (it never changes identity), and reading without subscribing silently
-      fails to re-render.
-- [ ] Audit the 44 existing `store.doc` reads — `viewport.ts` (20), `App.tsx`
-      (19), `tools.ts` (5) — onto the hook.
-- [ ] Keep the store reference out of machine `context`; XState's inspector
+      fails to re-render. In `editor-host` (#66 step 3); `App.tsx` moves onto
+      it in step 7.
+- [x] Route the existing `store.doc` reads — 59, not 44: `runtime/scene.ts`
+      adds 15 — through `reader`. `EditorStore.doc` is private now; every
+      read-only function down the ladder (`ops`, `io.serialize`, `geometry`,
+      `runtime`, `viewport`, the app's tools and panels) takes `ReadonlyMapDoc`
+      or a `DeepReadonly<…>` slice of it. The React reads move onto the hook
+      when it exists; `viewport.ts` and `scene.ts` keep the reader directly.
+- [x] Keep the store reference out of machine `context`; XState's inspector
       would try to serialise the whole map every transition. Use a machine
       factory closure — **not** `input`, which rides on the `xstate.init` event
       and reaches the inspector even when kept out of context. Measured on
       xstate 5.32.6: a 50k-entry store passed as `input` puts 100,089 bytes on
       the init event; the same store captured in a factory closure puts 22.
       The inspector's `filter` and `sanitizeContext` do not help, because the
-      snapshot is stringified before either runs.
+      snapshot is stringified before either runs. `documentLogic(writer)` is
+      that closure.
 
 ### Compact stroke patches
 Measured on the real store: a 3-second drag with a size-5 round brush over 180

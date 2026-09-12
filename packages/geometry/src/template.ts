@@ -34,7 +34,7 @@
  * material.
  */
 
-import type { MapDoc } from '@map-editor/document'
+import type { ReadonlyMapDoc } from '@map-editor/document'
 
 export const BLOCK_COLUMNS = 4
 export const BLOCK_ROWS = 5
@@ -56,7 +56,7 @@ export interface SheetLayout {
   density: number
 }
 
-export function sheetLayoutFor(doc: MapDoc): SheetLayout {
+export function sheetLayoutFor(doc: ReadonlyMapDoc): SheetLayout {
   return {
     columns: doc.materials.length * BLOCK_COLUMNS,
     rows: BLOCK_ROWS,

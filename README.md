@@ -87,10 +87,12 @@ node apps/export-cli/dist/cli.js in.json out.glb [--merge]
 A pnpm workspace, orchestrated by Turborepo.
 
 ```
-packages/document/      document, commands, undo, ops, paint  — no three.js, no React
+packages/registry/      command, tool, panel and keymap declarations; the availability DSL  — no deps at all
+packages/document/      document, the document actor, undo, ops, paint  — xstate; no three.js, no React
 packages/geometry/      meshers and the autotile template     — no three.js, no React
 packages/runtime/       the reference runtime: scene, billboards, camera, export
 packages/viewport/      the imperative GL shell the editor drives
+packages/editor-host/   the root actor, dispatch, the tools and view actors, React glue  — xstate, React
 packages/ui/            the editor's design vocabulary (Mantine primitives)
 packages/fixtures/      generated sample documents
 packages/eslint-rules/  custom lint rules the workspace's own eslint.config.js plugs in
@@ -98,8 +100,7 @@ apps/editor/            React panels, tools and the app shell
 ```
 
 The import direction `registry <- document <- geometry <- runtime <- viewport <- editor-host`
-is enforced by two mechanisms rather than by a lint script (`registry` and
-`editor-host` are planned rungs the test holds as `planned`; not on disk yet).
+is enforced by two mechanisms rather than by a lint script.
 `editor` — and any `apps/*` package — sits outside this ladder; apps may depend
 on any rung. pnpm's strict
 `node_modules` means a package can only import what its own `package.json`
@@ -120,7 +121,7 @@ consume; the editor renders through it, so the preview and the game cannot drift
 apart.
 
 `packages/ui` sits off the ladder at `document`'s rung — it may depend only on
-`registry`, and is visible only to apps (currently `editor`), the planned
+`registry`, and is visible only to apps (currently `editor`), the
 `editor-host` package, and feature packages (#49). A feature can't reach the
 host because `editor-host` is absent from the feature allow-list; the host
 can't reach a feature because the direction test's layer/side check refuses

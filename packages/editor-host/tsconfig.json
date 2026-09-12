@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // No `DOM`, though this package ships React glue: the hooks in
+    // `src/react.tsx` reach React through its import, and the host actor
+    // itself has to run where its tests do — a plain vitest worker with no
+    // window (#10: a behavior test never renders). Leaving `DOM` out is what
+    // checks that the actor never grows a `window` listener; the keymap's
+    // keydown dispatcher (#66 step 6) belongs to the app, not here.
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Same as the other packages: `vitest`'s and `@types/react`'s own
+    // declarations reach for `DOM` types this package deliberately does not
+    // load, and checking a dependency's `.d.ts` is not this package's job.
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No ambient `@types`, matching every package: Node's globals staying out
+    // means the day the host reaches for `process` or `fs` this config says
+    // so, while the same file still builds under the root config.
+    "types": []
+  },
+
+  // No `references`, for the reason spelled out in `geometry`'s tsconfig: a
+  // referenced project must be `composite`, and `composite` forbids `noEmit`.
+  // Resolution reaches `registry` and `document` through their `exports`
+  // maps, which tsc follows across the boundary on its own.
+  "include": ["src"]
+}

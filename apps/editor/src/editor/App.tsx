@@ -64,7 +64,7 @@ export default function App() {
   const store = storeRef.current
 
   const revision = useSyncExternalStore(store.subscribe, store.getSnapshot)
-  const doc = store.doc
+  const doc = store.reader.doc
   void revision // the document is mutated in place; revision is the signal
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -135,7 +135,7 @@ export default function App() {
         const current = stateRef.current
         if (pick.surface && current.tool === 'terrain' && !current.playing) {
           setHoverCells(
-            strokeCells(store.doc, current, pick.surface, strokeRef.current?.anchor ?? null),
+            strokeCells(store.reader.doc, current, pick.surface, strokeRef.current?.anchor ?? null),
           )
         } else {
           setHoverCells([])
@@ -181,8 +181,8 @@ export default function App() {
       if (phase === 'start') {
         const address = pick.surface
         const anchorHeight =
-          address && inBounds(store.doc.size, address.x, address.y)
-            ? store.doc.terrain.height[cellIndex(store.doc.size, address.x, address.y)]
+          address && inBounds(store.reader.doc.size, address.x, address.y)
+            ? store.reader.doc.terrain.height[cellIndex(store.reader.doc.size, address.x, address.y)]
             : 0
         strokeRef.current = {
           store,
@@ -246,8 +246,8 @@ export default function App() {
         case 'delete':
         case 'backspace': {
           const id = stateRef.current.selectedObjectId
-          if (id && store.doc.objects[id]) {
-            store.apply('Delete object', removeObject(store.doc, id))
+          if (id && store.reader.doc.objects[id]) {
+            store.apply('Delete object', removeObject(store.reader.doc, id))
             set({ selectedObjectId: null })
           }
           break
@@ -278,7 +278,7 @@ export default function App() {
   useEffect(() => {
     const handle = setTimeout(() => {
       try {
-        localStorage.setItem(AUTOSAVE_KEY, serialize(store.doc))
+        localStorage.setItem(AUTOSAVE_KEY, serialize(store.reader.doc))
       } catch {
         // Quota or a private window; autosave is a convenience, not a promise.
       }
@@ -291,14 +291,14 @@ export default function App() {
     (changes: Partial<MapObject>) => {
       const id = stateRef.current.selectedObjectId
       if (!id) return
-      store.apply('Edit object', updateObject(store.doc, id, changes))
+      store.apply('Edit object', updateObject(store.reader.doc, id, changes))
     },
     [store],
   )
 
   const setRig = useCallback(
     (changes: Partial<CameraRig>) => {
-      store.apply('Camera rig', [{ t: 'doc', field: 'camera', value: { ...store.doc.camera, ...changes } }])
+      store.apply('Camera rig', [{ t: 'doc', field: 'camera', value: { ...store.reader.doc.camera, ...changes } }])
     },
     [store],
   )
@@ -306,7 +306,7 @@ export default function App() {
   const setAtmosphere = useCallback(
     (changes: Partial<Atmosphere>) => {
       store.apply('Atmosphere', [
-        { t: 'doc', field: 'atmosphere', value: { ...store.doc.atmosphere, ...changes } },
+        { t: 'doc', field: 'atmosphere', value: { ...store.reader.doc.atmosphere, ...changes } },
       ])
       viewportRef.current?.refreshAtmosphere()
     },
@@ -314,11 +314,11 @@ export default function App() {
   )
 
   const onSave = useCallback(() => {
-    const blob = new Blob([serialize(store.doc)], { type: 'application/json' })
+    const blob = new Blob([serialize(store.reader.doc)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${store.doc.name.replace(/\s+/g, '-').toLowerCase()}.map.json`
+    link.download = `${store.reader.doc.name.replace(/\s+/g, '-').toLowerCase()}.map.json`
     link.click()
     URL.revokeObjectURL(url)
     setMessage(`Saved ${link.download}`)
@@ -344,7 +344,7 @@ export default function App() {
     try {
       // The generated sheet, as before #47 when the exporter generated its own:
       // an artist's loaded sheet still previews but does not export.
-      const bytes = await exportGltf(store.doc, {
+      const bytes = await exportGltf(store.reader.doc, {
         merge: false,
         sheet: generatedSheet,
         sprites,
@@ -354,7 +354,7 @@ export default function App() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${store.doc.name.replace(/\s+/g, '-').toLowerCase()}.glb`
+      link.download = `${store.reader.doc.name.replace(/\s+/g, '-').toLowerCase()}.glb`
       link.click()
       URL.revokeObjectURL(url)
       setMessage(`Exported ${link.download} (${(blob.size / 1024).toFixed(0)} KB)`)
@@ -366,7 +366,7 @@ export default function App() {
   const onLoadSheet = useCallback(
     async (file: File) => {
       try {
-        const result = await loadSheetFromFile(file, store.doc)
+        const result = await loadSheetFromFile(file, store.reader.doc)
         setSheet(result.image)
         setSheetWarning(result.warning)
         viewportRef.current?.loadSheet(result.image)
@@ -378,7 +378,7 @@ export default function App() {
   )
 
   const dormant = useMemo(() => {
-    const d = store.doc
+    const d = store.reader.doc
     return countDormant(d.paint, (kind, key) => {
       const [x, y] = key.split(',').map(Number)
       if (!inBounds(d.size, x, y)) return false
@@ -388,7 +388,7 @@ export default function App() {
       return level < height
     })
     // Keyed on the revision counter alone: the document is mutated in place,
-    // so `store.doc` never changes identity and would never retrigger this.
+    // so `store.reader.doc` never changes identity and would never retrigger this.
   }, [revision])
 
   const selected = state.selectedObjectId ? doc.objects[state.selectedObjectId] ?? null : null
@@ -398,10 +398,10 @@ export default function App() {
       <header className="toolbar">
         <strong className="brand">{doc.name}</strong>
         <span className="toolbar-group">
-          <button type="button" onClick={() => store.undo()} disabled={!store.history.canUndo()}>
+          <button type="button" onClick={() => store.undo()} disabled={!store.reader.canUndo()}>
             Undo
           </button>
-          <button type="button" onClick={() => store.redo()} disabled={!store.history.canRedo()}>
+          <button type="button" onClick={() => store.redo()} disabled={!store.reader.canRedo()}>
             Redo
           </button>
         </span>
@@ -504,7 +504,7 @@ export default function App() {
                 onChange={updateSelected}
                 onDelete={() => {
                   if (!selected) return
-                  store.apply('Delete object', removeObject(store.doc, selected.id))
+                  store.apply('Delete object', removeObject(store.reader.doc, selected.id))
                   set({ selectedObjectId: null })
                 }}
               />
@@ -523,7 +523,7 @@ export default function App() {
                 doc={doc}
                 revision={revision}
                 onSelect={(id) => set({ selectedObjectId: id, inspector: 'properties', tool: 'object' })}
-                onFix={(id) => store.apply('Fix display mode', updateObject(store.doc, id, { display: 'billboardY' }))}
+                onFix={(id) => store.apply('Fix display mode', updateObject(store.reader.doc, id, { display: 'billboardY' }))}
               />
             </>
           ) : null}
@@ -537,7 +537,7 @@ export default function App() {
               doc={doc}
               selectedId={state.selectedObjectId}
               onSelect={(id) => set({ selectedObjectId: id, tool: 'object' })}
-              onChange={(id, changes) => store.apply('Edit object', updateObject(store.doc, id, changes))}
+              onChange={(id, changes) => store.apply('Edit object', updateObject(store.reader.doc, id, changes))}
             />
           ) : null}
 
@@ -565,7 +565,7 @@ export default function App() {
           {stats.meshMs.toFixed(1)}ms
           {softwareRenderer ? ' · software GL, post-processing off' : ''}
         </span>
-        <span>{store.history.undoLabel() ?? 'nothing to undo'}</span>
+        <span>{store.reader.undoLabel() ?? 'nothing to undo'}</span>
       </footer>
     </div>
   )

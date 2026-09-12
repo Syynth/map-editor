@@ -40,7 +40,7 @@
  *   3. fixtures on top (buildings; not in the prototype slice)
  */
 
-import type { Direction, PaintLayers } from './document'
+import type { DeepReadonly, Direction, PaintLayers } from './document'
 
 export function topKey(x: number, y: number): string {
   return `${x},${y}`
@@ -65,12 +65,12 @@ export function parseCliffKey(key: string): {
 }
 
 /** Undefined means "no override" — fall through to the template default. */
-export function topPaint(paint: PaintLayers, x: number, y: number): number | undefined {
+export function topPaint(paint: DeepReadonly<PaintLayers>, x: number, y: number): number | undefined {
   return paint.top[topKey(x, y)]
 }
 
 export function cliffPaint(
-  paint: PaintLayers,
+  paint: DeepReadonly<PaintLayers>,
   x: number,
   y: number,
   dir: number,
@@ -79,7 +79,7 @@ export function cliffPaint(
   return paint.cliff[cliffKey(x, y, dir, level)]
 }
 
-export function tintPaint(paint: PaintLayers, x: number, y: number): number | undefined {
+export function tintPaint(paint: DeepReadonly<PaintLayers>, x: number, y: number): number | undefined {
   return paint.tint[tintKey(x, y)]
 }
 
@@ -92,7 +92,7 @@ export function tintPaint(paint: PaintLayers, x: number, y: number): number | un
  * This function must never be used to decide what to delete.
  */
 export function countDormant(
-  paint: PaintLayers,
+  paint: DeepReadonly<PaintLayers>,
   surfaceExists: (kind: 'top' | 'cliff', key: string) => boolean,
 ): { top: number; cliff: number } {
   let top = 0

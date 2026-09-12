@@ -17,6 +17,7 @@ import {
   makeAtmosphere,
   DEFAULT_MATERIALS,
   type MapDoc,
+  type ReadonlyMapDoc,
   type MapObject,
 } from './document'
 
@@ -29,7 +30,7 @@ const MIGRATIONS: Record<number, (doc: Record<string, unknown>) => Record<string
   0: (doc) => ({ ...doc, formatVersion: 1, materials: doc.materials ?? DEFAULT_MATERIALS }),
 }
 
-export function serialize(doc: MapDoc): string {
+export function serialize(doc: ReadonlyMapDoc): string {
   return JSON.stringify(doc, null, 2)
 }
 

@@ -26,8 +26,11 @@
     "types": []
   },
 
-  // No `references`: this package has no workspace dependencies. `registry`
-  // sits below it in the target layout and does not exist yet; the reference
-  // lands with that package.
+  // No `references`, for the reason spelled out in `geometry`'s tsconfig: a
+  // referenced project must be `composite`, and `composite` forbids `noEmit`.
+  // Resolution reaches `registry` — this package's one workspace dependency,
+  // for the `undo`/`redo` declarations in `src/commands.ts` (#66 step 3) —
+  // through its `exports` map, which tsc follows on its own. The other
+  // runtime dependency is `xstate` (pinned exactly, #31).
   "include": ["src"]
 }

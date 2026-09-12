@@ -13,7 +13,7 @@
 
 import * as THREE from 'three'
 
-import type { Atmosphere, SpriteAsset } from '@map-editor/document'
+import type { Atmosphere, DeepReadonly, SpriteAsset } from '@map-editor/document'
 import { rgbaTexture } from './billboard'
 
 const SKY_VERTEX = /* glsl */ `
@@ -61,7 +61,7 @@ void main() {
 
 const DEG = Math.PI / 180
 
-export function sunDirection(atmosphere: Atmosphere): THREE.Vector3 {
+export function sunDirection(atmosphere: DeepReadonly<Atmosphere>): THREE.Vector3 {
   const azimuth = atmosphere.sunAzimuth * DEG
   const elevation = atmosphere.sunElevation * DEG
   return new THREE.Vector3(
@@ -98,7 +98,7 @@ export class Sky {
     this.group.add(this.mesh)
   }
 
-  apply(atmosphere: Atmosphere, sprites: Record<string, SpriteAsset>, nearest: boolean): void {
+  apply(atmosphere: DeepReadonly<Atmosphere>, sprites: Record<string, SpriteAsset>, nearest: boolean): void {
     // The shader works in linear space, so the authored sRGB hexes convert on
     // the way in rather than on the way out.
     const uniforms = this.material.uniforms
@@ -112,7 +112,7 @@ export class Sky {
   }
 
   private rebuildBackdrops(
-    atmosphere: Atmosphere,
+    atmosphere: DeepReadonly<Atmosphere>,
     sprites: Record<string, SpriteAsset>,
     nearest: boolean,
   ): void {
