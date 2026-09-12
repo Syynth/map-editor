@@ -13,8 +13,11 @@ export default defineConfig({
         // `manualChunks` fn is deprecated and silently ignored once this is
         // set). Without these groups, three + its postprocessing subpaths
         // and react/react-dom land in the single entry chunk, which trips
-        // Vite's 500 kB warning (see #29). `[\\/]` (not `/`) in the test
-        // regexes so matching stays correct on Windows paths.
+        // Vite's 500 kB warning — only ever a warning here; what turns it
+        // into a CI failure is `scripts/check-bundle-size.mjs` (#57),
+        // re-measuring the built output after this config runs. `[\\/]`
+        // (not `/`) in the test regexes so matching stays correct on
+        // Windows paths.
         codeSplitting: {
           groups: [
             {
