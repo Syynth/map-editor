@@ -46,7 +46,7 @@ export async function exportMapFile(
   // the same `fast-png`, into the same `RgbaImage` shape, right here.
   const { sheet, sprites } = await loadBakedAssets()
 
-  const bytes = new Uint8Array(await exportGltf(doc, { merge: options.merge, sheet, sprites, encodePng: encodePngPure }))
+  const bytes = new Uint8Array(await exportGltf(doc, { merge: options.merge, sheet, sprites, textures: {}, encodePng: encodePngPure }))
   await writeFile(outputPath, bytes)
 
   return { name: doc.name, bytes: bytes.byteLength }

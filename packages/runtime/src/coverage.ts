@@ -16,7 +16,7 @@
  */
 
 import {
-  rootVoxel,
+  frameOf,
   DIR_VECTORS,
   cellIndex,
   inBounds,
@@ -142,13 +142,16 @@ function analyseHiddenSurfaces(doc: ReadonlyMapDoc, yaws: number[]): HiddenSurfa
   let totalFaces = 0
   let hiddenFaces = 0
 
-  // TRANSITIONAL: coverage reads the root voxel volume's cliffs.
-  const voxel = rootVoxel(doc)
-  for (let y = 0; y < voxel.size.height; y++) {
+  for (const id of doc.structureOrder) {
+    const voxel = doc.structures[id]
+    if (!voxel || voxel.kind !== 'voxel') continue
+    // A turned volume's faces point elsewhere: the yaw carries into the direction tested.
+    const yawTurn = frameOf(doc, id).yaw
+    for (let y = 0; y < voxel.size.height; y++) {
     for (let x = 0; x < voxel.size.width; x++) {
       const h = voxel.terrain.height[cellIndex(voxel.size, x, y)]
       for (let dir = 0; dir < 4; dir++) {
-        const [dx, dy] = DIR_VECTORS[dir]
+        const [dx, dy] = DIR_VECTORS[(dir + yawTurn) % 4]
         const nx = x + dx
         const ny = y + dy
         const neighbour = inBounds(voxel.size, nx, ny)
@@ -160,6 +163,7 @@ function analyseHiddenSurfaces(doc: ReadonlyMapDoc, yaws: number[]): HiddenSurfa
 
         const visible = eyes.some(([ex, ez]) => ex * dx + ez * dy > 0.08)
         if (!visible) hiddenFaces += bands
+        }
       }
     }
   }

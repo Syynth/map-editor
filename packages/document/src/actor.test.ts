@@ -3,7 +3,7 @@ import { createActor, initialTransition, transition } from 'xstate'
 
 import { createDocumentActorLogic, documentLogic } from './actor'
 import { cellIndex, createMap, type MapDoc, type ReadonlyMapDoc } from './document'
-import { rootVoxel, type VoxelStructure } from './structure'
+import { structureOf, type ReadonlyVoxel, type VoxelStructure } from './structure'
 import { inversePatch, type Patch } from './edits'
 import { raise } from './ops'
 import { createDocumentStore, EditorStore, type DocumentReader, type DocumentWriter } from './store'
@@ -33,7 +33,7 @@ function countingWriter(): { writer: DocumentWriter; reader: DocumentReader; cal
   return { writer, reader, calls }
 }
 
-const ground = (doc: MapDoc | ReadonlyMapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: MapDoc | ReadonlyMapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 // Never applied to a real store: the counting writer only counts, so the id is nominal.
 const onePatch = (index: number) => [{ t: 'voxel' as const, id: 'g', field: 'height' as const, index, value: 5 }]
 
@@ -212,10 +212,11 @@ describe('the read and write paths', () => {
     // assignments land on a throwaway document — the type is the guard, not
     // `Object.freeze`, so what this proves is what the compiler refuses.
     const doc: ReadonlyMapDoc = createMap(2, 2)
+    const g = structureOf(doc, 'ground', 'voxel') as ReadonlyVoxel
     // @ts-expect-error indexed assignment
-    rootVoxel(doc).terrain.height[0] = 1
+    g.terrain.height[0] = 1
     // @ts-expect-error record assignment
-    rootVoxel(doc).paint.top['0,0'] = 1
+    g.paint.top['0,0'] = 1
     // @ts-expect-error array mutation
     doc.objectOrder.push('x')
     // @ts-expect-error property replacement

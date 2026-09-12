@@ -1,34 +1,38 @@
 /**
- * The reference runtime scene.
+ * The runtime scene: what a level looks like, built from the document.
  *
- * This is the package the brief describes in section 14: it reads a document
- * (or, after export, the glTF extras carrying the same data) and sets up
- * terrain, objects, lights, fog and sky. The editor viewport renders through
- * it and so does play mode, which is what makes "the editor matches the game"
- * true by construction instead of by discipline.
+ * Every structure gets a group placed by its frame — its origin, its
+ * quarter-turn, the height of what it stands on — and the group holds what
+ * the structure's kind meshes to: a voxel volume's chunks (solid and water,
+ * in its own local cells), a sketch's five parts (cap, rim, wall body, top
+ * and bottom bands), each dressed in the material the document names.
+ * Objects and lights are level-level and live beside the structures.
  *
- * Terrain geometry is managed imperatively, chunk by chunk. Only chunks the
- * store marks dirty are rebuilt, so a brush stroke does not touch the rest of
- * the map.
- *
- * The art is an input, never a default (#47). The scene takes its template
- * sheet and sprite library as raw pixels from whoever composes it — the editor
- * generates placeholders through `fixtures`, a game would load real art — and
- * has no way to draw any itself. That is what keeps this package free of the
- * DOM: a runtime that could fall back to a canvas would need one.
+ * A change arrives as dirty keys from the store: a chunk key names one
+ * chunk of one voxel volume; a structure id names a structure whose own
+ * data, placement or parent changed, which rebuilds it whole (and, because
+ * the store marks descendants too, everything standing on it).
  */
 
 import * as THREE from 'three'
-
 import {
   HALF,
+  SURFACE_SKETCH_CAP,
+  SURFACE_SKETCH_WALL,
   allChunkKeys,
+  frameOf,
+  levelCentre,
+  parseStructureChunkKey,
+  structureChunkKey,
+  type EdgeBand,
+  type FillEdgeMaterial,
   type ReadonlyMapDoc,
+  type ReadonlySketch,
+  type ReadonlyVoxel,
   type RgbaImage,
   type SpriteAsset,
-  rootVoxel,
 } from '@map-editor/document'
-import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
+import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@map-editor/geometry'
 import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
 import { layerView, withinLayers, type LayerRange } from './layers'
 import { Sky, sunDirection } from './sky'
@@ -47,9 +51,16 @@ function buildGeometry(buffers: MeshBuffers): THREE.BufferGeometry {
 interface ChunkView {
   solid: THREE.Mesh
   water: THREE.Mesh | null
-  /** Kept so picking can turn a raycast hit back into a document coordinate. */
   faceAddr: Int32Array
   waterFaceAddr: Int32Array | null
+  triangleCount: number
+}
+
+interface StructureView {
+  group: THREE.Group
+  chunks: Map<string, ChunkView>
+  /** A sketch's parts, each with the face addresses a pick reads. */
+  parts: Map<THREE.Mesh, Int32Array>
   triangleCount: number
 }
 
@@ -65,44 +76,82 @@ export interface SceneStats {
   lastMeshMs: number
 }
 
-/**
- * Everything the scene textures with. Both halves are authored at the
- * document's texel density; the composition root regenerates or reloads them
- * when that changes and hands the new ones to `refreshSheet` / `setSprites`.
- */
 export interface SceneAssets {
-  /** The template sheet, laid out as `packages/geometry/src/template.ts` says. */
   sheet: RgbaImage
-  /** Keyed by `MapObject.sprite`; an unknown name falls back to `rock`. */
   sprites: Record<string, SpriteAsset>
+  /** Fill-and-edge textures by the names the document's surface materials use. */
+  textures: Record<string, RgbaImage>
+}
+
+const SKETCH_PARTS = ['cap', 'rim', 'wallBody', 'wallTop', 'wallBottom'] as const
+type SketchPart = (typeof SKETCH_PARTS)[number]
+
+function bandSpec(band: EdgeBand | undefined): EdgeSpec {
+  // A material without the band still meshes with a hair-thin one; the part is then not added.
+  return band ? { width: band.width, segment: band.segment, repeat: band.repeat } : { width: 0.01, segment: 1, repeat: 'tile' }
+}
+
+/** What the mesher needs from a sketch and the two materials it names. */
+export function sketchMeshOf(doc: ReadonlyMapDoc, sketch: ReadonlySketch, layers: number): SketchMesh {
+  const cap = doc.surfaceMaterials[sketch.capMaterial] as FillEdgeMaterial | undefined
+  const wall = doc.surfaceMaterials[sketch.wallMaterial] as FillEdgeMaterial | undefined
+  return meshSketch(
+    { points: sketch.points.map((p) => ({ ...p })) },
+    {
+      height: layers * HALF,
+      cap: { fillScale: cap?.fill.scale ?? 0.5, rim: bandSpec(cap?.rim) },
+      wall: { bodyScale: wall?.fill.scale ?? 0.5, top: bandSpec(wall?.top), bottom: bandSpec(wall?.bottom) },
+      lip: sketch.lip,
+      profile: { points: sketch.wall.points.map((p) => ({ ...p })), smooth: sketch.wall.smooth },
+    },
+  )
+}
+
+/** Which of a sketch's parts a material band dresses, and with what texture; `null` when the material has no such band. */
+function textureForPart(doc: ReadonlyMapDoc, sketch: ReadonlySketch, part: SketchPart): string | null {
+  const cap = doc.surfaceMaterials[sketch.capMaterial] as FillEdgeMaterial | undefined
+  const wall = doc.surfaceMaterials[sketch.wallMaterial] as FillEdgeMaterial | undefined
+  switch (part) {
+    case 'cap':
+      return cap?.fill.texture ?? null
+    case 'rim':
+      return cap?.rim?.texture ?? null
+    case 'wallBody':
+      return wall?.fill.texture ?? null
+    case 'wallTop':
+      return wall?.top?.texture ?? null
+    case 'wallBottom':
+      return wall?.bottom?.texture ?? null
+  }
 }
 
 export class RuntimeScene {
   readonly scene = new THREE.Scene()
+  /** Every structure's group; picking and export walk this. */
   readonly terrainGroup = new THREE.Group()
   readonly objectGroup = new THREE.Group()
   readonly sky = new Sky()
-
   sprites: Record<string, SpriteAsset>
   stats: SceneStats = { chunksBuilt: 0, triangles: 0, lastMeshMs: 0 }
 
-  private chunks = new Map<string, ChunkView>()
+  private structures = new Map<string, StructureView>()
   private views = new Map<string, ObjectView>()
   private terrainMaterial: THREE.MeshStandardMaterial
   private waterMaterial: THREE.MeshStandardMaterial
+  private surfaceMaterials = new Map<string, THREE.MeshStandardMaterial>()
   private sheet: RgbaImage
+  private textures: Record<string, RgbaImage>
   private sun = new THREE.DirectionalLight(0xffffff, 1)
   private hemisphere = new THREE.HemisphereLight(0xffffff, 0x444444, 1)
   private pointLights = new Map<string, THREE.PointLight>()
   private doc: ReadonlyMapDoc
-
-  /** The height range the artist is looking at, or `null` for all of it. See `layers.ts`. */
   private layers: LayerRange | null = null
 
   constructor(doc: ReadonlyMapDoc, assets: SceneAssets) {
     this.doc = doc
     this.sheet = assets.sheet
     this.sprites = assets.sprites
+    this.textures = assets.textures
 
     this.terrainMaterial = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -145,31 +194,22 @@ export class RuntimeScene {
     this.applyAtmosphere()
   }
 
-  /**
-   * Swap the document underneath the scene. The art is not touched: a density
-   * or material change is the composition root's to notice, and it answers
-   * with `refreshSheet` / `setSprites`. Filtering IS answered here, because it
-   * is a document setting applied to art the scene already holds.
-   */
   setDocument(doc: ReadonlyMapDoc): void {
     const filteringChanged = doc.filtering !== this.doc.filtering
     this.doc = doc
     if (filteringChanged) {
       this.dropViews()
       this.applySheet()
+      for (const material of this.surfaceMaterials.values()) material.dispose()
+      this.surfaceMaterials.clear()
     }
   }
 
-  /** The template sheet, generated or artist-supplied; the caller cannot tell which and neither can this. */
   refreshSheet(sheet: RgbaImage): void {
     this.sheet = sheet
     this.applySheet()
   }
 
-  /**
-   * Replace the sprite library. Every view and backdrop is rebuilt from it on
-   * the next sync, since the old images may be at the wrong density.
-   */
   setSprites(sprites: Record<string, SpriteAsset>): void {
     this.sprites = sprites
     this.dropViews()
@@ -191,7 +231,6 @@ export class RuntimeScene {
   applyAtmosphere(): void {
     const atmosphere = this.doc.atmosphere
     this.scene.fog = new THREE.Fog(atmosphere.fogColor, atmosphere.fogNear, atmosphere.fogFar)
-
     this.sun.color.setHex(atmosphere.sunColor)
     this.sun.intensity = atmosphere.sunIntensity
     const direction = sunDirection(atmosphere)
@@ -199,101 +238,217 @@ export class RuntimeScene {
     this.sun.position.copy(centre).addScaledVector(direction, 80)
     this.sun.target.position.copy(centre)
     this.sun.target.updateMatrixWorld()
-
     this.hemisphere.color.setHex(atmosphere.skyHorizon)
     this.hemisphere.groundColor.setHex(atmosphere.fogColor)
     this.hemisphere.intensity = atmosphere.ambientIntensity
-
     this.sky.apply(atmosphere, this.sprites, this.doc.filtering === 'nearest')
   }
 
+  /** The middle of the level's extent, derived from its structures. */
   mapCentre(): THREE.Vector3 {
-    const { width, height } = rootVoxel(this.doc).size
-    return new THREE.Vector3(width / 2, 0, height / 2)
+    const [x, , z] = levelCentre(this.doc)
+    return new THREE.Vector3(x, 0, z)
   }
 
-  /** Remove a chunk's meshes from the scene and free their geometry. */
-  private dropChunk(key: string): void {
-    const existing = this.chunks.get(key)
-    if (!existing) return
-    this.terrainGroup.remove(existing.solid)
-    existing.solid.geometry.dispose()
-    if (existing.water) {
-      this.terrainGroup.remove(existing.water)
-      existing.water.geometry.dispose()
-    }
-    this.chunks.delete(key)
-  }
+  // --- structures -------------------------------------------------------------
 
-  /** Rebuild the given chunks. Pass nothing to rebuild everything. */
-  /** Narrow (or widen) the height range drawn. The caller rebuilds the chunks; this only records it. */
+  /** Narrow (or widen) the height range drawn. The caller rebuilds; this only records it. */
   setLayerRange(range: LayerRange | null): void {
     this.layers = range
   }
 
-  rebuildChunks(keys?: string[]): void {
-    // TRANSITIONAL: the scene draws the root voxel volume; other structures come with the per-structure step.
-    const ground = rootVoxel(this.doc)
-    const list = keys ?? allChunkKeys(ground.size.width, ground.size.height)
-    const start = performance.now()
-    // What the mesher reads: the document, or its layer view while a range is set.
-    const source = layerView(ground, this.layers)
-
-    // A full rebuild is authoritative about which chunks exist, so it also has
-    // to drop the ones that no longer do. Replacing a map with a smaller one
-    // leaves keys behind that the new document has no cells for, and nothing
-    // else would ever remove them: they would keep drawing the replaced map
-    // and keep answering hover and terrain picking. Same reconciliation
-    // `syncObjects` does for object views.
-    if (!keys) {
-      const wanted = new Set(list)
-      for (const key of [...this.chunks.keys()]) if (!wanted.has(key)) this.dropChunk(key)
+  private dropStructure(id: string): void {
+    const view = this.structures.get(id)
+    if (!view) return
+    for (const chunk of view.chunks.values()) {
+      chunk.solid.geometry.dispose()
+      chunk.water?.geometry.dispose()
     }
+    for (const mesh of view.parts.keys()) mesh.geometry.dispose()
+    this.terrainGroup.remove(view.group)
+    this.structures.delete(id)
+  }
 
-    for (const key of list) {
-      this.dropChunk(key)
+  private placeGroup(group: THREE.Group, id: string): void {
+    const frame = frameOf(this.doc, id)
+    group.position.set(frame.x, frame.y, frame.z)
+    // A quarter turn maps local (x, z) to (−z, x) in the document; three's Y rotation of −90° does the same.
+    group.rotation.y = (-frame.yaw * Math.PI) / 2
+  }
 
-      const mesh = meshTerrainChunk(this.doc, source, key)
-      if (mesh.solid.triangleCount === 0 && !mesh.water) continue
+  private ensureStructure(id: string): StructureView {
+    let view = this.structures.get(id)
+    if (!view) {
+      view = { group: new THREE.Group(), chunks: new Map(), parts: new Map(), triangleCount: 0 }
+      view.group.userData.structureId = id
+      this.terrainGroup.add(view.group)
+      this.structures.set(id, view)
+    }
+    this.placeGroup(view.group, id)
+    return view
+  }
 
-      const solid = new THREE.Mesh(buildGeometry(mesh.solid), this.terrainMaterial)
-      solid.castShadow = true
-      solid.receiveShadow = true
-      solid.userData.chunkKey = key
-      solid.userData.surface = 'solid'
-      solid.userData.structureId = ground.id
-      this.terrainGroup.add(solid)
+  /** The voxel volume as the mesher should read it under the layer view: the range shifted into the volume's own heights. */
+  private voxelSource(voxel: ReadonlyVoxel, base: number): ReadonlyVoxel {
+    if (this.layers === null) return voxel
+    const shift = Math.round(base / HALF)
+    return layerView(voxel, { lo: this.layers.lo - shift, hi: this.layers.hi - shift })
+  }
 
-      let water: THREE.Mesh | null = null
-      if (mesh.water) {
-        water = new THREE.Mesh(buildGeometry(mesh.water), this.waterMaterial)
-        water.receiveShadow = true
-        water.renderOrder = WATER_RENDER_ORDER
-        water.userData.chunkKey = key
-        water.userData.surface = 'water'
-        water.userData.structureId = ground.id
-        this.terrainGroup.add(water)
+  private buildChunk(view: StructureView, voxel: ReadonlyVoxel, source: ReadonlyVoxel, key: string): void {
+    const existing = view.chunks.get(key)
+    if (existing) {
+      view.group.remove(existing.solid)
+      existing.solid.geometry.dispose()
+      if (existing.water) {
+        view.group.remove(existing.water)
+        existing.water.geometry.dispose()
       }
+      view.chunks.delete(key)
+    }
+    const { cx, cy } = parseStructureChunkKey(key)
+    const mesh = meshTerrainChunk(this.doc, source, `${cx},${cy}`)
+    if (mesh.solid.triangleCount === 0 && !mesh.water) return
 
-      this.chunks.set(key, {
-        solid,
-        water,
-        faceAddr: mesh.solid.faceAddr,
-        waterFaceAddr: mesh.water?.faceAddr ?? null,
-        triangleCount: mesh.solid.triangleCount,
+    const solid = new THREE.Mesh(buildGeometry(mesh.solid), this.terrainMaterial)
+    solid.castShadow = true
+    solid.receiveShadow = true
+    solid.userData.chunkKey = key
+    solid.userData.surface = 'solid'
+    solid.userData.structureId = voxel.id
+    view.group.add(solid)
+
+    let water: THREE.Mesh | null = null
+    if (mesh.water) {
+      water = new THREE.Mesh(buildGeometry(mesh.water), this.waterMaterial)
+      water.receiveShadow = true
+      water.renderOrder = WATER_RENDER_ORDER
+      water.userData.chunkKey = key
+      water.userData.surface = 'water'
+      water.userData.structureId = voxel.id
+      view.group.add(water)
+    }
+    view.chunks.set(key, { solid, water, faceAddr: mesh.solid.faceAddr, waterFaceAddr: mesh.water?.faceAddr ?? null, triangleCount: mesh.solid.triangleCount })
+  }
+
+  private surfaceMaterial(textureName: string | null, band: boolean): THREE.MeshStandardMaterial {
+    const key = `${textureName ?? '-'}:${band ? 'band' : 'fill'}`
+    let material = this.surfaceMaterials.get(key)
+    if (!material) {
+      const image = textureName ? this.textures[textureName] : undefined
+      material = new THREE.MeshStandardMaterial({
+        map: image ? rgbaTexture(image, this.doc.filtering === 'nearest') : null,
+        color: image ? 0xffffff : 0xb06cd6,
+        vertexColors: true,
+        roughness: 1,
+        metalness: 0,
+        // Bands lie on the faces they dress: pushed toward the camera so they win the depth test.
+        polygonOffset: band,
+        polygonOffsetFactor: band ? -2 : 0,
+        polygonOffsetUnits: band ? -2 : 0,
       })
+      if (image) {
+        const map = material.map as THREE.Texture
+        map.wrapS = THREE.RepeatWrapping
+        map.wrapT = band ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping
+      }
+      this.surfaceMaterials.set(key, material)
+    }
+    return material
+  }
+
+  private buildSketch(view: StructureView, sketch: ReadonlySketch, base: number): void {
+    for (const mesh of view.parts.keys()) {
+      view.group.remove(mesh)
+      mesh.geometry.dispose()
+    }
+    view.parts.clear()
+    if (!sketch.closed || sketch.points.length < 3) return
+
+    // Under the layer view a sketch above the ceiling is not drawn; one cut by it is drawn to the ceiling.
+    let layers = sketch.layers
+    if (this.layers !== null) {
+      const ceiling = this.layers.hi * HALF
+      if (base >= ceiling) return
+      layers = Math.min(layers, Math.floor((ceiling - base) / HALF))
+      if (layers <= 0) return
     }
 
-    // Sum across every live chunk, not just the ones rebuilt this pass, so a
-    // partial rebuild does not make the readout collapse to the brush.
+    const mesh = sketchMeshOf(this.doc, sketch, layers)
+    for (const part of SKETCH_PARTS) {
+      const buffers = mesh[part]
+      if (buffers.triangleCount === 0) continue
+      const texture = textureForPart(this.doc, sketch, part)
+      const band = part !== 'cap' && part !== 'wallBody'
+      // A band the material does not have is not a part of this sketch.
+      if (band && texture === null) continue
+      // The mesher addresses every face by outline segment; the surface kind says cap or wall.
+      const faceAddr = new Int32Array(buffers.faceAddr)
+      for (let i = 0; i < faceAddr.length; i += 4) faceAddr[i] = part === 'cap' || part === 'rim' ? SURFACE_SKETCH_CAP : SURFACE_SKETCH_WALL
+      const node = new THREE.Mesh(buildGeometry(buffers), this.surfaceMaterial(texture, band))
+      node.castShadow = !band
+      node.receiveShadow = true
+      node.renderOrder = band ? 1 : 0
+      node.userData.structureId = sketch.id
+      node.userData.surface = 'solid'
+      node.userData.part = part
+      view.group.add(node)
+      view.parts.set(node, faceAddr)
+    }
+  }
+
+  private buildStructure(id: string): void {
+    const structure = this.doc.structures[id]
+    if (!structure) {
+      this.dropStructure(id)
+      return
+    }
+    this.dropStructure(id)
+    const view = this.ensureStructure(id)
+    const base = view.group.position.y
+    if (structure.kind === 'voxel') {
+      const source = this.voxelSource(structure, base)
+      for (const key of allChunkKeys(structure.size.width, structure.size.height)) {
+        this.buildChunk(view, structure, source, structureChunkKey(id, ...(key.split(',').map(Number) as [number, number])))
+      }
+    } else {
+      this.buildSketch(view, structure, base)
+    }
+    view.triangleCount = [...view.chunks.values()].reduce((sum, c) => sum + c.triangleCount, 0) + [...view.parts.values()].reduce((sum, a) => sum + a.length / 4, 0)
+  }
+
+  /** Rebuild everything: the document's set of structures is authoritative. */
+  rebuildAll(): void {
+    const start = performance.now()
+    const wanted = new Set(this.doc.structureOrder)
+    for (const id of [...this.structures.keys()]) if (!wanted.has(id)) this.dropStructure(id)
+    for (const id of this.doc.structureOrder) this.buildStructure(id)
+    this.finishStats(start, this.doc.structureOrder.length)
+  }
+
+  /** Rebuild what the store marked: chunks of voxel volumes by key, structures whole by id. */
+  rebuild(dirty: { chunks: readonly string[]; structures: readonly string[] }): void {
+    const start = performance.now()
+    const whole = new Set(dirty.structures)
+    for (const id of whole) this.buildStructure(id)
+    let built = whole.size
+    for (const key of dirty.chunks) {
+      const { structure } = parseStructureChunkKey(key)
+      if (whole.has(structure)) continue
+      const voxel = this.doc.structures[structure]
+      if (!voxel || voxel.kind !== 'voxel') continue
+      const view = this.ensureStructure(structure)
+      this.buildChunk(view, voxel, this.voxelSource(voxel, view.group.position.y), key)
+      view.triangleCount = [...view.chunks.values()].reduce((sum, c) => sum + c.triangleCount, 0)
+      built += 1
+    }
+    this.finishStats(start, built)
+  }
+
+  private finishStats(start: number, built: number): void {
     let triangles = 0
-    for (const chunk of this.chunks.values()) triangles += chunk.triangleCount
-
-    this.stats = {
-      chunksBuilt: list.length,
-      triangles,
-      lastMeshMs: performance.now() - start,
-    }
+    for (const view of this.structures.values()) triangles += view.triangleCount
+    this.stats = { chunksBuilt: built, triangles, lastMeshMs: performance.now() - start }
   }
 
   /** The structure a terrain mesh belongs to — what a pick names alongside the face. */
@@ -302,13 +457,20 @@ export class RuntimeScene {
   }
 
   faceAddressFor(mesh: THREE.Object3D): Int32Array | null {
-    const chunk = this.chunks.get(mesh.userData.chunkKey as string)
+    const view = this.structures.get(mesh.userData.structureId as string)
+    if (!view) return null
+    const part = view.parts.get(mesh as THREE.Mesh)
+    if (part) return part
+    const chunk = view.chunks.get(mesh.userData.chunkKey as string)
     if (!chunk) return null
     return mesh.userData.surface === 'water' ? chunk.waterFaceAddr : chunk.faceAddr
   }
 
+  /** Every structure mesh, solid and water, across every structure. */
   terrainMeshes(): THREE.Mesh[] {
-    return this.terrainGroup.children.filter((child): child is THREE.Mesh => (child as THREE.Mesh).isMesh)
+    const out: THREE.Mesh[] = []
+    for (const view of this.structures.values()) for (const child of view.group.children) if ((child as THREE.Mesh).isMesh) out.push(child as THREE.Mesh)
+    return out
   }
 
   /** The ground alone — what a pick lands on; the water surface is looked through. */
@@ -316,10 +478,10 @@ export class RuntimeScene {
     return this.terrainMeshes().filter((mesh) => mesh.userData.surface !== 'water')
   }
 
-  /** Reconcile object views against the document. */
+  // --- objects ----------------------------------------------------------------
+
   syncObjects(context: ObjectViewContext): void {
     const wanted = new Set(this.doc.objectOrder)
-
     for (const [id, view] of this.views) {
       if (!wanted.has(id)) {
         this.objectGroup.remove(view.group)
@@ -332,13 +494,11 @@ export class RuntimeScene {
         }
       }
     }
-
     for (const id of this.doc.objectOrder) {
       const object = this.doc.objects[id]
       if (!object) continue
       const asset = this.sprites[object.sprite] ?? this.sprites.rock
       let view = this.views.get(id)
-
       if (!view) {
         view = new ObjectView(object, asset, context)
         view.group.userData.objectId = id
@@ -349,8 +509,6 @@ export class RuntimeScene {
         view.group.userData.objectId = id
       }
       view.setPosition(object.position)
-
-      // Lights are mostly implicit: a lamp prop carries its own point light.
       if (asset.emissive) {
         let light = this.pointLights.get(id)
         if (!light) {
@@ -358,14 +516,9 @@ export class RuntimeScene {
           this.pointLights.set(id, light)
           this.objectGroup.add(light)
         }
-        // Dim in daylight, bright at night, driven by the sky preset.
         const nightness = 1 - Math.min(1, this.doc.atmosphere.sunIntensity / 1.2)
         light.intensity = 3.2 * nightness * object.scale
-        light.position.set(
-          object.position[0],
-          object.position[1] + asset.heightTiles * object.scale * 0.86,
-          object.position[2],
-        )
+        light.position.set(object.position[0], object.position[1] + asset.heightTiles * object.scale * 0.86, object.position[2])
       }
     }
   }
@@ -373,8 +526,6 @@ export class RuntimeScene {
   updateObjects(cameraYaw: number, dt: number, context: ObjectViewContext): void {
     for (const view of this.views.values()) {
       view.update(cameraYaw, dt, context)
-      // An object outside the layer range is hidden the same way a hidden
-      // object is — after `update`, which sets visibility from the object.
       if (this.layers !== null && !withinLayers(this.layers, view.object.position[1], HALF)) view.group.visible = false
     }
   }
@@ -388,15 +539,12 @@ export class RuntimeScene {
   }
 
   dispose(): void {
-    for (const chunk of this.chunks.values()) {
-      chunk.solid.geometry.dispose()
-      chunk.water?.geometry.dispose()
-    }
-    this.chunks.clear()
+    for (const id of [...this.structures.keys()]) this.dropStructure(id)
     for (const view of this.views.values()) view.dispose()
     this.views.clear()
     this.terrainMaterial.dispose()
     this.waterMaterial.dispose()
+    for (const material of this.surfaceMaterials.values()) material.dispose()
     this.sky.dispose()
   }
 }

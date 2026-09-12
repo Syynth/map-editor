@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { autotileMask, MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST } from './autotile'
 import { applyPatches, History, inversePatch, patchAddress, type Patch, type StrokeRecord } from './edits'
 import { cellIndex, createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
-import { childrenOf, descendantsOf, rootVoxel, type VoxelStructure } from './structure'
+import { childrenOf, descendantsOf, type VoxelStructure } from './structure'
 import { deserialize, LoadError, serialize } from './io'
 import { addObject, addSketchPoint, addStructure, brushCells, closeSketch, createSketch, deleteSketchPoint, fillCells, flatten, paintTop, raise, removeObject, removeStructure, reparentStructure, setRamp, setSketch, updateObject } from './ops'
 import { cliffKey, countDormant, topKey } from './paint'
@@ -28,7 +28,7 @@ function objectAt(id: string, x: number, z: number): MapObject {
 }
 
 /** The one voxel volume a fresh level has, as the mutable thing a test sets up. */
-const ground = (doc: MapDoc | ReadonlyMapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: MapDoc | ReadonlyMapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
   const g = ground(doc)
@@ -271,8 +271,8 @@ describe('store', () => {
     store.takeDirtyChunks()
     store.apply('Raise', raise(store.reader.doc, ground(store.reader.doc), [[16, 16]], 1))
     const dirty = store.takeDirtyChunks()
-    expect(dirty).toContain('1,1')
-    expect(dirty).toContain('0,0')
+    expect(dirty).toContain('ground/1,1')
+    expect(dirty).toContain('ground/0,0')
   })
 })
 

@@ -27,7 +27,9 @@
  */
 
 import {
-  rootVoxel, groundHeight, type DocumentReader } from '@map-editor/document'
+  type DocumentReader,
+  levelCentre,
+} from '@map-editor/document'
 import { setup, types } from 'xstate'
 
 /** Where the character is put down, in world units. */
@@ -37,11 +39,7 @@ export interface PlayContext {
 
 function startPosition(reader: DocumentReader): readonly [number, number, number] {
   const { doc } = reader
-  // TRANSITIONAL: the level's spawn is the middle of its root voxel volume.
-  const ground = rootVoxel(doc)
-  const x = ground.size.width / 2
-  const z = ground.size.height / 2
-  return [x, groundHeight(doc, x, z), z]
+  return levelCentre(doc)
 }
 
 export function playLogic(reader: DocumentReader) {

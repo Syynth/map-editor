@@ -134,3 +134,55 @@ export function cellCentreWorld(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, x: nu
   const [wx, wz] = toWorld(frame, x + 0.5, y + 0.5)
   return [wx, frame.y + (voxelTop(voxel, x + 0.5, y + 0.5) ?? 0), wz]
 }
+
+/** The level's extent, derived: the union of what its structures cover, in world units. `null` for an empty level. */
+export interface Bounds {
+  minX: number
+  minZ: number
+  maxX: number
+  maxZ: number
+}
+
+export function levelBounds(doc: ReadonlyMapDoc): Bounds | null {
+  let out: Bounds | null = null
+  const grow = (x: number, z: number) => {
+    if (!out) out = { minX: x, minZ: z, maxX: x, maxZ: z }
+    else {
+      out.minX = Math.min(out.minX, x)
+      out.minZ = Math.min(out.minZ, z)
+      out.maxX = Math.max(out.maxX, x)
+      out.maxZ = Math.max(out.maxZ, z)
+    }
+  }
+  for (const id of doc.structureOrder) {
+    const s = doc.structures[id]
+    if (!s) continue
+    const frame = frameOf(doc, id)
+    if (s.kind === 'voxel') {
+      for (const [lx, lz] of [
+        [0, 0],
+        [s.size.width, 0],
+        [0, s.size.height],
+        [s.size.width, s.size.height],
+      ]) {
+        const [x, z] = toWorld(frame, lx, lz)
+        grow(x, z)
+      }
+    } else {
+      for (const p of s.points) {
+        const [x, z] = toWorld(frame, p.x, p.z)
+        grow(x, z)
+      }
+    }
+  }
+  return out
+}
+
+/** The middle of the level's extent, on the ground; the origin for an empty level. */
+export function levelCentre(doc: ReadonlyMapDoc): [number, number, number] {
+  const b = levelBounds(doc)
+  if (!b) return [0, 0, 0]
+  const x = (b.minX + b.maxX) / 2
+  const z = (b.minZ + b.maxZ) / 2
+  return [x, groundHeight(doc, x, z), z]
+}

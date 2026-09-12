@@ -49,3 +49,14 @@ export function allChunkKeys(width: number, height: number): string[] {
   }
   return keys
 }
+
+/** A chunk key qualified by the voxel structure it belongs to: `<structure>/<cx>,<cy>`. */
+export function structureChunkKey(structure: string, cx: number, cy: number): string {
+  return `${structure}/${chunkKey(cx, cy)}`
+}
+
+export function parseStructureChunkKey(key: string): { structure: string; cx: number; cy: number } {
+  const slash = key.lastIndexOf('/')
+  const { cx, cy } = parseChunkKey(key.slice(slash + 1))
+  return { structure: key.slice(0, slash), cx, cy }
+}

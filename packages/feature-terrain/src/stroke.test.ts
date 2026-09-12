@@ -7,7 +7,6 @@ import {
   type Patch,
   type ReadonlyMapDoc,
   type SurfaceAddress,
-  rootVoxel,
   type MapDoc,
   type VoxelStructure,
 } from '@map-editor/document'
@@ -18,7 +17,7 @@ import type { FeatureDeps } from './deps'
 import type { TerrainParams } from './verbs'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
-const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 
 /**

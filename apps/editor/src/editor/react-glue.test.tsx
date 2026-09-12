@@ -27,7 +27,6 @@ import {
   createDocument,
   createMap,
   raise,
-  rootVoxel,
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
@@ -39,7 +38,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { HostProvider, createHost, useDocument, useHost, useToolsSelector, type Host } from '@map-editor/editor-host'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
-const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 
 // React's own flag for "these renders are inside `act`" — without it every

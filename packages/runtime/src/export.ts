@@ -18,13 +18,17 @@ import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
 import {
-  rootVoxel,
   allChunkKeys,
+  frameOf,
+  levelBounds,
+  levelCentre,
+  type ReadonlyVoxel,
   type ReadonlyMapDoc,
   type RgbaImage,
   type SpriteAsset,
 } from '@map-editor/document'
 import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
+import { sketchMeshOf } from './scene'
 import { resolveDisplayMode, rgbaTexture } from './billboard'
 import { atlasFor, embedPngImages, type PngEncoder } from './images'
 
@@ -34,6 +38,8 @@ export const EXTRAS_VERSION = 1
 export interface ExportOptions {
   /** Merge static geometry per chunk for fewer draw calls, losing identity. */
   merge: boolean
+  /** Fill-and-edge textures by the names the document's surface materials use. */
+  textures: Record<string, RgbaImage>
   /** The template sheet the terrain samples — generated or the artist's. */
   sheet: RgbaImage
   /** Keyed by `MapObject.sprite`; an unknown name falls back to `rock`. */
@@ -108,24 +114,72 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
 
   const mergedPositions: THREE.BufferGeometry[] = []
 
-  // TRANSITIONAL: the export walks the root voxel volume's chunks.
-  const ground = rootVoxel(doc)
-  for (const key of allChunkKeys(ground.size.width, ground.size.height)) {
+  const frameMatrix = (id: string): THREE.Matrix4 => {
+    const frame = frameOf(doc, id)
+    return new THREE.Matrix4().makeTranslation(frame.x, frame.y, frame.z).multiply(new THREE.Matrix4().makeRotationY((-frame.yaw * Math.PI) / 2))
+  }
+  const sketchRoot = new THREE.Group()
+  sketchRoot.name = 'Sketches'
+  const surfaceMaterials = new Map<string, THREE.MeshStandardMaterial>()
+  const surfaceMaterial = (texture: string | null): THREE.MeshStandardMaterial => {
+    const key = texture ?? '-'
+    let material = surfaceMaterials.get(key)
+    if (!material) {
+      const image = texture ? options.textures[texture] : undefined
+      material = new THREE.MeshStandardMaterial({ map: image ? rgbaTexture(image, nearest) : null, color: image ? 0xffffff : 0xb06cd6, vertexColors: true, roughness: 1, metalness: 0 })
+      material.name = `surface_${key}`
+      surfaceMaterials.set(key, material)
+    }
+    return material
+  }
+  const voxelChunks: Array<{ ground: ReadonlyVoxel; key: string; matrix: THREE.Matrix4 }> = []
+  for (const id of doc.structureOrder) {
+    const structure = doc.structures[id]
+    if (!structure) continue
+    const matrix = frameMatrix(id)
+    if (structure.kind === 'voxel') {
+      for (const key of allChunkKeys(structure.size.width, structure.size.height)) voxelChunks.push({ ground: structure, key, matrix })
+      continue
+    }
+    if (!structure.closed || structure.points.length < 3) continue
+    const parts = sketchMeshOf(doc, structure, structure.layers)
+    const cap = doc.surfaceMaterials[structure.capMaterial]
+    const wall = doc.surfaceMaterials[structure.wallMaterial]
+    const dressing: Array<[MeshBuffers, string | null, boolean]> = [
+      [parts.cap, cap?.fill.texture ?? null, false],
+      [parts.rim, cap?.rim?.texture ?? null, true],
+      [parts.wallBody, wall?.fill.texture ?? null, false],
+      [parts.wallTop, wall?.top?.texture ?? null, true],
+      [parts.wallBottom, wall?.bottom?.texture ?? null, true],
+    ]
+    const group = new THREE.Group()
+    group.name = structure.name || id
+    group.applyMatrix4(matrix)
+    for (const [buffers, texture, band] of dressing) {
+      if (buffers.triangleCount === 0 || (band && texture === null)) continue
+      const node = new THREE.Mesh(geometryFrom(buffers), surfaceMaterial(texture))
+      node.userData = { collision: band ? 'none' : 'mesh', walkable: !band }
+      group.add(node)
+    }
+    sketchRoot.add(group)
+  }
+  for (const { ground, key, matrix } of voxelChunks) {
     const mesh = meshTerrainChunk(doc, ground, key)
     if (mesh.solid.triangleCount > 0) {
       const geometry = geometryFrom(mesh.solid)
+      geometry.applyMatrix4(matrix)
       if (options.merge) {
         mergedPositions.push(geometry)
       } else {
         const node = new THREE.Mesh(geometry, terrainMaterial)
-        node.name = `terrain_${key}`
+        node.name = `terrain_${ground.id}_${key}`
         node.userData = { collision: 'mesh', walkable: true }
         terrainRoot.add(node)
       }
     }
     if (mesh.water) {
       const water = new THREE.Mesh(
-        geometryFrom(mesh.water),
+        geometryFrom(mesh.water).applyMatrix4(matrix),
         new THREE.MeshStandardMaterial({
           color: 0x3f7fb0,
           transparent: true,
@@ -133,7 +187,7 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
           roughness: 0.25,
         }),
       )
-      water.name = `water_${key}`
+      water.name = `water_${ground.id}_${key}`
       water.userData = { collision: 'none', walkable: false, water: true }
       waterRoot.add(water)
     }
@@ -183,6 +237,7 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
 
   scene.add(terrainRoot)
   if (waterRoot.children.length > 0) scene.add(waterRoot)
+  if (sketchRoot.children.length > 0) scene.add(sketchRoot)
 
   // --- objects --------------------------------------------------------------
   const sprites = options.sprites
@@ -249,7 +304,7 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
       extrasVersion: EXTRAS_VERSION,
       formatVersion: doc.formatVersion,
       name: doc.name,
-      size: rootVoxel(doc).size,
+      bounds: levelBounds(doc),
       resolutionProfile: {
         texelDensity: doc.texelDensity,
         filtering: doc.filtering,
@@ -274,7 +329,7 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
         },
         backdrop: doc.atmosphere.backdrop,
       },
-      spawn: [rootVoxel(doc).size.width / 2, 0, rootVoxel(doc).size.height / 2],
+      spawn: levelCentre(doc),
     },
   }
 

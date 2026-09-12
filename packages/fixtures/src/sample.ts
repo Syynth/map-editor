@@ -22,8 +22,8 @@ import {
   topKey,
   type MapDoc,
   type MapObject,
-  rootVoxel,
   type VoxelStructure,
+  createSketch,
 } from '@map-editor/document'
 import { sheetLayoutFor, cliffTile, defaultTopTile } from '@map-editor/geometry'
 
@@ -60,7 +60,7 @@ function place(
 
 export function createSampleMap(width = 36, height = 36): MapDoc {
   const doc = createMap(width, height, 'Sample Valley')
-  const ground = rootVoxel(doc) as VoxelStructure
+  const ground = doc.structures.ground as VoxelStructure
   const layout = sheetLayoutFor(doc)
   const centreX = width / 2
   const centreY = height / 2
@@ -183,6 +183,34 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   place(doc, 'barrel', centreX + 5, centreY + 4)
 
   // Distant painted scenery, since the ridge does not reach the horizon.
+  // A sketch island with a tier on it, on the meadow east of the centre: the
+  // second structure kind, in the level the tour and the tests look at.
+  const island = createSketch(ground.id, 'Island', { x: centreX + 4, z: centreY + 8, yaw: 0 })
+  island.points = [
+    { x: 0, z: 1, smooth: true },
+    { x: 3, z: -1, smooth: true },
+    { x: 7, z: -1, smooth: false },
+    { x: 9, z: 2, smooth: true },
+    { x: 8, z: 5, smooth: true },
+    { x: 4, z: 6, smooth: true },
+    { x: 1, z: 4, smooth: true },
+  ]
+  island.closed = true
+  island.layers = 4
+  const tier = createSketch(island.id, 'Tier', { x: 3, z: 1, yaw: 0 })
+  tier.points = [
+    { x: 0, z: 0, smooth: true },
+    { x: 3, z: 0, smooth: true },
+    { x: 4, z: 2, smooth: true },
+    { x: 2, z: 3, smooth: true },
+  ]
+  tier.closed = true
+  tier.layers = 2
+  for (const sketch of [island, tier]) {
+    doc.structures[sketch.id] = sketch
+    doc.structureOrder.push(sketch.id)
+  }
+
   doc.atmosphere.backdrop = [
     { sprite: 'mountains', base: -3, height: 16, radius: 80, parallax: 0.92, opacity: 1 },
   ]

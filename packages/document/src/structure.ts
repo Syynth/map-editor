@@ -151,21 +151,6 @@ export function ancestorsOf(tree: ReadonlyStructureTree, id: string): string[] {
   return out
 }
 
-/**
- * TRANSITIONAL: the one voxel structure a level is assumed to have while
- * the runtime, viewport and tools still address "the terrain" rather than a
- * structure. Every caller is a site the per-structure step removes. Throws
- * when there is none: that is a level the old code cannot show, and a silent
- * empty grid would hide it.
- */
-export function rootVoxel(tree: ReadonlyStructureTree): ReadonlyVoxel {
-  for (const id of tree.structureOrder) {
-    const s = tree.structures[id]
-    if (s && s.kind === 'voxel' && s.parent === null) return s
-  }
-  throw new Error('This level has no root voxel structure; the grid-only code paths cannot show it yet.')
-}
-
 // --- outline ------------------------------------------------------------------
 
 type Vec2 = readonly [number, number]
@@ -236,4 +221,54 @@ export function pointInOutline(outline: Outline, x: number, z: number): boolean 
     if (zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside
   }
   return inside
+}
+
+// --- materials ----------------------------------------------------------------
+
+/** How an edge texture repeats along an outline: on a fixed length, or stretched so a whole number of copies meet at the seam. */
+export type EdgeRepeat = 'tile' | 'stretch'
+
+/** One textured band along an outline: the strip's texture, how wide it is across, how long one repeat is along. */
+export interface EdgeBand {
+  texture: string
+  /** Across the band, in world units. */
+  width: number
+  /** Along the outline: world units per texture repeat. */
+  segment: number
+  repeat: EdgeRepeat
+}
+
+/**
+ * A fill-and-edge material (the Sketch's kind, in the manner of Ferr2D): a
+ * fill tiled across a face, and edge bands run along its outline. A cap
+ * material carries a `rim`; a wall material carries `top` and `bottom`. The
+ * textures are names the runtime resolves; the document never holds pixels.
+ */
+export interface FillEdgeMaterial {
+  kind: 'fillEdge'
+  name: string
+  fill: { texture: string; scale: number }
+  rim?: EdgeBand
+  top?: EdgeBand
+  bottom?: EdgeBand
+}
+
+export const DEFAULT_SURFACE_MATERIALS: Record<string, FillEdgeMaterial> = {
+  grass: {
+    kind: 'fillEdge',
+    name: 'Grass',
+    fill: { texture: 'grass_fill', scale: 0.5 },
+    rim: { texture: 'grass_rim', width: 0.6, segment: 2, repeat: 'stretch' },
+  },
+  earth: {
+    kind: 'fillEdge',
+    name: 'Earth',
+    fill: { texture: 'earth_body', scale: 0.5 },
+    top: { texture: 'earth_top', width: 0.5, segment: 2, repeat: 'stretch' },
+    bottom: { texture: 'earth_bottom', width: 0.4, segment: 2, repeat: 'stretch' },
+  },
+}
+
+export function defaultSurfaceMaterials(): Record<string, FillEdgeMaterial> {
+  return JSON.parse(JSON.stringify(DEFAULT_SURFACE_MATERIALS)) as Record<string, FillEdgeMaterial>
 }

@@ -15,14 +15,13 @@ import {
   cellIndex,
   createMap,
   type MapDoc,
-  rootVoxel,
   type ReadonlyMapDoc,
   type VoxelStructure,
 } from '@map-editor/document'
 import { meshTerrainChunk } from './terrain'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
-const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 
 function hilly(width: number, height: number): MapDoc {

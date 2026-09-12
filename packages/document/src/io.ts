@@ -18,7 +18,7 @@ import {
   type ReadonlyMapDoc,
 } from './document'
 import { DEFAULT_WALL_PROFILE } from './ops'
-import type { SketchStructure, Structure, VoxelStructure } from './structure'
+import { defaultSurfaceMaterials, type SketchStructure, type Structure, type VoxelStructure } from './structure'
 
 export class LoadError extends Error {}
 
@@ -124,6 +124,7 @@ export function deserialize(text: string): MapDoc {
     texelDensity: (raw.texelDensity as number) ?? 16,
     filtering: (raw.filtering as MapDoc['filtering']) ?? 'nearest',
     materials: (raw.materials as MapDoc['materials']) ?? DEFAULT_MATERIALS.map((m) => ({ ...m })),
+    surfaceMaterials: { ...defaultSurfaceMaterials(), ...((raw.surfaceMaterials as MapDoc['surfaceMaterials']) ?? {}) },
     structures,
     structureOrder,
     objects,

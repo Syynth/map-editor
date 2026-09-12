@@ -17,15 +17,15 @@ const sprites: Record<string, SpriteAsset> = {
 }
 
 function scene(width: number, height: number): RuntimeScene {
-  return new RuntimeScene(createMap(width, height), { sheet: solid(16, 5, [0, 255, 0, 255]), sprites })
+  return new RuntimeScene(createMap(width, height), { sheet: solid(16, 5, [0, 255, 0, 255]), sprites, textures: {} })
 }
 
 describe('full rebuild reconciles chunks', () => {
   it('drops chunks the replaced map had and the new one does not', () => {
     const runtime = scene(36, 36)
-    runtime.rebuildChunks()
+    runtime.rebuildAll()
 
-    const wide = allChunkKeys(36, 36)
+    const wide = allChunkKeys(36, 36).map((key) => `ground/${key}`)
     expect(wide.length).toBe(9)
     const drawnWide = runtime.terrainMeshes().map((mesh) => mesh.userData.chunkKey as string)
     expect(new Set(drawnWide)).toEqual(new Set(wide))
@@ -33,11 +33,11 @@ describe('full rebuild reconciles chunks', () => {
     // The one change no dirty chunk describes: a smaller document swapped in
     // underneath. Keys 1,0 .. 2,2 have no cells any more.
     runtime.setDocument(createMap(6, 6))
-    runtime.rebuildChunks()
+    runtime.rebuildAll()
 
     const drawnSmall = runtime.terrainMeshes().map((mesh) => mesh.userData.chunkKey as string)
-    expect(new Set(drawnSmall)).toEqual(new Set(allChunkKeys(6, 6)))
-    expect(runtime.faceAddressFor(staleMesh('2,2'))).toBeNull()
+    expect(new Set(drawnSmall)).toEqual(new Set(allChunkKeys(6, 6).map((key) => `ground/${key}`)))
+    expect(runtime.faceAddressFor(staleMesh('ground/2,2'))).toBeNull()
 
     // Nothing from the replaced map is still parented, so nothing from it is
     // still drawn or still in the raycast set.
@@ -51,12 +51,12 @@ describe('full rebuild reconciles chunks', () => {
 
   it('keeps a partial rebuild partial', () => {
     const runtime = scene(36, 36)
-    runtime.rebuildChunks()
+    runtime.rebuildAll()
     const before = runtime.terrainMeshes().length
 
     // A dirty-chunk pass names one key. It must not be read as "only this
     // chunk exists" and sweep the other eight away.
-    runtime.rebuildChunks(['1,1'])
+    runtime.rebuild({ chunks: ['ground/1,1'], structures: [] })
     expect(runtime.terrainMeshes().length).toBe(before)
     expect(runtime.stats.chunksBuilt).toBe(1)
   })
@@ -67,5 +67,6 @@ function staleMesh(key: string): THREE.Object3D {
   const object = new THREE.Object3D()
   object.userData.chunkKey = key
   object.userData.surface = 'solid'
+  object.userData.structureId = 'ground'
   return object
 }
