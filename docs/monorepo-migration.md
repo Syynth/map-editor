@@ -94,9 +94,13 @@ move rather than to the whole restructure. Order follows the dependency directio
       function the boundary script always named.
 - [x] A test enforcing dependency direction, since pnpm does not.
       `tests/dependency-direction.test.ts`: it reads every workspace `package.json`,
-      checks each declared arrow against the ladder above and checks the graph is
-      acyclic. A workspace package with no entry in its table fails, so a new package
-      cannot be silently unchecked — which is the bug the deleted script had.
+      checks each declared arrow against the ladder above, checks the graph is
+      acyclic, keeps runtime libraries (and their `@types/` twins) off the root
+      so none can re-hoist into a package that never declared them, and keeps
+      every package's `exports` map explicit so a declared entry point can't
+      itself be a wildcard. A workspace package with no entry in its table fails,
+      so a new package cannot be silently unchecked — which is the bug the
+      deleted script had.
 - [x] **Delete `scripts/check-boundaries.mjs`.** Its header has always said to, and
       [#20](https://github.com/Syynth/map-editor/issues/20) found it is regex-over-source
       and therefore blind to types. It had also started passing vacuously: it walked
