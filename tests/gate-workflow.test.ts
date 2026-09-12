@@ -35,4 +35,28 @@ describe('CI gate workflow', () => {
     expect(buildStepIndex).not.toBe(lintingStepIndex)
     expect(buildStepIndex).toBeLessThan(lintingStepIndex)
   })
+
+  // #79: nothing else in this suite would notice `check-bundle-size` (#57)
+  // dropping out of the Build step's `run:` line — the two assertions above
+  // only look for `build`. It rides in the same turbo invocation as `build`
+  // (not its own step) because it dependsOn apps/editor's own `build` task,
+  // so turbo's graph, not runner step ordering, is what makes it wait for
+  // `dist/`; see the "Build" step's own comment in gate.yml.
+  it('keeps check-bundle-size wired into the build step', () => {
+    expect(steps[buildStepIndex]).toMatch(/run:\s*pnpm turbo run build\b[^\n]*\bcheck-bundle-size\b/)
+  })
+
+  // A group keyed only by `github.ref` (as it once was) puts every push to
+  // `main` in the same group as every other: GitHub cancels a `pending` run
+  // whenever a third run queues behind it, so a fast merge-train can cancel
+  // an intermediate `main` SHA's pending run and leave it with no completed
+  // gate run at all — restricting `cancel-in-progress` to `pull_request`
+  // does not stop that, it only decides who does the cancelling. Keying the
+  // group by `github.sha` for non-PR events gives every push to `main` its
+  // own group, so no two `main` runs ever share one to queue behind or
+  // supersede within.
+  it('keys the concurrency group by sha (not just ref) outside pull requests', () => {
+    const concurrency = workflow.slice(workflow.indexOf('\nconcurrency:'), workflow.indexOf('\npermissions:'))
+    expect(concurrency).toMatch(/group:.*github\.event_name == 'pull_request'.*&&.*github\.ref.*\|\|.*github\.sha/)
+  })
 })

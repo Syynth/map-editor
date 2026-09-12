@@ -82,13 +82,14 @@ itself never touches a canvas.
 A pnpm workspace, orchestrated by Turborepo.
 
 ```
-packages/document/  document, commands, undo, ops, paint  — no three.js, no React
-packages/geometry/  meshers and the autotile template     — no three.js, no React
-packages/runtime/   the reference runtime: scene, billboards, camera, export
-packages/viewport/  the imperative GL shell the editor drives
-packages/ui/        the editor's design vocabulary (Mantine primitives)
-packages/fixtures/  generated sample documents
-apps/editor/        React panels, tools and the app shell
+packages/document/      document, commands, undo, ops, paint  — no three.js, no React
+packages/geometry/      meshers and the autotile template     — no three.js, no React
+packages/runtime/       the reference runtime: scene, billboards, camera, export
+packages/viewport/      the imperative GL shell the editor drives
+packages/ui/            the editor's design vocabulary (Mantine primitives)
+packages/fixtures/      generated sample documents
+packages/eslint-rules/  custom lint rules the workspace's own eslint.config.js plugs in
+apps/editor/            React panels, tools and the app shell
 ```
 
 The import direction `registry <- document <- geometry <- runtime <- viewport <- editor-host`
