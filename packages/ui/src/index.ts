@@ -33,3 +33,9 @@ export {
   Select,
   Slider,
 } from './primitives'
+
+export { UiProvider } from './provider'
+export { cssVariables, darkScale, shades, theme, themeOverride } from './theme'
+export { colors, fontSize, fonts, frame, radius, space, tokens } from './tokens'
+export type { Tokens } from './tokens'
+
