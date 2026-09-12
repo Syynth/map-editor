@@ -101,9 +101,10 @@ consume; the editor renders through it, so the preview and the game cannot drift
 apart.
 
 `packages/ui` sits off the ladder at `document`'s rung — it may depend only on
-`registry`, and is visible only to apps (presently `editor`, and the future
-`editor-host`). This property is asserted by the dependency direction test
-with a `visibleTo` allowlist.
+`registry`, and is visible only to apps (presently `editor`), the future
+`editor-host`, and feature packages (#49) — a `feature` never depends on the
+host, or the host on it, since the two rank equally. This property is
+asserted by the dependency direction test with a `visibleTo` allowlist.
 
 ## Two things worth knowing before reading the code
 
