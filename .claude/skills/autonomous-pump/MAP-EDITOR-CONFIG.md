@@ -147,6 +147,37 @@ empirically in this repo, and all of them are on the wayfinder map
   from `node_modules`, hashes computed from a real `corepack` run, screenshots or captures
   attached to the PR. State only what you checked, and never say a file is attached when it
   isn't; a reviewer trusts the body as much as the diff.
+- **A turbo task whose script lives outside its package directory (e.g. a repo-root
+  `scripts/*.mjs` driving a `packages/*` task) needs that script added to
+  `globalDependencies`/`inputs` explicitly.** Turbo's default inputs are only the package's
+  own tracked files, so editing the ceiling, glob, or logic in a root-level script leaves the
+  task cache-hitting on the old behavior — including in CI, whose restore-keys fall back to
+  any prior cache on the same premise. Verify by editing the script and confirming a cache
+  miss, not by rerunning with `--force`, which bypasses exactly this.
+- **Don't trust a flag, field, or comment's name for what it enforces — mutate the value and
+  watch behavior change before writing (or believing) a claim about it.** `engineStrict` reads
+  like it gates the Node version; it doesn't. A `rank` field on a placement type read like it
+  excluded two kinds `by construction`; nothing ever read it. Both looked load-bearing and
+  weren't — the only proof is flipping the value and checking for an effect.
+- **When scoping a lint rule or type-check by file glob, verify the glob covers every
+  extension the target API can appear in, with a probe file in each.** `rules-of-hooks`
+  scoped to `**/*.tsx` let a custom hook (`use*`, no JSX) sitting in a `.ts` file lint clean
+  with a real violation inside it — the rule keys on naming, not file type, so restricting to
+  the component extension silently drops half its targets.
+- **Never describe a not-yet-built consumer, package, or capability in present tense.** State
+  it as a plan and link the tracking issue (`#48`, a decision-log line) instead of asserting
+  it as shipped — a README claiming "a headless consumer reads the PNGs" when no such
+  consumer exists, or an architecture doc naming apps with no source in the decision log,
+  sends the next agent looking for code that isn't there.
+- **When adding a new branch to a decision function (a validator, a classifier, a placement
+  rule), commit a table-driven test that exercises that exact branch.** A `throw` inserted at
+  the new branch and reverted before commit is not a regression test — in one PR the whole
+  suite stayed green with the new branch replaced by a `throw`, because nothing on disk
+  reached it yet.
+- **Before opening or merging a PR, rebase onto the current tip of `main` and check for
+  conflicts with anything landed since the branch was cut** — a PR that edits the same
+  README paragraph or doc section another merged PR just rewrote will merge clean by text but
+  silently drop the newer wording.
 
 ## Verification: how the human drives it
 
