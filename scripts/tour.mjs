@@ -187,7 +187,7 @@ async function expect(label, fn) {
 /** Counts the tour asserts against. */
 async function counts() {
   return page.evaluate(() => {
-    const doc = window.__store.doc
+    const doc = window.__store.reader.doc
     return {
       ramps: doc.terrain.ramp.filter((r) => r !== -1).length,
       topPaint: Object.keys(doc.paint.top).length,
@@ -241,7 +241,7 @@ for (let i = 0; i < 10; i++) {
 }
 await page.mouse.up()
 const raised = (await counts()).heightSum - beforeSculpt.heightSum
-await expect('raise changed the terrain', () => window.__store.history.canUndo())
+await expect('raise changed the terrain', () => window.__store.reader.canUndo())
 await shot(
   'sculpt-raise',
   `Dragging with Raise — ${raised} half-tiles of terrain moved. The whole stroke is one undo entry, not ten.`,
@@ -250,7 +250,7 @@ await shot(
 await page.keyboard.press('Control+z')
 await expect(
   'one undo reverted the whole stroke',
-  () => !window.__store.history.canUndo() && window.__store.history.canRedo(),
+  () => !window.__store.reader.canUndo() && window.__store.reader.canRedo(),
 )
 await shot('sculpt-undo', 'One Ctrl+Z takes the entire stroke back — the whole drag was a single entry.')
 
@@ -260,7 +260,7 @@ await shot('sculpt-undo', 'One Ctrl+Z takes the entire stroke back — the whole
 // identical screenshots captioned as a before and after.
 async function faceCamera(distance = 10, pitch = 10) {
   const face = await page.evaluate(() => {
-    const doc = window.__store.doc
+    const doc = window.__store.reader.doc
     let best = { x: 0, y: 0, drop: -1, top: 0, bottom: 0 }
     for (let y = 2; y < doc.size.height - 2; y++) {
       for (let x = 2; x < doc.size.width - 2; x++) {
@@ -380,7 +380,7 @@ for (let i = 0; i < 9; i++) {
 }
 await page.mouse.up()
 const topPainted = (await counts()).topPaint
-await expect('tile painting landed', () => Object.keys(window.__store.doc.paint.top).length > 0)
+await expect('tile painting landed', () => Object.keys(window.__store.reader.doc.paint.top).length > 0)
 await shot(
   'paint-tile',
   `Painting a tile over the terrain — ${topPainted} cells carry a painted override. The cell keeps its material underneath; this is a layer on top of what the template picks automatically.`,
@@ -395,7 +395,7 @@ for (let i = 0; i < 7; i++) {
   await sleep(40)
 }
 await page.mouse.up()
-await expect('tint painting landed', () => Object.keys(window.__store.doc.paint.tint).length > 0)
+await expect('tint painting landed', () => Object.keys(window.__store.reader.doc.paint.tint).length > 0)
 await shot(
   'paint-tint',
   'The tint brush, quantised per cell — deliberately not smooth splatting, which looks mushy next to pixel art.',
@@ -438,7 +438,7 @@ await shot(
 await page.evaluate((c) => {
   const store = window.__store
   const { flatten } = window.__ops
-  store.apply('Lower cliff', flatten(store.doc, [[c.x, c.y]], c.bottom))
+  store.apply('Lower cliff', flatten(store.reader.doc, [[c.x, c.y]], c.bottom))
 }, cliff)
 const dormantLine = (await statusBar())[2]
 const dormantCount = Number(dormantLine.replace(/\D+/g, ''))
@@ -453,7 +453,7 @@ await shot(
 await page.evaluate(() => window.__store.undo())
 await expect(
   'paint came back with the geometry',
-  () => Object.keys(window.__store.doc.paint.cliff).length > 0,
+  () => Object.keys(window.__store.reader.doc.paint.cliff).length > 0,
 )
 await shot(
   'cliff-restored',
@@ -482,7 +482,7 @@ await shot(
 // Show the facing/flip configuration on a four-facing object.
 await expect('a four-facing statue exists to inspect', () => {
   const store = window.__store
-  const id = store.doc.objectOrder.find((i) => store.doc.objects[i].sprite === 'statue')
+  const id = store.reader.doc.objectOrder.find((i) => store.reader.doc.objects[i].sprite === 'statue')
   if (!id) return false
   window.__selectObject(id)
   return true

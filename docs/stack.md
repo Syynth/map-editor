@@ -90,27 +90,37 @@ alone; do not route it through a machine.
       never drifts into machine context.
 
 ### Close the document's write and read paths
-- [ ] `createDocumentStore()` returns `{ reader, writer }`; only the machine is
-      constructed with `writer`. Keep `writer` out of `core`'s public exports
-      once it is its own package.
-- [ ] Type the public document as `ReadonlyMapDoc` (a deep-readonly mapped
+- [x] `createDocumentStore()` returns `{ reader, writer }`; only the machine is
+      constructed with `writer`. Neither `createDocumentStore` nor the writer
+      type is in `packages/document`'s barrel; the package exposes the
+      pre-wired `createDocumentActorLogic(store)` instead (#13, #66 step 2).
+      `EditorStore` itself stays exported, with its verbs public, only because
+      `App.tsx` still writes through it directly — a documented, temporary
+      second write path that #66 step 7 removes.
+- [x] Type the public document as `ReadonlyMapDoc` (a deep-readonly mapped
       type). Verified to reject indexed assignment, record assignment, array
       mutation and property replacement, while leaving reads untouched — the
-      arrays are plain `number[]`, so no branding tricks are needed.
+      arrays are plain `number[]`, so no branding tricks are needed. Held by a
+      typecheck-time test in `packages/document/src/actor.test.ts`.
 - [ ] A single `useDocument(selector)` hook that subscribes to the revision.
       Closes both read hazards at once: memoising on `doc` never recomputes
       (it never changes identity), and reading without subscribing silently
-      fails to re-render.
-- [ ] Audit the 44 existing `store.doc` reads — `viewport.ts` (20), `App.tsx`
-      (19), `tools.ts` (5) — onto the hook.
-- [ ] Keep the store reference out of machine `context`; XState's inspector
+      fails to re-render. Lands with `editor-host` (#66 step 3).
+- [x] Route the existing `store.doc` reads — 59, not 44: `runtime/scene.ts`
+      adds 15 — through `reader`. `EditorStore.doc` is private now; every
+      read-only function down the ladder (`ops`, `io.serialize`, `geometry`,
+      `runtime`, `viewport`, the app's tools and panels) takes `ReadonlyMapDoc`
+      or a `DeepReadonly<…>` slice of it. The React reads move onto the hook
+      when it exists; `viewport.ts` and `scene.ts` keep the reader directly.
+- [x] Keep the store reference out of machine `context`; XState's inspector
       would try to serialise the whole map every transition. Use a machine
       factory closure — **not** `input`, which rides on the `xstate.init` event
       and reaches the inspector even when kept out of context. Measured on
       xstate 5.32.6: a 50k-entry store passed as `input` puts 100,089 bytes on
       the init event; the same store captured in a factory closure puts 22.
       The inspector's `filter` and `sanitizeContext` do not help, because the
-      snapshot is stringified before either runs.
+      snapshot is stringified before either runs. `documentLogic(writer)` is
+      that closure.
 
 ### Compact stroke patches
 Measured on the real store: a 3-second drag with a size-5 round brush over 180

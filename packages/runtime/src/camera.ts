@@ -15,7 +15,7 @@
 
 import * as THREE from 'three'
 
-import type { CameraRig } from '@map-editor/document'
+import type { CameraRig, DeepReadonly } from '@map-editor/document'
 
 export interface RigState {
   yaw: number
@@ -34,11 +34,11 @@ export function wrapDegrees(value: number): number {
  * True when the yaw range covers the full circle, in which case no yaw is ever
  * out of bounds. Without this a rig of -180..180 would reject yaw 180.0001.
  */
-export function yawIsFree(rig: CameraRig): boolean {
+export function yawIsFree(rig: DeepReadonly<CameraRig>): boolean {
   return rig.bounds.yawMax - rig.bounds.yawMin >= 359.999
 }
 
-export function yawWithinBounds(rig: CameraRig, yaw: number): boolean {
+export function yawWithinBounds(rig: DeepReadonly<CameraRig>, yaw: number): boolean {
   if (yawIsFree(rig)) return true
   const { yawMin, yawMax } = rig.bounds
   const y = wrapDegrees(yaw)
@@ -47,7 +47,7 @@ export function yawWithinBounds(rig: CameraRig, yaw: number): boolean {
   return y >= yawMin || y <= yawMax
 }
 
-export function withinBounds(rig: CameraRig, state: Pick<RigState, 'yaw' | 'pitch' | 'distance'>): boolean {
+export function withinBounds(rig: DeepReadonly<CameraRig>, state: Pick<RigState, 'yaw' | 'pitch' | 'distance'>): boolean {
   return (
     yawWithinBounds(rig, state.yaw) &&
     state.pitch >= rig.bounds.pitchMin - 1e-6 &&
@@ -57,7 +57,7 @@ export function withinBounds(rig: CameraRig, state: Pick<RigState, 'yaw' | 'pitc
   )
 }
 
-function clampYaw(rig: CameraRig, yaw: number): number {
+function clampYaw(rig: DeepReadonly<CameraRig>, yaw: number): number {
   if (yawIsFree(rig)) return wrapDegrees(yaw)
   const { yawMin, yawMax } = rig.bounds
   const y = wrapDegrees(yaw)
@@ -68,7 +68,7 @@ function clampYaw(rig: CameraRig, yaw: number): number {
 }
 
 export function clampToBounds(
-  rig: CameraRig,
+  rig: DeepReadonly<CameraRig>,
   state: Pick<RigState, 'yaw' | 'pitch' | 'distance'>,
 ): { yaw: number; pitch: number; distance: number } {
   let yaw = clampYaw(rig, state.yaw)
@@ -105,7 +105,7 @@ export function applyRig(camera: THREE.Camera, state: RigState): void {
  * Build the camera a rig describes. Orthographic is offered because a fixed
  * perspective HD-2D look often wants it, and swapping is cheap here.
  */
-export function createCamera(rig: CameraRig, aspect: number): THREE.PerspectiveCamera | THREE.OrthographicCamera {
+export function createCamera(rig: DeepReadonly<CameraRig>, aspect: number): THREE.PerspectiveCamera | THREE.OrthographicCamera {
   if (rig.projection === 'orthographic') {
     const halfHeight = rig.distance * 0.5
     const halfWidth = halfHeight * aspect
@@ -116,7 +116,7 @@ export function createCamera(rig: CameraRig, aspect: number): THREE.PerspectiveC
 
 export function updateCameraProjection(
   camera: THREE.PerspectiveCamera | THREE.OrthographicCamera,
-  rig: CameraRig,
+  rig: DeepReadonly<CameraRig>,
   aspect: number,
   distance: number,
 ): void {
@@ -140,7 +140,7 @@ export function updateCameraProjection(
  * Yaw angles the game camera can actually reach. Used by the sweep preview and
  * by the coverage analysis, so both agree on what "the allowed envelope" is.
  */
-export function sampleYawEnvelope(rig: CameraRig, samples = 32): number[] {
+export function sampleYawEnvelope(rig: DeepReadonly<CameraRig>, samples = 32): number[] {
   if (rig.yawSnapDeg > 0) {
     const out: number[] = []
     const steps = Math.round(360 / rig.yawSnapDeg)
@@ -160,7 +160,7 @@ export function sampleYawEnvelope(rig: CameraRig, samples = 32): number[] {
   return Array.from({ length: samples }, (_, i) => wrapDegrees(yawMin + (i / (samples - 1)) * span))
 }
 
-export function samplePitchEnvelope(rig: CameraRig, samples = 5): number[] {
+export function samplePitchEnvelope(rig: DeepReadonly<CameraRig>, samples = 5): number[] {
   const { pitchMin, pitchMax } = rig.bounds
   if (samples <= 1 || pitchMax - pitchMin < 1e-6) return [rig.pitch]
   return Array.from({ length: samples }, (_, i) => pitchMin + (i / (samples - 1)) * (pitchMax - pitchMin))

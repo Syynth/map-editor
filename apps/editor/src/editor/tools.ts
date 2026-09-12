@@ -39,7 +39,7 @@ import {
   updateObject,
   type Cell,
   type EditorStore,
-  type MapDoc,
+  type ReadonlyMapDoc,
   type MapObject,
   type SurfaceAddress,
 } from '@map-editor/document'
@@ -61,7 +61,7 @@ export interface StrokeContext {
 }
 
 /** Cells a stroke touches, given the shape the artist chose. */
-export function strokeCells(doc: MapDoc, state: EditorState, address: SurfaceAddress, anchor: Cell | null): Cell[] {
+export function strokeCells(doc: ReadonlyMapDoc, state: EditorState, address: SurfaceAddress, anchor: Cell | null): Cell[] {
   switch (state.strokeShape) {
     case 'rect':
       if (!anchor) return [[address.x, address.y]]
@@ -75,7 +75,7 @@ export function strokeCells(doc: MapDoc, state: EditorState, address: SurfaceAdd
 }
 
 /** The tile the template would use here with nothing painted. */
-function templateTileAt(doc: MapDoc, x: number, y: number): number {
+function templateTileAt(doc: ReadonlyMapDoc, x: number, y: number): number {
   const layout = sheetLayoutFor(doc)
   const material = doc.terrain.material[cellIndex(doc.size, x, y)]
   return defaultTopTile(layout, material, autotileMask(doc, x, y))
@@ -83,7 +83,7 @@ function templateTileAt(doc: MapDoc, x: number, y: number): number {
 
 function eyedrop(context: StrokeContext, address: SurfaceAddress): void {
   const { store, state, setState } = context
-  const doc = store.doc
+  const doc = store.reader.doc
 
   if (state.terrainMode === 'paint' && state.paintVerb === 'tint') {
     const tint = tintPaint(doc.paint, address.x, address.y)
@@ -116,7 +116,7 @@ export function applyStroke(
   phase: 'start' | 'move' | 'end',
 ): void {
   const { store, state } = context
-  const doc = store.doc
+  const doc = store.reader.doc
 
   if (state.tool === 'object') {
     applyObjectStroke(context, pick, modifiers, phase)
@@ -156,7 +156,7 @@ function applySculpt(
   modifiers: PointerModifiers,
 ): void {
   const { store, state } = context
-  const doc = store.doc
+  const doc = store.reader.doc
 
   switch (state.sculptVerb) {
     case 'raise':
@@ -198,7 +198,7 @@ function applyPaint(
   modifiers: PointerModifiers,
 ): void {
   const { store, state } = context
-  const doc = store.doc
+  const doc = store.reader.doc
   const erase = modifiers.shift
 
   switch (state.paintVerb) {
@@ -239,7 +239,7 @@ function applyObjectStroke(
   phase: 'start' | 'move' | 'end',
 ): void {
   const { store, state, setState } = context
-  const doc = store.doc
+  const doc = store.reader.doc
 
   if (phase === 'start') {
     if (pick.objectId) {
@@ -290,6 +290,6 @@ function applyObjectStroke(
   }
 }
 
-export function waterlessDoc(doc: MapDoc): boolean {
+export function waterlessDoc(doc: ReadonlyMapDoc): boolean {
   return doc.terrain.water.every((value) => value === NO_WATER)
 }

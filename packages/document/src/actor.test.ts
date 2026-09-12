@@ -1,0 +1,176 @@
+import { describe, expect, it } from 'vitest'
+import { createActor, initialTransition, transition } from 'xstate'
+
+import { createDocumentActorLogic, documentLogic } from './actor'
+import { cellIndex, createMap, type ReadonlyMapDoc } from './document'
+import { raise } from './ops'
+import { createDocumentStore, EditorStore, type DocumentWriter } from './store'
+
+/**
+ * A writer that only counts. The guard tests below are about how many times
+ * the actor reaches for the write handle, which a real store hides — a raise
+ * applied twice through `pruneNoops` still moves the cell, just twice as far.
+ * Counting the calls is the direct measurement; the real-store tests further
+ * down are the same claim seen through `reader`.
+ */
+function countingWriter(): { writer: DocumentWriter; calls: Record<keyof DocumentWriter, number> } {
+  const calls = { apply: 0, beginStroke: 0, endStroke: 0, undo: 0, redo: 0, replace: 0 }
+  const writer: DocumentWriter = {
+    apply: () => void (calls.apply += 1),
+    beginStroke: () => void (calls.beginStroke += 1),
+    endStroke: () => void (calls.endStroke += 1),
+    undo: () => void (calls.undo += 1),
+    redo: () => void (calls.redo += 1),
+    replace: () => void (calls.replace += 1),
+  }
+  return { writer, calls }
+}
+
+const onePatch = (index: number) => [{ t: 'terrain' as const, field: 'height' as const, index, value: 5 }]
+
+/**
+ * The standing guard #22 asked for. On xstate 6.0.0-alpha.53 a transition
+ * body runs twice when it touches `enq` (once as its own guard with a stub,
+ * once for real), and runs even when it returns `undefined` — so a write
+ * placed inline instead of inside `enq(() => …)` lands twice, or lands on a
+ * path that was never taken. The first three are red under exactly those
+ * edits to `actor.ts`; that is their job, and they must stay. The fourth catches
+ * the one shape the counts cannot: an inline write in a body with no `enq`
+ * call at all, which v6 runs once, so the count is right for the wrong reason.
+ */
+describe('document actor: every write goes through enq (#22)', () => {
+  it('applies N patch events exactly N times, not 2N', () => {
+    const { writer, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer)).start()
+
+    const N = 7
+    for (let i = 0; i < N; i++) actor.send({ type: 'patch', label: 'Raise', patches: onePatch(i) })
+
+    expect(calls.apply).toBe(N)
+  })
+
+  it('applies nothing on the path the transition refuses', () => {
+    const { writer, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer)).start()
+
+    // An empty patch list is the "not enabled" branch: the body returns
+    // `undefined` before it touches `enq`. An inline write above that return
+    // would still fire, which is the third failure mode.
+    actor.send({ type: 'patch', label: 'Nothing', patches: [] })
+
+    expect(calls.apply).toBe(0)
+    expect(actor.getSnapshot().status).toBe('active')
+  })
+
+  it('writes nothing when a transition is computed but not executed', () => {
+    // The shape the two tests above cannot see: an inline write in a body
+    // that never touches `enq` at all runs once on v6 (the body is reusable),
+    // so the count comes out right by accident. xstate's pure `transition`
+    // runs the body to compute the next snapshot and RETURNS the effects
+    // instead of executing them — an `enq`'d write appears in that list and
+    // does not happen; an inline one happens here, with nothing executed.
+    const { writer, calls } = countingWriter()
+    const logic = documentLogic(writer)
+    const [initial] = initialTransition(logic)
+
+    const [, actions] = transition(logic, initial, { type: 'patch', label: 'Raise', patches: onePatch(0) })
+
+    expect(calls.apply).toBe(0)
+    expect(actions.length).toBeGreaterThan(0)
+  })
+
+  it('routes each verb to exactly one call on the writer, and only that one', () => {
+    const { writer, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer)).start()
+
+    actor.send({ type: 'beginStroke', label: 'Stroke' })
+    actor.send({ type: 'endStroke' })
+    actor.send({ type: 'undo' })
+    actor.send({ type: 'redo' })
+
+    expect(calls).toEqual({ apply: 0, beginStroke: 1, endStroke: 1, undo: 1, redo: 1, replace: 0 })
+  })
+})
+
+describe('document actor over a real store', () => {
+  it('moves a cell by exactly the sum of the patches it was sent', () => {
+    const store = new EditorStore(createMap(8, 8))
+    const actor = createActor(createDocumentActorLogic(store)).start()
+    const index = cellIndex(store.reader.doc.size, 2, 2)
+    const before = store.reader.doc.terrain.height[index]
+
+    for (let i = 0; i < 3; i++) {
+      actor.send({ type: 'patch', label: 'Raise', patches: raise(store.reader.doc, [[2, 2]], 1) })
+    }
+
+    // +3, not +6: the same claim as the counting test, seen through `reader`.
+    expect(store.reader.doc.terrain.height[index]).toBe(before + 3)
+  })
+
+  it('closes one Edit per stroke, so one undo unwinds every tick', () => {
+    const store = new EditorStore(createMap(8, 8))
+    const actor = createActor(createDocumentActorLogic(store)).start()
+    const doc = store.reader.doc
+    const before = doc.terrain.height.slice()
+
+    actor.send({ type: 'beginStroke', label: 'Raise' })
+    for (let i = 0; i < 5; i++) {
+      actor.send({ type: 'patch', label: 'Raise', patches: raise(doc, [[i, 0]], 1) })
+    }
+    actor.send({ type: 'endStroke' })
+    expect(store.reader.canUndo()).toBe(true)
+    expect(store.reader.undoLabel()).toBe('Raise')
+
+    actor.send({ type: 'undo' })
+    expect(doc.terrain.height).toEqual(before)
+    expect(store.reader.canUndo()).toBe(false)
+    expect(store.reader.canRedo()).toBe(true)
+
+    actor.send({ type: 'redo' })
+    for (let i = 0; i < 5; i++) expect(doc.terrain.height[cellIndex(doc.size, i, 0)]).toBe(before[i] + 1)
+  })
+})
+
+describe('the read and write paths', () => {
+  it('hands out a reader and a writer over one document', () => {
+    const { reader, writer } = createDocumentStore(createMap(4, 4))
+    const revision = reader.revision
+    let notified = 0
+    reader.subscribe(() => void (notified += 1))
+
+    writer.apply('Raise', [{ t: 'terrain', field: 'height', index: 0, value: 9 }])
+
+    expect(reader.doc.terrain.height[0]).toBe(9)
+    expect(reader.revision).toBe(revision + 1)
+    expect(reader.getSnapshot()).toBe(reader.revision)
+    expect(notified).toBe(1)
+  })
+
+  it('reads the new document after replace, through the same reader', () => {
+    const { reader, writer } = createDocumentStore(createMap(4, 4, 'First'))
+    writer.replace(createMap(6, 6, 'Second'))
+    expect(reader.doc.name).toBe('Second')
+    expect(reader.doc.size.width).toBe(6)
+    expect(reader.canUndo()).toBe(false)
+  })
+
+  it('rejects all four write shapes at the type level and leaves reads alone', () => {
+    // Each directive below is checked by the package's `tsc` run: if the
+    // deep-readonly type ever stopped rejecting one of these, the directive
+    // would be reported as unused and typecheck would fail. The runtime
+    // assignments land on a throwaway document — the type is the guard, not
+    // `Object.freeze`, so what this proves is what the compiler refuses.
+    const doc: ReadonlyMapDoc = createMap(2, 2)
+    // @ts-expect-error indexed assignment
+    doc.terrain.height[0] = 1
+    // @ts-expect-error record assignment
+    doc.paint.top['0,0'] = 1
+    // @ts-expect-error array mutation
+    doc.objectOrder.push('x')
+    // @ts-expect-error property replacement
+    doc.name = 'x'
+
+    expect(doc.size.width).toBe(2)
+    expect(cellIndex(doc.size, 1, 1)).toBe(3)
+  })
+})

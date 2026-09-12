@@ -17,7 +17,7 @@
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
-import { allChunkKeys, type MapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
+import { allChunkKeys, type ReadonlyMapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
 import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
 import { resolveDisplayMode, rgbaTexture } from './billboard'
 import { atlasFor, embedPngImages, type PngEncoder } from './images'
@@ -47,7 +47,7 @@ function geometryFrom(buffers: MeshBuffers): THREE.BufferGeometry {
   return geometry
 }
 
-function spriteExtras(asset: SpriteAsset, doc: MapDoc, object: MapDoc['objects'][string]) {
+function spriteExtras(asset: SpriteAsset, doc: ReadonlyMapDoc, object: ReadonlyMapDoc['objects'][string]) {
   return {
     kind: 'imageObject',
     display: resolveDisplayMode(object, doc.camera),
@@ -77,7 +77,7 @@ function spriteExtras(asset: SpriteAsset, doc: MapDoc, object: MapDoc['objects']
 // Synchronous: nothing here awaits. An async signature that never suspends
 // only costs the caller a microtask tick, but it also lied about the return
 // type, which is the thing #28 flagged.
-export function buildExportScene(doc: MapDoc, options: ExportOptions): THREE.Scene {
+export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): THREE.Scene {
   const scene = new THREE.Scene()
   scene.name = doc.name
   const nearest = doc.filtering === 'nearest'
@@ -285,7 +285,7 @@ function messageOf(error: unknown): string {
  * `Blob` is a DOM type and this package compiles without `DOM`; the editor
  * wraps it for download, a CLI would write it to disk.
  */
-export async function exportGltf(doc: MapDoc, options: ExportOptions): Promise<ArrayBuffer> {
+export async function exportGltf(doc: ReadonlyMapDoc, options: ExportOptions): Promise<ArrayBuffer> {
   const scene = buildExportScene(doc, options)
   const exporter = new GLTFExporter()
   exporter.register(embedPngImages(options.encodePng))

@@ -88,7 +88,7 @@ A pnpm workspace, orchestrated by Turborepo.
 
 ```
 packages/registry/      command, tool, panel and keymap declarations; the availability DSL  — no deps at all
-packages/document/      document, commands, undo, ops, paint  — no three.js, no React
+packages/document/      document, the document actor, undo, ops, paint  — xstate; no three.js, no React
 packages/geometry/      meshers and the autotile template     — no three.js, no React
 packages/runtime/       the reference runtime: scene, billboards, camera, export
 packages/viewport/      the imperative GL shell the editor drives

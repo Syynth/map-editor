@@ -10,6 +10,21 @@
  *
  * The store also tracks which chunks a change dirtied, so the viewport can
  * remesh only what moved.
+ *
+ * Two faces (#13). `reader` is what everyone sees: the document as
+ * `ReadonlyMapDoc`, the revision, the subscription, and the undo-stack
+ * queries a toolbar needs. `writer` is the five verbs plus `replace`, and the
+ * document actor is the only thing constructed with it — `createDocumentStore`
+ * is deliberately absent from the package barrel, so nothing outside
+ * `packages/document` can obtain a writer at all. `doc` itself is `private`:
+ * the field that used to be the enforcement hole is now unreachable from
+ * outside this class, and the type system, not a convention, is what keeps a
+ * consumer from writing through the reader.
+ *
+ * The verbs are still public methods on the class for one reason: `App.tsx`
+ * calls `store.apply` directly today, and #66 keeps it doing so until step 7
+ * rewires the app onto the host actor. That is a temporary second write path,
+ * not a design — the class leaves the barrel with it.
  */
 
 import {
@@ -18,23 +33,81 @@ import {
   History,
   type Patch,
 } from './edits'
-import type { MapDoc } from './document'
+import type { MapDoc, ReadonlyMapDoc } from './document'
 import { CHUNK_SIZE, chunkKey } from './chunks'
 
 type Listener = () => void
 
-export class EditorStore {
-  doc: MapDoc
+/**
+ * The read path. `doc` is the live document — mutated in place by the writer,
+ * never replaced except by `replace` — so a consumer that caches it must key
+ * on `revision`, which is the only thing that changes identity.
+ */
+export interface DocumentReader {
+  readonly doc: ReadonlyMapDoc
+  readonly revision: number
+  subscribe(listener: Listener): () => void
+  /** `useSyncExternalStore`'s second argument: the revision, as a value. */
+  getSnapshot(): number
+  canUndo(): boolean
+  canRedo(): boolean
+  undoLabel(): string | null
+  redoLabel(): string | null
+}
+
+/**
+ * The write path. Every mutation of the document goes through one of these
+ * six calls, and the document actor is the only holder (#13). `Patch` is not
+ * in the barrel either, so the type of `apply`'s second argument is namable
+ * only inside this package — a consumer sends the actor what an op returned.
+ */
+export interface DocumentWriter {
+  apply(label: string, patches: Patch[]): void
+  beginStroke(label: string): void
+  endStroke(): void
+  undo(): void
+  redo(): void
+  replace(doc: MapDoc): void
+}
+
+export class EditorStore implements DocumentWriter {
+  private doc: MapDoc
   revision = 0
-  history = new History()
+  private history = new History()
 
   private listeners = new Set<Listener>()
   private dirtyChunks = new Set<string>()
   private stroke: { label: string; patches: Patch[]; inverse: Patch[] } | null = null
 
+  /**
+   * One object for the store's lifetime, so a consumer can hold it and so the
+   * getters read live state — `reader.doc` after `replace` is the new
+   * document, and `reader.revision` is never stale.
+   */
+  readonly reader: DocumentReader
+
   constructor(doc: MapDoc) {
     this.doc = doc
     this.markAllDirty()
+    // A getter's `this` is the reader object, so the store's fields are read
+    // through arrows, which bind `this` lexically. `private doc` is reachable
+    // here because this is the class body — the one place it may be.
+    const currentDoc = (): ReadonlyMapDoc => this.doc
+    const currentRevision = (): number => this.revision
+    this.reader = {
+      get doc(): ReadonlyMapDoc {
+        return currentDoc()
+      },
+      get revision(): number {
+        return currentRevision()
+      },
+      subscribe: this.subscribe,
+      getSnapshot: this.getSnapshot,
+      canUndo: () => this.history.canUndo(),
+      canRedo: () => this.history.canRedo(),
+      undoLabel: () => this.history.undoLabel(),
+      redoLabel: () => this.history.redoLabel(),
+    }
   }
 
   subscribe = (listener: Listener): (() => void) => {
@@ -176,5 +249,37 @@ export class EditorStore {
     if (!command) return
     for (const patch of command.patches) this.dirtyFromPatch(patch)
     this.emit()
+  }
+}
+
+/**
+ * The one place a `writer` comes from. Not in the barrel: the document actor
+ * (`actor.ts`) and this package's tests are its only callers, which is what
+ * makes "exactly one module holds the write handle" a fact `grep` can check
+ * rather than a convention (#13).
+ *
+ * `writer` is a narrowed view of the store, not the store: a holder gets the
+ * six verbs and nothing else — no `reader`, no dirty-chunk bookkeeping — so
+ * the two faces cannot be confused for each other by structure alone.
+ */
+export function createDocumentStore(doc: MapDoc): { reader: DocumentReader; writer: DocumentWriter } {
+  const store = new EditorStore(doc)
+  return { reader: store.reader, writer: writerOf(store) }
+}
+
+/**
+ * The store's write face, for the actor factory that is handed an existing
+ * `EditorStore` rather than a fresh document — `App.tsx` still owns the
+ * store's construction until #66 step 7, and the actor has to write the same
+ * instance the app reads.
+ */
+export function writerOf(store: EditorStore): DocumentWriter {
+  return {
+    apply: (label, patches) => store.apply(label, patches),
+    beginStroke: (label) => store.beginStroke(label),
+    endStroke: () => store.endStroke(),
+    undo: () => store.undo(),
+    redo: () => store.redo(),
+    replace: (doc) => store.replace(doc),
   }
 }

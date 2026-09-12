@@ -4,7 +4,7 @@
  * here", so a character never walks through a slope the mesher drew.
  */
 
-import { HALF, NO_RAMP, cellIndex, inBounds, type MapDoc } from './document'
+import { HALF, NO_RAMP, cellIndex, inBounds, type ReadonlyMapDoc } from './document'
 
 /** Corner order for a cell: c00, c01, c11, c10 (matching the mesher's quad). */
 export const CORNER_OFFSETS: ReadonlyArray<readonly [number, number]> = [
@@ -26,7 +26,7 @@ export const RAMP_LOW_CORNERS: ReadonlyArray<readonly [number, number]> = [
 export const RAMP_DROP = 2
 
 /** The four corner heights of a cell, in half-tile units. */
-export function cornerHeights(doc: MapDoc, x: number, y: number): [number, number, number, number] {
+export function cornerHeights(doc: ReadonlyMapDoc, x: number, y: number): [number, number, number, number] {
   const index = cellIndex(doc.size, x, y)
   const h = doc.terrain.height[index]
   const corners: [number, number, number, number] = [h, h, h, h]
@@ -41,7 +41,7 @@ export function cornerHeights(doc: MapDoc, x: number, y: number): [number, numbe
  * World-space ground height at an arbitrary point, interpolated across the
  * cell so ramps are continuous rather than stepped.
  */
-export function groundHeight(doc: MapDoc, worldX: number, worldZ: number): number {
+export function groundHeight(doc: ReadonlyMapDoc, worldX: number, worldZ: number): number {
   const cx = Math.floor(worldX)
   const cy = Math.floor(worldZ)
   if (!inBounds(doc.size, cx, cy)) return 0
@@ -57,6 +57,6 @@ export function groundHeight(doc: MapDoc, worldX: number, worldZ: number): numbe
 }
 
 /** Centre of a cell in world space, sitting on the surface. */
-export function cellCentreWorld(doc: MapDoc, x: number, y: number): [number, number, number] {
+export function cellCentreWorld(doc: ReadonlyMapDoc, x: number, y: number): [number, number, number] {
   return [x + 0.5, groundHeight(doc, x + 0.5, y + 0.5), y + 0.5]
 }

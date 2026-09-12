@@ -25,7 +25,7 @@ import {
   groundHeight,
   inBounds,
   type EditorStore,
-  type MapDoc,
+  type ReadonlyMapDoc,
   type SurfaceAddress,
 } from '@map-editor/document'
 import {
@@ -204,16 +204,16 @@ export class Viewport {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.0
 
-    this.scene = new RuntimeScene(store.doc, assets)
+    this.scene = new RuntimeScene(store.reader.doc, assets)
     this.scene.rebuildChunks()
 
     const centre = this.scene.mapCentre()
     this.orbit.target.copy(centre)
-    this.orbit.yaw = store.doc.camera.yaw
-    this.orbit.pitch = store.doc.camera.pitch
-    this.orbit.distance = store.doc.camera.distance
+    this.orbit.yaw = store.reader.doc.camera.yaw
+    this.orbit.pitch = store.reader.doc.camera.pitch
+    this.orbit.distance = store.reader.doc.camera.distance
 
-    this.camera = createCamera(store.doc.camera, canvas.clientWidth / Math.max(1, canvas.clientHeight))
+    this.camera = createCamera(store.reader.doc.camera, canvas.clientWidth / Math.max(1, canvas.clientHeight))
     applyRig(this.camera, this.orbit)
 
     this.composer = new EffectComposer(this.renderer)
@@ -283,7 +283,7 @@ export class Viewport {
 
   /** Called when the store's document changed identity (load, new map). */
   reset(): void {
-    this.scene.setDocument(this.store.doc)
+    this.scene.setDocument(this.store.reader.doc)
     this.scene.applyAtmosphere()
     this.scene.rebuildChunks()
     this.rebuildGrid()
@@ -314,7 +314,7 @@ export class Viewport {
   }
 
   startSweep(): void {
-    this.sweep = { active: true, t: 0, yaws: sampleYawEnvelope(this.store.doc.camera, 64) }
+    this.sweep = { active: true, t: 0, yaws: sampleYawEnvelope(this.store.reader.doc.camera, 64) }
   }
 
   cameraState(): { yaw: number; pitch: number; distance: number } {
@@ -339,7 +339,7 @@ export class Viewport {
 
   /** Look at a particular cell, so a script can click something specific. */
   focusCellForProbe(x: number, y: number, distance?: number): void {
-    this.orbit.target.set(x + 0.5, groundHeight(this.store.doc, x + 0.5, y + 0.5), y + 0.5)
+    this.orbit.target.set(x + 0.5, groundHeight(this.store.reader.doc, x + 0.5, y + 0.5), y + 0.5)
     if (distance !== undefined) this.orbit.distance = distance
   }
 
@@ -361,7 +361,7 @@ export class Viewport {
 
   /** Adopt the document's rig as the current view, for the "preview" button. */
   applyRigDefaults(): void {
-    const rig = this.store.doc.camera
+    const rig = this.store.reader.doc.camera
     this.orbit.yaw = rig.yaw
     this.orbit.pitch = rig.pitch
     this.orbit.distance = rig.distance
@@ -377,8 +377,8 @@ export class Viewport {
    * thing to open on. Zooming out from there is one scroll away.
    */
   frameMap(): void {
-    const { width, height } = this.store.doc.size
-    const rig = this.store.doc.camera
+    const { width, height } = this.store.reader.doc.size
+    const rig = this.store.reader.doc.camera
     this.orbit.target.set(width / 2, 1, height / 2)
     this.orbit.distance = Math.min(rig.bounds.distMax, Math.max(rig.bounds.distMin, rig.distance))
   }
@@ -402,7 +402,7 @@ export class Viewport {
     }
     // The grid hugs the terrain rather than lying on the ground plane, where
     // any raised cell would bury it.
-    const doc = this.store.doc
+    const doc = this.store.reader.doc
     const { width, height } = doc.size
     const points: number[] = []
     const lift = 0.025
@@ -427,7 +427,7 @@ export class Viewport {
   }
 
   /** A flat overlay quad hugging a cell's top surface. */
-  private cellQuad(doc: MapDoc, x: number, y: number, out: number[], lift = 0.03): void {
+  private cellQuad(doc: ReadonlyMapDoc, x: number, y: number, out: number[], lift = 0.03): void {
     if (!inBounds(doc.size, x, y)) return
     const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => h * 0.5 + lift)
     out.push(
@@ -437,7 +437,7 @@ export class Viewport {
   }
 
   private updateBrushPreview(): void {
-    const doc = this.store.doc
+    const doc = this.store.reader.doc
     const points: number[] = []
     for (const [x, y] of this.options.brushPreview) this.cellQuad(doc, x, y, points)
     const geometry = this.brushMesh.geometry
@@ -448,7 +448,7 @@ export class Viewport {
 
   private updateHover(): void {
     const address = this.options.hover
-    const doc = this.store.doc
+    const doc = this.store.reader.doc
     const points: number[] = []
 
     if (address && address.kind === SURFACE_TOP) {
@@ -506,15 +506,15 @@ export class Viewport {
 
   private viewContext(): ObjectViewContext {
     return {
-      rig: this.store.doc.camera,
-      nearest: this.store.doc.filtering === 'nearest',
+      rig: this.store.reader.doc.camera,
+      nearest: this.store.reader.doc.filtering === 'nearest',
       facingOverride: null,
     }
   }
 
   private togglePlay(playing: boolean): void {
     if (playing && !this.character) {
-      const doc = this.store.doc
+      const doc = this.store.reader.doc
       const start = new THREE.Vector3(
         doc.size.width / 2,
         0,
@@ -672,7 +672,7 @@ export class Viewport {
     this.renderer.setSize(width, height, false)
     this.composer.setSize(width, height)
     this.bloom.setSize(width, height)
-    updateCameraProjection(this.camera, this.store.doc.camera, width / height, this.orbit.distance)
+    updateCameraProjection(this.camera, this.store.reader.doc.camera, width / height, this.orbit.distance)
   }
 
   private loop = (): void => {
@@ -687,7 +687,7 @@ export class Viewport {
     const dt = Math.min(0.05, realDt)
     this.lastTime = now
 
-    const doc = this.store.doc
+    const doc = this.store.reader.doc
     const rig = doc.camera
 
     // --- camera ------------------------------------------------------------
@@ -783,7 +783,7 @@ export class Viewport {
 
   cellUnder(address: SurfaceAddress | null): number | null {
     if (!address) return null
-    const doc = this.store.doc
+    const doc = this.store.reader.doc
     if (!inBounds(doc.size, address.x, address.y)) return null
     return doc.terrain.height[cellIndex(doc.size, address.x, address.y)]
   }

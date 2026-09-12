@@ -70,26 +70,26 @@ describe('store', () => {
     const store = new EditorStore(createMap(8, 8))
     store.beginStroke('Raise')
     for (let i = 0; i < 5; i++) {
-      store.apply('Raise', raise(store.doc, [[i, 0]], 1))
+      store.apply('Raise', raise(store.reader.doc, [[i, 0]], 1))
     }
     store.endStroke()
 
-    expect(store.doc.terrain.height[0]).toBe(3)
+    expect(store.reader.doc.terrain.height[0]).toBe(3)
     store.undo()
-    for (let i = 0; i < 5; i++) expect(store.doc.terrain.height[i]).toBe(2)
-    expect(store.history.canUndo()).toBe(false)
+    for (let i = 0; i < 5; i++) expect(store.reader.doc.terrain.height[i]).toBe(2)
+    expect(store.reader.canUndo()).toBe(false)
   })
 
   it('drops no-op patches so idle brushing does not fill the undo stack', () => {
     const store = new EditorStore(createMap(8, 8))
-    store.apply('Flatten', flatten(store.doc, [[0, 0]], 2))
-    expect(store.history.canUndo()).toBe(false)
+    store.apply('Flatten', flatten(store.reader.doc, [[0, 0]], 2))
+    expect(store.reader.canUndo()).toBe(false)
   })
 
   it('marks the neighbouring chunks dirty at a chunk border', () => {
     const store = new EditorStore(createMap(48, 48))
     store.takeDirtyChunks()
-    store.apply('Raise', raise(store.doc, [[16, 16]], 1))
+    store.apply('Raise', raise(store.reader.doc, [[16, 16]], 1))
     const dirty = store.takeDirtyChunks()
     expect(dirty).toContain('1,1')
     expect(dirty).toContain('0,0')
@@ -194,11 +194,11 @@ describe('object grounding', () => {
       { t: 'objectOrder', value: [id] },
     ])
 
-    store.apply('Raise', raise(store.doc, [[2, 2]], 4))
-    expect(store.doc.objects[id].position[1]).toBeCloseTo(3, 6)
+    store.apply('Raise', raise(store.reader.doc, [[2, 2]], 4))
+    expect(store.reader.doc.objects[id].position[1]).toBeCloseTo(3, 6)
 
     store.undo()
-    expect(store.doc.objects[id].position[1]).toBeCloseTo(1, 6)
+    expect(store.reader.doc.objects[id].position[1]).toBeCloseTo(1, 6)
   })
 
   it('leaves unanchored objects where they are', () => {
@@ -227,13 +227,13 @@ describe('brushes', () => {
 describe('io', () => {
   it('round-trips a document', () => {
     const store = new EditorStore(createMap(6, 6, 'Test Map'))
-    store.apply('Raise', raise(store.doc, [[1, 1]], 3))
-    store.apply('Paint', paintTop(store.doc, [[1, 1]], 7))
+    store.apply('Raise', raise(store.reader.doc, [[1, 1]], 3))
+    store.apply('Paint', paintTop(store.reader.doc, [[1, 1]], 7))
 
-    const restored = deserialize(serialize(store.doc))
+    const restored = deserialize(serialize(store.reader.doc))
     expect(restored.name).toBe('Test Map')
-    expect(restored.terrain.height).toEqual(store.doc.terrain.height)
-    expect(restored.paint.top).toEqual(store.doc.paint.top)
+    expect(restored.terrain.height).toEqual(store.reader.doc.terrain.height)
+    expect(restored.paint.top).toEqual(store.reader.doc.paint.top)
     expect(restored.formatVersion).toBe(1)
   })
 

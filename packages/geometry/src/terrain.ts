@@ -42,7 +42,7 @@ import {
   inBounds,
   tintPaint,
   topPaint,
-  type MapDoc,
+  type ReadonlyMapDoc,
 } from '@map-editor/document'
 import {
   cliffTile,
@@ -150,7 +150,7 @@ class BufferBuilder {
   }
 }
 
-function heightOutside(doc: MapDoc, x: number, y: number): number {
+function heightOutside(doc: ReadonlyMapDoc, x: number, y: number): number {
   if (!inBounds(doc.size, x, y)) return OUTSIDE_HEIGHT
   return doc.terrain.height[cellIndex(doc.size, x, y)]
 }
@@ -168,7 +168,7 @@ function unpackTint(packed: number | undefined): [number, number, number] {
  * Corner occlusion for a top-surface vertex. Looks at the three cells that
  * share the grid vertex with this cell and counts the ones standing above it.
  */
-function cornerShade(doc: MapDoc, x: number, y: number, vx: number, vy: number, h: number): number {
+function cornerShade(doc: ReadonlyMapDoc, x: number, y: number, vx: number, vy: number, h: number): number {
   let occluders = 0
   for (let dy = -1; dy <= 0; dy++) {
     for (let dx = -1; dx <= 0; dx++) {
@@ -200,7 +200,7 @@ const SIDE_GEOMETRY: ReadonlyArray<{
   { origin: [1, 0], u: [-1, 0] },
 ]
 
-function resolveTopTile(doc: MapDoc, layout: SheetLayout, x: number, y: number): number {
+function resolveTopTile(doc: ReadonlyMapDoc, layout: SheetLayout, x: number, y: number): number {
   // Layer order: painted override wins over the template's automatic default.
   const painted = topPaint(doc.paint, x, y)
   if (painted !== undefined) return painted
@@ -212,7 +212,7 @@ function resolveTopTile(doc: MapDoc, layout: SheetLayout, x: number, y: number):
 }
 
 function resolveCliffTile(
-  doc: MapDoc,
+  doc: ReadonlyMapDoc,
   layout: SheetLayout,
   x: number,
   y: number,
@@ -226,7 +226,7 @@ function resolveCliffTile(
   return cliffTile(layout, material, band)
 }
 
-export function meshTerrainChunk(doc: MapDoc, key: string): TerrainChunkMesh {
+export function meshTerrainChunk(doc: ReadonlyMapDoc, key: string): TerrainChunkMesh {
   const bounds = chunkBounds(key, doc.size.width, doc.size.height)
   const solid = new BufferBuilder()
   const water = new BufferBuilder()

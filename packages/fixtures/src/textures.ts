@@ -37,6 +37,7 @@ import {
   MASK_NORTH,
   MASK_SOUTH,
   MASK_WEST,
+  type DeepReadonly,
   type MaterialDef,
   type RgbaImage,
   type SpriteAsset,
@@ -101,7 +102,7 @@ function speckle(
  * packages/geometry/src/template.ts; this only draws into it.
  */
 export function generateTerrainSheet(
-  materials: MaterialDef[],
+  materials: readonly DeepReadonly<MaterialDef>[],
   density: number,
 ): RgbaImage {
   const canvas = makeCanvas(materials.length * BLOCK_COLUMNS * density, BLOCK_ROWS * density)

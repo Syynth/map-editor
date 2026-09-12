@@ -13,7 +13,7 @@
  */
 
 import { BLOCK_COLUMNS, BLOCK_ROWS } from '@map-editor/geometry'
-import type { MapDoc, RgbaImage } from '@map-editor/document'
+import type { ReadonlyMapDoc, RgbaImage } from '@map-editor/document'
 
 export interface SheetLoadResult {
   /** Raw pixels, the form the runtime takes a sheet in (#47). */
@@ -24,7 +24,7 @@ export interface SheetLoadResult {
   rescaled: boolean
 }
 
-export function expectedSheetSize(doc: MapDoc): { width: number; height: number } {
+export function expectedSheetSize(doc: ReadonlyMapDoc): { width: number; height: number } {
   return {
     width: doc.materials.length * BLOCK_COLUMNS * doc.texelDensity,
     height: BLOCK_ROWS * doc.texelDensity,
@@ -43,7 +43,7 @@ function drawTo(image: HTMLImageElement, width: number, height: number): RgbaIma
   return { width, height, data: ctx.getImageData(0, 0, width, height).data }
 }
 
-export async function loadSheetFromFile(file: File, doc: MapDoc): Promise<SheetLoadResult> {
+export async function loadSheetFromFile(file: File, doc: ReadonlyMapDoc): Promise<SheetLoadResult> {
   const url = URL.createObjectURL(file)
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {

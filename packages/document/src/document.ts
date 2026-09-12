@@ -224,6 +224,36 @@ export interface MapDoc {
   atmosphere: Atmosphere
 }
 
+/**
+ * The document as everyone but the document actor sees it (#13).
+ *
+ * A structural, recursive `readonly` over `MapDoc`: every property, every
+ * array and every nested object. Verified during prototyping to reject all
+ * four write shapes — indexed assignment (`doc.terrain.height[i] = h`),
+ * record assignment (`doc.paint.top[key] = t`), array mutation (`push`,
+ * `splice`) and property replacement (`doc.name = …`) — while leaving reads
+ * untouched. No branding is needed because the arrays are plain `number[]`
+ * and the records plain `Record<string, number>`: the mapped type is enough,
+ * and `MapDoc` itself is assignable to it, so a read-only helper accepts both.
+ *
+ * Functions never become readonly: `T extends (...args) => unknown` short-
+ * circuits before the mapping so a future method-bearing value would keep its
+ * callable type. `MapDoc` has none today; the clause costs nothing and stops
+ * the type silently turning a function into an object of readonly keys.
+ *
+ * The mapped clause is homomorphic over a type parameter, which is what makes
+ * TypeScript map a tuple to a readonly tuple and an array to a readonly array
+ * rather than to an object with numeric keys — `position` stays
+ * `readonly [number, number, number]`, not `{ readonly 0: number; … }`.
+ */
+export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T
+
+export type ReadonlyMapDoc = DeepReadonly<MapDoc>
+
 export function cellIndex(size: MapSize, x: number, y: number): number {
   return y * size.width + x
 }
@@ -233,13 +263,13 @@ export function inBounds(size: MapSize, x: number, y: number): boolean {
 }
 
 /** Height in half-tiles, or the edge value clamped, for out-of-bounds reads. */
-export function heightAt(doc: MapDoc, x: number, y: number): number {
+export function heightAt(doc: ReadonlyMapDoc, x: number, y: number): number {
   const cx = Math.min(Math.max(x, 0), doc.size.width - 1)
   const cy = Math.min(Math.max(y, 0), doc.size.height - 1)
   return doc.terrain.height[cellIndex(doc.size, cx, cy)]
 }
 
-export function materialAt(doc: MapDoc, x: number, y: number): number {
+export function materialAt(doc: ReadonlyMapDoc, x: number, y: number): number {
   const cx = Math.min(Math.max(x, 0), doc.size.width - 1)
   const cy = Math.min(Math.max(y, 0), doc.size.height - 1)
   return doc.terrain.material[cellIndex(doc.size, cx, cy)]

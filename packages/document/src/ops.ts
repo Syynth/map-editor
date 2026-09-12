@@ -19,8 +19,9 @@ import {
   cellIndex,
   inBounds,
   worldHeight,
-  type MapDoc,
+  type DeepReadonly,
   type MapObject,
+  type ReadonlyMapDoc,
 } from './document'
 import { cliffKey, tintKey, topKey } from './paint'
 import { groundHeight } from './terrain'
@@ -35,7 +36,7 @@ export interface Brush {
 export type Cell = [number, number]
 
 /** Cells covered by a brush centred on a cell. */
-export function brushCells(doc: MapDoc, cx: number, cy: number, brush: Brush): Cell[] {
+export function brushCells(doc: ReadonlyMapDoc, cx: number, cy: number, brush: Brush): Cell[] {
   const cells: Cell[] = []
   const radius = Math.floor((brush.size - 1) / 2)
   const extra = (brush.size - 1) % 2
@@ -54,7 +55,7 @@ export function brushCells(doc: MapDoc, cx: number, cy: number, brush: Brush): C
 }
 
 /** Cells in the rectangle spanned by two corners, clipped to the map. */
-export function rectCells(doc: MapDoc, ax: number, ay: number, bx: number, by: number): Cell[] {
+export function rectCells(doc: ReadonlyMapDoc, ax: number, ay: number, bx: number, by: number): Cell[] {
   const cells: Cell[] = []
   const x0 = Math.max(0, Math.min(ax, bx))
   const x1 = Math.min(doc.size.width - 1, Math.max(ax, bx))
@@ -65,7 +66,7 @@ export function rectCells(doc: MapDoc, ax: number, ay: number, bx: number, by: n
 }
 
 /** Flood fill across cells matching the seed's material and height. */
-export function fillCells(doc: MapDoc, sx: number, sy: number, limit = 4096): Cell[] {
+export function fillCells(doc: ReadonlyMapDoc, sx: number, sy: number, limit = 4096): Cell[] {
   if (!inBounds(doc.size, sx, sy)) return []
   const seed = cellIndex(doc.size, sx, sy)
   const material = doc.terrain.material[seed]
@@ -103,7 +104,7 @@ export const MAX_HEIGHT = 40
 
 // --- sculpt ------------------------------------------------------------------
 
-export function raise(doc: MapDoc, cells: Cell[], delta: number): Patch[] {
+export function raise(doc: ReadonlyMapDoc, cells: Cell[], delta: number): Patch[] {
   const patches: Patch[] = []
   for (const [x, y] of cells) {
     const index = cellIndex(doc.size, x, y)
@@ -113,7 +114,7 @@ export function raise(doc: MapDoc, cells: Cell[], delta: number): Patch[] {
   return [...patches, ...regroundObjects(doc, cells, patches)]
 }
 
-export function flatten(doc: MapDoc, cells: Cell[], height: number): Patch[] {
+export function flatten(doc: ReadonlyMapDoc, cells: Cell[], height: number): Patch[] {
   const clamped = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, height))
   const patches: Patch[] = cells.map(([x, y]) => ({
     t: 'terrain',
@@ -124,7 +125,7 @@ export function flatten(doc: MapDoc, cells: Cell[], height: number): Patch[] {
   return [...patches, ...regroundObjects(doc, cells, patches)]
 }
 
-export function setMaterial(doc: MapDoc, cells: Cell[], material: number): Patch[] {
+export function setMaterial(doc: ReadonlyMapDoc, cells: Cell[], material: number): Patch[] {
   return cells.map(([x, y]) => ({
     t: 'terrain',
     field: 'material',
@@ -134,7 +135,7 @@ export function setMaterial(doc: MapDoc, cells: Cell[], material: number): Patch
 }
 
 /** Toggle a cell between a cliff edge and a ramp descending toward `dir`. */
-export function setRamp(doc: MapDoc, cells: Cell[], dir: number): Patch[] {
+export function setRamp(doc: ReadonlyMapDoc, cells: Cell[], dir: number): Patch[] {
   const patches: Patch[] = cells.map(([x, y]) => {
     const index = cellIndex(doc.size, x, y)
     const current = doc.terrain.ramp[index]
@@ -148,7 +149,7 @@ export function setRamp(doc: MapDoc, cells: Cell[], dir: number): Patch[] {
   return [...patches, ...regroundObjects(doc, cells, patches)]
 }
 
-export function setWater(doc: MapDoc, cells: Cell[], level: number | null): Patch[] {
+export function setWater(doc: ReadonlyMapDoc, cells: Cell[], level: number | null): Patch[] {
   return cells.map(([x, y]) => ({
     t: 'terrain',
     field: 'water',
@@ -159,13 +160,13 @@ export function setWater(doc: MapDoc, cells: Cell[], level: number | null): Patc
 
 // --- paint -------------------------------------------------------------------
 
-export function paintTop(doc: MapDoc, cells: Cell[], tile: number | undefined): Patch[] {
+export function paintTop(doc: ReadonlyMapDoc, cells: Cell[], tile: number | undefined): Patch[] {
   void doc
   return cells.map(([x, y]) => ({ t: 'paint', layer: 'top', key: topKey(x, y), value: tile }))
 }
 
 export function paintCliff(
-  doc: MapDoc,
+  doc: ReadonlyMapDoc,
   faces: Array<{ x: number; y: number; dir: number; level: number }>,
   tile: number | undefined,
 ): Patch[] {
@@ -178,31 +179,47 @@ export function paintCliff(
   }))
 }
 
-export function paintTint(doc: MapDoc, cells: Cell[], color: number | undefined): Patch[] {
+export function paintTint(doc: ReadonlyMapDoc, cells: Cell[], color: number | undefined): Patch[] {
   void doc
   return cells.map(([x, y]) => ({ t: 'paint', layer: 'tint', key: tintKey(x, y), value: color }))
 }
 
 // --- objects -----------------------------------------------------------------
 
-export function addObject(doc: MapDoc, object: MapObject): Patch[] {
+export function addObject(doc: ReadonlyMapDoc, object: MapObject): Patch[] {
   return [
     { t: 'object', id: object.id, value: object },
     { t: 'objectOrder', value: [...doc.objectOrder, object.id] },
   ]
 }
 
-export function removeObject(doc: MapDoc, id: string): Patch[] {
+export function removeObject(doc: ReadonlyMapDoc, id: string): Patch[] {
   return [
     { t: 'object', id, value: undefined },
     { t: 'objectOrder', value: doc.objectOrder.filter((other) => other !== id) },
   ]
 }
 
-export function updateObject(doc: MapDoc, id: string, changes: Partial<MapObject>): Patch[] {
+export function updateObject(doc: ReadonlyMapDoc, id: string, changes: Partial<MapObject>): Patch[] {
   const existing = doc.objects[id]
   if (!existing) return []
-  return [{ t: 'object', id, value: { ...existing, ...changes, id } }]
+  return [{ t: 'object', id, value: { ...cloneObject(existing), ...changes, id } }]
+}
+
+/**
+ * A patch carries a value the applier will install as-is, so an object read
+ * through the readonly view is copied before it goes into one: the copy is
+ * what the type asks for (`MapObject`, with mutable tuples), and it is also
+ * what keeps the undo inverse — which captures the value being replaced —
+ * from aliasing the value replacing it.
+ */
+function cloneObject(object: DeepReadonly<MapObject>): MapObject {
+  return {
+    ...object,
+    position: [...object.position],
+    facing: { ...object.facing },
+    anchorCell: object.anchorCell ? [...object.anchorCell] : null,
+  }
 }
 
 /**
@@ -210,7 +227,7 @@ export function updateObject(doc: MapDoc, id: string, changes: Partial<MapObject
  * moves it instead of burying it. Called by the sculpt ops above with the
  * heights they are about to write, since the document has not changed yet.
  */
-export function regroundObjects(doc: MapDoc, cells: Cell[], pending: Patch[]): Patch[] {
+export function regroundObjects(doc: ReadonlyMapDoc, cells: Cell[], pending: Patch[]): Patch[] {
   if (doc.objectOrder.length === 0) return []
 
   const touched = new Set(cells.map(([x, y]) => `${x},${y}`))
@@ -224,17 +241,13 @@ export function regroundObjects(doc: MapDoc, cells: Cell[], pending: Patch[]): P
   if (heightOverride.size === 0 && rampOverride.size === 0) return []
 
   // Evaluate the ground against a shallow view of the post-edit document,
-  // rather than applying and rolling back.
-  const after: MapDoc = {
-    ...doc,
-    terrain: {
-      ...doc.terrain,
-      height: doc.terrain.height.slice(),
-      ramp: doc.terrain.ramp.slice(),
-    },
-  }
-  for (const [index, value] of heightOverride) after.terrain.height[index] = value
-  for (const [index, value] of rampOverride) after.terrain.ramp[index] = value
+  // rather than applying and rolling back. The two copied arrays are the only
+  // thing written, and they are written before the view is typed readonly.
+  const height = doc.terrain.height.slice()
+  const ramp = doc.terrain.ramp.slice()
+  for (const [index, value] of heightOverride) height[index] = value
+  for (const [index, value] of rampOverride) ramp[index] = value
+  const after: ReadonlyMapDoc = { ...doc, terrain: { ...doc.terrain, height, ramp } }
 
   const patches: Patch[] = []
   for (const id of doc.objectOrder) {
@@ -248,7 +261,7 @@ export function regroundObjects(doc: MapDoc, cells: Cell[], pending: Patch[]): P
     patches.push({
       t: 'object',
       id,
-      value: { ...object, position: [object.position[0], y, object.position[2]] },
+      value: { ...cloneObject(object), position: [object.position[0], y, object.position[2]] },
     })
   }
   return patches
@@ -256,7 +269,7 @@ export function regroundObjects(doc: MapDoc, cells: Cell[], pending: Patch[]): P
 
 /** Drop an object onto whatever surface is under it. */
 export function groundedPosition(
-  doc: MapDoc,
+  doc: ReadonlyMapDoc,
   worldX: number,
   worldZ: number,
 ): [number, number, number] {

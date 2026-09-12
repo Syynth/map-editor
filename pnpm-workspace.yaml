@@ -33,12 +33,14 @@ packages:
 # yet. Drop it once its version has aged past the window — the guard is only
 # meaningful for the next package we add.
 #
-# `xstate@6.0.0-alpha.53` was removed from this list: `git grep xstate --
-# '**/package.json'` and `grep xstate pnpm-lock.yaml` both return nothing at
-# this commit, so there is no lockfile entry left for this exclude to guard —
-# an exclude that re-verifies nothing is exactly the silent drift #39 exists
-# to catch. Re-add it, dated against the registry, if #11's actor migration
-# re-pins xstate inside the window.
+# `xstate@6.0.0-alpha.53` is back (#31): the document actor (#13, #66 step 2)
+# re-pinned it in `packages/document` on 2026-09-12, and the registry's
+# publish timestamp for that version is 2026-09-11T13:13:08Z — inside the 24h
+# window at the time of the pin. The entry was absent between `8b6b80d` (which
+# moved the app's dependencies off the root and left nothing importing xstate)
+# and this pin, on the same reasoning as the paragraph above: an exclude that
+# re-verifies nothing is silent drift. Drop it once the version has aged past
+# the window.
 #
 # CI does not cache pnpm's `lockfile-verified.jsonl` (the file that records
 # which lockfile entries have already cleared this check) for the same reason
@@ -48,6 +50,7 @@ packages:
 minimumReleaseAgeStrict: true
 minimumReleaseAgeExclude:
   - '@types/three@0.186.0'
+  - 'xstate@6.0.0-alpha.53'
 
 # #55: `engineStrict` gates a DEPENDENCY's declared `engines` reached through
 # the dependency graph (pnpm CHANGELOG, 12.0.0) — it does not check this

@@ -26,8 +26,10 @@
     "types": []
   },
 
-  // No `references`: this package has no workspace dependencies. `registry`
-  // sits below it in the target layout and does not exist yet; the reference
-  // lands with that package.
+  // No `references`: this package has no workspace dependencies. Its one
+  // runtime dependency is `xstate` (pinned exactly, #31), which needs none.
+  // `registry` now exists one rung below (#66 step 1) but nothing here imports
+  // it yet — the document's own command declarations land with the host, and
+  // the reference lands with them.
   "include": ["src"]
 }
