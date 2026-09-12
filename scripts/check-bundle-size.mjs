@@ -21,8 +21,14 @@ import { fileURLToPath } from 'node:url'
 export const DEFAULT_LIMIT_BYTES = 500_000
 
 /**
+ * @typedef {{ file: string, bytes: number }} ChunkSize
+ */
+
+/**
  * Pure so the failure path is testable without a real build: takes sizes
  * already read from disk rather than reading them itself.
+ * @param {ChunkSize[]} sizes
+ * @param {number} [limit]
  */
 export function oversizedChunks(sizes, limit = DEFAULT_LIMIT_BYTES) {
   return sizes.filter(({ bytes }) => bytes > limit)
@@ -33,6 +39,8 @@ export function oversizedChunks(sizes, limit = DEFAULT_LIMIT_BYTES) {
  * not disappear: `Number('500kB')` is `NaN`, and `bytes > NaN` is always
  * false in `oversizedChunks`, so an unchecked `Number(argv[3])` would make
  * this gate script silently exit 0 on every build regardless of chunk size.
+ * @param {string | undefined} raw
+ * @param {number} [fallback]
  */
 export function parseLimit(raw, fallback = DEFAULT_LIMIT_BYTES) {
   if (raw === undefined) return fallback
@@ -43,6 +51,7 @@ export function parseLimit(raw, fallback = DEFAULT_LIMIT_BYTES) {
   return value
 }
 
+/** @param {string} distDir */
 function jsChunkSizes(distDir) {
   const assetsDir = join(distDir, 'assets')
   return readdirSync(assetsDir)
@@ -56,7 +65,11 @@ function main() {
   try {
     limit = parseLimit(process.argv[3])
   } catch (error) {
-    console.error(error.message)
+    // `parseLimit` only ever throws `Error`, but the catch binding is
+    // `unknown` under `strict` regardless — narrow instead of assuming, so a
+    // future throw of something else prints itself rather than crashing this
+    // handler on a missing `.message`.
+    console.error(error instanceof Error ? error.message : String(error))
     process.exitCode = 1
     return
   }

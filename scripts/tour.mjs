@@ -48,7 +48,9 @@ for (let i = 0; i < 80; i++) {
   await sleep(250)
 }
 
+/** @type {string[]} */
 const problems = []
+/** @type {{ file: string, caption: string }[]} */
 const steps = []
 let index = 0
 
@@ -71,34 +73,56 @@ await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' })
 await sleep(5000)
 
 const stage = await page.$('.stage canvas')
+if (!stage) throw new Error('".stage canvas" not found — did the editor mount?')
 const box = await stage.boundingBox()
+if (!box) throw new Error('".stage canvas" has no bounding box — is it hidden or zero-sized?')
 const cx = box.x + box.width / 2
 const cy = box.y + box.height / 2
+// `shot` below is a hoisted `function` declaration, and `tsc` does not carry
+// the null checks just above into it — see `probe.mjs`'s
+// `boxX`/`boxY`/`boxW`/`boxH` destructuring for the same reason (an arrow
+// function would keep the narrowing; a hoisted `function` does not).
+const stageBox = box
 
-/** Capture a numbered screenshot with a caption. */
+/**
+ * Capture a numbered screenshot with a caption.
+ * @param {string} name
+ * @param {string} caption
+ * @param {{ settle?: number, viewportOnly?: boolean }} [options]
+ */
 async function shot(name, caption, { settle = 900, viewportOnly = false } = {}) {
   await sleep(settle)
   index += 1
   const file = `${String(index).padStart(2, '0')}-${name}.png`
   await page.screenshot({
     path: `${OUT}/${file}`,
-    ...(viewportOnly ? { clip: box } : {}),
+    ...(viewportOnly ? { clip: stageBox } : {}),
   })
   steps.push({ file, caption })
   console.log(`  ${file}  ${caption}`)
 }
 
-/** Click a button by its visible text, scoped to a panel side. */
+/**
+ * Click a button by its visible text, scoped to a panel side.
+ * @param {string} text
+ * @param {string} [scope]
+ */
 async function clickText(text, scope = '') {
   const target = page.locator(`${scope} button`, { hasText: new RegExp(`^${text}$`) }).first()
   await target.click()
   await sleep(400)
 }
 
+/** @param {Partial<{ yaw: number, pitch: number, distance: number }>} state */
 async function camera(state) {
   await page.evaluate((s) => window.__viewport.setCameraForProbe(s), state)
 }
 
+/**
+ * @param {number} x
+ * @param {number} y
+ * @param {number} distance
+ */
 async function focus(x, y, distance) {
   await page.evaluate(
     ([fx, fy, d]) => window.__viewport.focusCellForProbe(fx, fy, d),
@@ -127,6 +151,8 @@ async function statusBar() {
  * that landed on a terrain top, a coverage readout that never recomputed —
  * and all three looked plausible until the image was read closely. So each
  * step states a measurable consequence and the tour fails loudly without it.
+ * @param {string} label
+ * @param {() => unknown} fn
  */
 async function expect(label, fn) {
   const value = await page.evaluate(fn)
@@ -218,6 +244,9 @@ async function faceCamera(distance = 10, pitch = 10) {
  * So ask the editor: hover a spiral of candidate points and read the status
  * bar, which reports the picked surface. Searching outward from the centre
  * usually settles in a handful of probes.
+ * @param {string} kind
+ * @param {number} [radius]
+ * @param {number} [step]
  */
 async function findSurfacePixel(kind, radius = 200, step = 25) {
   const candidates = []
@@ -237,8 +266,16 @@ async function findSurfacePixel(kind, radius = 200, step = 25) {
   return null
 }
 
+/**
+ * @param {number} [radius]
+ * @param {number} [step]
+ */
 const findCliffPixel = (radius, step) => findSurfacePixel('cliff', radius, step)
-/** Terrain top with no object in front of it: picking reports objects as no surface. */
+/**
+ * Terrain top with no object in front of it: picking reports objects as no surface.
+ * @param {number} [radius]
+ * @param {number} [step]
+ */
 const findTopPixel = (radius, step) => findSurfacePixel('top', radius, step)
 
 await clickText('Ramp', '.left')
@@ -286,7 +323,9 @@ await shot('paint-palette', 'Tab switches to Paint. The template sheet is the pa
 
 // Pick a stone tile from the sheet, then brush it on.
 const palette = await page.$('.palette-sheet')
+if (!palette) throw new Error('".palette-sheet" not found — did Paint mode mount its sheet?')
 const pbox = await palette.boundingBox()
+if (!pbox) throw new Error('".palette-sheet" has no bounding box — is it hidden or zero-sized?')
 await page.mouse.click(pbox.x + pbox.width * 0.66, pbox.y + pbox.height * 0.4)
 await page.keyboard.press('[')
 await page.keyboard.press('[')
