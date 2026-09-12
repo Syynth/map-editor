@@ -28,13 +28,17 @@ ticket (a decision) or an ordinary issue (merely unbuilt). That sorting is a hum
 ```
 pnpm install --prefer-offline && pnpm turbo run test typecheck lint
 ```
-Eleven turbo tasks across seven packages and one app (`apps/export-cli` was cut
-2026-09-11; its texture prerequisite landed with #47, and `docs/monorepo-migration.md`
-names what still blocks it); 96 tests in 12 files, counted from a fresh
-cold `pnpm turbo run test typecheck lint` rather than adjusted from the old total — the
-repo-wide suites under `tests/` (dependency direction, the runtime barrel, the checked-in
-bake, the gate workflow) plus each package's own and `scripts/`'s. ~6 s cold, single-digit
-ms on a cache hit — the gate is fast enough that agents should run it on every iteration.
+Twelve turbo tasks across seven packages and two apps (`apps/export-cli` was cut
+2026-09-11 and revived by #48, once #47 landed its texture prerequisite); 107 tests in
+16 files, counted from a fresh cold `pnpm turbo run test typecheck lint` rather than
+adjusted from the old total — the repo-wide suites under `tests/` (dependency direction,
+the runtime barrel, the checked-in bake, the gate workflow) plus each package's own and
+`scripts/`'s. `apps/export-cli`'s own suite is two files: one exercises `exportMapFile`
+straight from source, the other (`cli.build.test.ts`) builds the CLI's real bundle with
+vite and spawns it as its own `node` process — the slowest test in the suite, and the one
+that actually proves the acceptance criterion #48 names (a real `.glb` under plain node),
+not just that the source compiles. ~7 s cold, single-digit ms on a cache hit — the gate
+is fast enough that agents should run it on every iteration.
 
 CI (`.github/workflows/gate.yml`) runs a superset of this on every PR and every push to
 `main`: it also builds `apps/editor` — the only package with a `build` script, and not
