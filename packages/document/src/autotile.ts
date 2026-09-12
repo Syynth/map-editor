@@ -1,44 +1,37 @@
 /**
- * Autotiling for terrain tops.
+ * Autotiling: which of a cell's four neighbours continue the same surface.
  *
- * A 4-bit edge mask: a neighbour counts as connected when it shares the cell's
- * material AND sits at the same height. Height matters because a grass cell
- * two tiles above its grass neighbour is across a cliff, not continuous with
- * it, and should get an edge tile.
- *
- * Off-map neighbours count as connected, so the map border does not draw a
- * ring of edge tiles around the whole level.
+ * A neighbour counts when it has the same material at the same height, or
+ * when it lies outside the volume — the border is treated as continuing so
+ * the edge of a volume reads as ground running on, not as a cliff-top rim.
  */
 
-import { DIR_VECTORS, cellIndex, inBounds, type ReadonlyMapDoc } from './document'
+import { DIR_VECTORS, cellIndex, inBounds } from './document'
+import type { ReadonlyVoxel } from './structure'
 
 export const MASK_NORTH = 1
 export const MASK_EAST = 2
 export const MASK_SOUTH = 4
 export const MASK_WEST = 8
 
-/** Direction index -> mask bit. DIR_VECTORS order is E, S, W, N. */
 const DIR_TO_BIT = [MASK_EAST, MASK_SOUTH, MASK_WEST, MASK_NORTH]
 
-export function autotileMask(doc: ReadonlyMapDoc, x: number, y: number): number {
-  const index = cellIndex(doc.size, x, y)
-  const material = doc.terrain.material[index]
-  const height = doc.terrain.height[index]
-
+export function autotileMask(voxel: ReadonlyVoxel, x: number, y: number): number {
+  const index = cellIndex(voxel.size, x, y)
+  const material = voxel.terrain.material[index]
+  const height = voxel.terrain.height[index]
   let mask = 0
   for (let dir = 0; dir < 4; dir++) {
     const [dx, dy] = DIR_VECTORS[dir]
     const nx = x + dx
     const ny = y + dy
-
-    if (!inBounds(doc.size, nx, ny)) {
+    if (!inBounds(voxel.size, nx, ny)) {
       mask |= DIR_TO_BIT[dir]
       continue
     }
-
-    const neighbour = cellIndex(doc.size, nx, ny)
-    const sameMaterial = doc.terrain.material[neighbour] === material
-    const sameHeight = doc.terrain.height[neighbour] === height
+    const neighbour = cellIndex(voxel.size, nx, ny)
+    const sameMaterial = voxel.terrain.material[neighbour] === material
+    const sameHeight = voxel.terrain.height[neighbour] === height
     if (sameMaterial && sameHeight) mask |= DIR_TO_BIT[dir]
   }
   return mask

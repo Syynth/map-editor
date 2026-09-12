@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { createActor, initialTransition, transition } from 'xstate'
 
 import { createDocumentActorLogic, documentLogic } from './actor'
-import { cellIndex, createMap, type ReadonlyMapDoc } from './document'
+import { cellIndex, createMap, type MapDoc, type ReadonlyMapDoc } from './document'
+import { rootVoxel, type VoxelStructure } from './structure'
 import { inversePatch, type Patch } from './edits'
 import { raise } from './ops'
 import { createDocumentStore, EditorStore, type DocumentReader, type DocumentWriter } from './store'
@@ -32,7 +33,9 @@ function countingWriter(): { writer: DocumentWriter; reader: DocumentReader; cal
   return { writer, reader, calls }
 }
 
-const onePatch = (index: number) => [{ t: 'terrain' as const, field: 'height' as const, index, value: 5 }]
+const ground = (doc: MapDoc | ReadonlyMapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+// Never applied to a real store: the counting writer only counts, so the id is nominal.
+const onePatch = (index: number) => [{ t: 'voxel' as const, id: 'g', field: 'height' as const, index, value: 5 }]
 
 /**
  * The standing guard #22 asked for. On xstate 6.0.0-alpha.53 a transition
@@ -115,22 +118,22 @@ describe('document actor over a real store', () => {
   it('moves a cell by exactly the sum of the patches it was sent', () => {
     const store = new EditorStore(createMap(8, 8))
     const actor = createActor(createDocumentActorLogic(store)).start()
-    const index = cellIndex(store.reader.doc.size, 2, 2)
-    const before = store.reader.doc.terrain.height[index]
+    const index = cellIndex(ground(store.reader.doc).size, 2, 2)
+    const before = ground(store.reader.doc).terrain.height[index]
 
     for (let i = 0; i < 3; i++) {
-      actor.send({ type: 'patch', label: 'Raise', patches: raise(store.reader.doc, [[2, 2]], 1) })
+      actor.send({ type: 'patch', label: 'Raise', patches: raise(store.reader.doc, ground(store.reader.doc), [[2, 2]], 1) })
     }
 
     // +3, not +6: the same claim as the counting test, seen through `reader`.
-    expect(store.reader.doc.terrain.height[index]).toBe(before + 3)
+    expect(ground(store.reader.doc).terrain.height[index]).toBe(before + 3)
   })
 
   it('closes one Edit per stroke — the record it is handed — so one undo unwinds every tick', () => {
     const store = new EditorStore(createMap(8, 8))
     const actor = createActor(createDocumentActorLogic(store)).start()
     const doc = store.reader.doc
-    const before = doc.terrain.height.slice()
+    const before = ground(doc).terrain.height.slice()
 
     // The record is the sender's: inverses read before each patch lands, as
     // the stroke actor in `editor-host` does per tick (#11).
@@ -138,12 +141,12 @@ describe('document actor over a real store', () => {
     const inverse: Patch[] = []
     actor.send({ type: 'beginStroke', label: 'Raise' })
     for (let i = 0; i < 5; i++) {
-      const tick = raise(doc, [[i, 0]], 1)
+      const tick = raise(doc, ground(doc), [[i, 0]], 1)
       patches.push(...tick)
       inverse.push(...tick.map((patch) => inversePatch(doc, patch)))
       actor.send({ type: 'strokePatch', patches: tick })
       // Applied on arrival: the drag is visible before it is an undo entry.
-      expect(doc.terrain.height[cellIndex(doc.size, i, 0)]).toBe(before[i] + 1)
+      expect(ground(doc).terrain.height[cellIndex(ground(doc).size, i, 0)]).toBe(before[i] + 1)
       expect(store.reader.canUndo()).toBe(false)
     }
     actor.send({ type: 'endStroke', patches, inverse })
@@ -151,12 +154,12 @@ describe('document actor over a real store', () => {
     expect(store.reader.undoLabel()).toBe('Raise')
 
     actor.send({ type: 'undo' })
-    expect(doc.terrain.height).toEqual(before)
+    expect(ground(doc).terrain.height).toEqual(before)
     expect(store.reader.canUndo()).toBe(false)
     expect(store.reader.canRedo()).toBe(true)
 
     actor.send({ type: 'redo' })
-    for (let i = 0; i < 5; i++) expect(doc.terrain.height[cellIndex(doc.size, i, 0)]).toBe(before[i] + 1)
+    for (let i = 0; i < 5; i++) expect(ground(doc).terrain.height[cellIndex(ground(doc).size, i, 0)]).toBe(before[i] + 1)
   })
 })
 
@@ -167,9 +170,9 @@ describe('the read and write paths', () => {
     let notified = 0
     reader.subscribe(() => void (notified += 1))
 
-    writer.apply('Raise', [{ t: 'terrain', field: 'height', index: 0, value: 9 }])
+    writer.apply('Raise', [{ t: 'voxel', id: ground(reader.doc).id, field: 'height', index: 0, value: 9 }])
 
-    expect(reader.doc.terrain.height[0]).toBe(9)
+    expect(ground(reader.doc).terrain.height[0]).toBe(9)
     expect(reader.revision).toBe(revision + 1)
     expect(reader.getSnapshot()).toBe(reader.revision)
     expect(notified).toBe(1)
@@ -179,7 +182,7 @@ describe('the read and write paths', () => {
     const { reader, writer } = createDocumentStore(createMap(4, 4, 'First'))
     writer.replace(createMap(6, 6, 'Second'))
     expect(reader.doc.name).toBe('Second')
-    expect(reader.doc.size.width).toBe(6)
+    expect(ground(reader.doc).size.width).toBe(6)
     expect(reader.canUndo()).toBe(false)
   })
 
@@ -192,7 +195,7 @@ describe('the read and write paths', () => {
     const { reader, writer } = createDocumentStore(createMap(4, 4, 'First'))
     expect(reader.generation).toBe(0)
 
-    writer.apply('Raise', [{ t: 'terrain', field: 'height', index: 0, value: 3 }])
+    writer.apply('Raise', [{ t: 'voxel', id: ground(reader.doc).id, field: 'height', index: 0, value: 3 }])
     expect(reader.revision).toBeGreaterThan(0)
     expect(reader.generation).toBe(0)
 
@@ -210,15 +213,15 @@ describe('the read and write paths', () => {
     // `Object.freeze`, so what this proves is what the compiler refuses.
     const doc: ReadonlyMapDoc = createMap(2, 2)
     // @ts-expect-error indexed assignment
-    doc.terrain.height[0] = 1
+    rootVoxel(doc).terrain.height[0] = 1
     // @ts-expect-error record assignment
-    doc.paint.top['0,0'] = 1
+    rootVoxel(doc).paint.top['0,0'] = 1
     // @ts-expect-error array mutation
     doc.objectOrder.push('x')
     // @ts-expect-error property replacement
     doc.name = 'x'
 
-    expect(doc.size.width).toBe(2)
-    expect(cellIndex(doc.size, 1, 1)).toBe(3)
+    expect(ground(doc).size.width).toBe(2)
+    expect(cellIndex(ground(doc).size, 1, 1)).toBe(3)
   })
 })

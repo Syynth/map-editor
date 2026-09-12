@@ -13,19 +13,33 @@
  * nothing else. No tool writes an `undo()` method.
  *
  * Patches are intentionally addressed at the same granularity as the document:
- * one cell field, one paint key, one object. That keeps the inverse exact and
- * makes a brush stroke a flat list of small writes which coalesce cleanly.
+ * one cell field of one voxel volume, one paint key, one field of one sketch,
+ * one object, one structure. That keeps the inverse exact and makes a brush
+ * stroke a flat list of small writes which coalesce cleanly. A sketch's
+ * `points` is one address on purpose: a point drag is a stroke over that one
+ * slot, and the per-address compaction (#11) collapses it to first/last.
  */
 
 import type { MapDoc, MapObject, ReadonlyMapDoc } from './document'
+import type { SketchStructure, Structure, StructureBase, VoxelStructure } from './structure'
 
 export type TerrainField = 'height' | 'material' | 'ramp' | 'water'
 export type PaintLayer = 'top' | 'cliff' | 'tint'
 export type DocField = 'name' | 'texelDensity' | 'filtering' | 'camera' | 'atmosphere' | 'materials'
+export type SketchField = 'points' | 'closed' | 'layers' | 'wall' | 'lip' | 'capMaterial' | 'wallMaterial'
+export type StructureMetaField = 'name' | 'parent' | 'placement'
+
+/** One field of one sketch, typed by the field: `{ field: 'layers', value: number }`, never `value: unknown`. */
+export type SketchPatch = { [K in SketchField]: { t: 'sketch'; id: string; field: K; value: SketchStructure[K] } }[SketchField]
+export type StructureMetaPatch = { [K in StructureMetaField]: { t: 'structure.meta'; id: string; field: K; value: StructureBase[K] } }[StructureMetaField]
 
 export type Patch =
-  | { t: 'terrain'; field: TerrainField; index: number; value: number }
-  | { t: 'paint'; layer: PaintLayer; key: string; value: number | undefined }
+  | { t: 'voxel'; id: string; field: TerrainField; index: number; value: number }
+  | { t: 'voxelPaint'; id: string; layer: PaintLayer; key: string; value: number | undefined }
+  | SketchPatch
+  | { t: 'structure'; id: string; value: Structure | undefined }
+  | StructureMetaPatch
+  | { t: 'structureOrder'; value: string[] }
   | { t: 'object'; id: string; value: MapObject | undefined }
   | { t: 'objectOrder'; value: string[] }
   | { t: 'doc'; field: DocField; value: unknown }
@@ -47,10 +61,18 @@ export type StrokeRecord = Pick<Edit, 'patches' | 'inverse'>
  */
 export function patchAddress(patch: Patch): string {
   switch (patch.t) {
-    case 'terrain':
-      return `terrain:${patch.field}:${patch.index}`
-    case 'paint':
-      return `paint:${patch.layer}:${patch.key}`
+    case 'voxel':
+      return `voxel:${patch.id}:${patch.field}:${patch.index}`
+    case 'voxelPaint':
+      return `paint:${patch.id}:${patch.layer}:${patch.key}`
+    case 'sketch':
+      return `sketch:${patch.id}:${patch.field}`
+    case 'structure':
+      return `structure:${patch.id}`
+    case 'structure.meta':
+      return `structure:${patch.id}:${patch.field}`
+    case 'structureOrder':
+      return 'structureOrder'
     case 'object':
       return `object:${patch.id}`
     case 'objectOrder':
@@ -60,6 +82,23 @@ export function patchAddress(patch: Patch): string {
   }
 }
 
+function voxelOf(doc: ReadonlyMapDoc | MapDoc, id: string): VoxelStructure {
+  const s = doc.structures[id]
+  if (!s || s.kind !== 'voxel') throw new Error(`Patch addresses voxel structure ${id}, which the level does not have.`)
+  return s as VoxelStructure
+}
+
+function sketchOf(doc: ReadonlyMapDoc | MapDoc, id: string): SketchStructure {
+  const s = doc.structures[id]
+  if (!s || s.kind !== 'sketch') throw new Error(`Patch addresses sketch ${id}, which the level does not have.`)
+  return s as SketchStructure
+}
+
+/** A value the undo stack keeps must not alias the live document: the next forward patch would edit the inverse too. */
+function keep<T>(value: T): T {
+  return value === undefined ? value : (JSON.parse(JSON.stringify(value)) as T)
+}
+
 /**
  * The patch that would undo `patch` were it applied to `doc` now: the
  * before-value at its address. Reads only, so it takes the readonly view and
@@ -67,16 +106,25 @@ export function patchAddress(patch: Patch): string {
  * patch — the stroke actor needs exactly that to record `first` without ever
  * seeing the writer.
  *
- * The two casts re-wrap values the readonly view narrowed: the inverse puts
- * the same object or array reference back wholesale, and `DeepReadonly` is a
- * promise about who writes, not a different runtime shape.
+ * The casts re-wrap values the readonly view narrowed: the inverse puts the
+ * same shape back wholesale, and `DeepReadonly` is a promise about who
+ * writes, not a different runtime shape. Structure-sized values are cloned
+ * (`keep`) because the live object keeps changing under later patches.
  */
 export function inversePatch(doc: ReadonlyMapDoc, patch: Patch): Patch {
   switch (patch.t) {
-    case 'terrain':
-      return { t: 'terrain', field: patch.field, index: patch.index, value: doc.terrain[patch.field][patch.index] }
-    case 'paint':
-      return { t: 'paint', layer: patch.layer, key: patch.key, value: doc.paint[patch.layer][patch.key] }
+    case 'voxel':
+      return { t: 'voxel', id: patch.id, field: patch.field, index: patch.index, value: voxelOf(doc, patch.id).terrain[patch.field][patch.index] }
+    case 'voxelPaint':
+      return { t: 'voxelPaint', id: patch.id, layer: patch.layer, key: patch.key, value: voxelOf(doc, patch.id).paint[patch.layer][patch.key] }
+    case 'sketch':
+      return { t: 'sketch', id: patch.id, field: patch.field, value: keep(sketchOf(doc, patch.id)[patch.field]) } as SketchPatch
+    case 'structure':
+      return { t: 'structure', id: patch.id, value: keep(doc.structures[patch.id] as Structure | undefined) }
+    case 'structure.meta':
+      return { t: 'structure.meta', id: patch.id, field: patch.field, value: keep((doc.structures[patch.id] as Structure)[patch.field]) } as StructureMetaPatch
+    case 'structureOrder':
+      return { t: 'structureOrder', value: doc.structureOrder as string[] }
     case 'object':
       return { t: 'object', id: patch.id, value: doc.objects[patch.id] as MapObject | undefined }
     case 'objectOrder':
@@ -90,15 +138,30 @@ export function inversePatch(doc: ReadonlyMapDoc, patch: Patch): Patch {
 function applyPatch(doc: MapDoc, patch: Patch): Patch {
   const inverse = inversePatch(doc, patch)
   switch (patch.t) {
-    case 'terrain':
-      doc.terrain[patch.field][patch.index] = patch.value
+    case 'voxel':
+      voxelOf(doc, patch.id).terrain[patch.field][patch.index] = patch.value
       break
-    case 'paint': {
-      const layer = doc.paint[patch.layer]
+    case 'voxelPaint': {
+      const layer = voxelOf(doc, patch.id).paint[patch.layer]
       if (patch.value === undefined) delete layer[patch.key]
       else layer[patch.key] = patch.value
       break
     }
+    case 'sketch':
+      ;(sketchOf(doc, patch.id) as unknown as Record<string, unknown>)[patch.field] = patch.value
+      break
+    case 'structure':
+      if (patch.value === undefined) delete doc.structures[patch.id]
+      else doc.structures[patch.id] = patch.value
+      break
+    case 'structure.meta': {
+      const s = doc.structures[patch.id]
+      if (s) (s as unknown as Record<string, unknown>)[patch.field] = patch.value
+      break
+    }
+    case 'structureOrder':
+      doc.structureOrder = patch.value
+      break
     case 'object':
       if (patch.value === undefined) delete doc.objects[patch.id]
       else doc.objects[patch.id] = patch.value
@@ -125,6 +188,8 @@ export function applyPatches(doc: MapDoc, patches: Patch[]): Patch[] {
   return inverse
 }
 
+const same = (a: unknown, b: unknown): boolean => a === b || JSON.stringify(a) === JSON.stringify(b)
+
 /**
  * Drop patches that change nothing. A brush dragged back and forth over the
  * same cell would otherwise fill the undo stack with no-ops and mark chunks
@@ -133,10 +198,18 @@ export function applyPatches(doc: MapDoc, patches: Patch[]): Patch[] {
 export function pruneNoops(doc: MapDoc, patches: Patch[]): Patch[] {
   return patches.filter((patch) => {
     switch (patch.t) {
-      case 'terrain':
-        return doc.terrain[patch.field][patch.index] !== patch.value
-      case 'paint':
-        return doc.paint[patch.layer][patch.key] !== patch.value
+      case 'voxel':
+        return voxelOf(doc, patch.id).terrain[patch.field][patch.index] !== patch.value
+      case 'voxelPaint':
+        return voxelOf(doc, patch.id).paint[patch.layer][patch.key] !== patch.value
+      case 'sketch':
+        return !same(sketchOf(doc, patch.id)[patch.field], patch.value)
+      case 'structure':
+        return patch.value === undefined ? doc.structures[patch.id] !== undefined : !same(doc.structures[patch.id], patch.value)
+      case 'structure.meta':
+        return !same(doc.structures[patch.id]?.[patch.field], patch.value)
+      case 'structureOrder':
+        return !same(doc.structureOrder, patch.value)
       case 'object':
         return doc.objects[patch.id] !== patch.value
       default:
