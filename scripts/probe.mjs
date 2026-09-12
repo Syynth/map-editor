@@ -7,15 +7,18 @@
  * does post-processing survive on this machine's GPU? — is worth re-asking on
  * real hardware.
  *
- *   node scripts/probe.mjs
+ *   node scripts/probe.mjs [--gpu]
  *
  * A healthy run shows similar luminance for every row. A row near zero with
- * its neighbours bright names the pass that is failing.
+ * its neighbours bright names the pass that is failing. Add --gpu (or
+ * TOUR_GPU=1) to ask the same question against a real driver instead of the
+ * default SwiftShader — see scripts/chromium-launch.mjs.
  */
 import { chromium } from 'playwright'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { chromiumArgs, wantsGpu } from './chromium-launch.mjs'
 
 // Vite's config, `index.html` and `dist/` all live with the app now, so both
 // spawns below run from there rather than from the repo root.
@@ -39,9 +42,13 @@ for (let i = 0; i < 60; i++) {
   await sleep(250)
 }
 
+const GPU = wantsGpu()
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader'],
+  // No executablePath by default: Playwright resolves its own bundled build
+  // (`npx playwright install chromium`, or `pnpm browsers`). CHROMIUM_PATH
+  // stays as an override for a machine that already pins its own browser.
+  executablePath: process.env.CHROMIUM_PATH,
+  args: chromiumArgs(GPU),
 })
 // Wide enough that the 264px + 316px panels still leave a real stage. Sampling
 // a sliver of side panel instead of the canvas is how the first run lied.
