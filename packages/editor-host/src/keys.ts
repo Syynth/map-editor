@@ -55,11 +55,7 @@ const CORE_BINDINGS: readonly KeyBinding[] = [
   { chord: 't', command: 'tools.set', args: { tool: 'terrain' } },
   { chord: 'o', command: 'tools.set', args: { tool: 'object' } },
 
-  { chord: 'tab', command: 'tools.set', args: { terrainMode: 'paint' }, when: toolKeys.terrainMode.is('sculpt') },
-  { chord: 'tab', command: 'tools.set', args: { terrainMode: 'sculpt' }, when: toolKeys.terrainMode.is('paint') },
 
-  { chord: '[', command: 'brush.resize', args: { by: -1 } },
-  { chord: ']', command: 'brush.resize', args: { by: 1 } },
 
   { chord: 'g', command: 'view.set', args: { gameCamera: true }, when: viewKeys.gameCamera.is(false) },
   { chord: 'g', command: 'view.set', args: { gameCamera: false }, when: viewKeys.gameCamera.is(true) },

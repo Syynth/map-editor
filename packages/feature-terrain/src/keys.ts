@@ -23,7 +23,7 @@
  * re-mints the owner.
  */
 
-import { defineContextKey, type ContextKey, type KeyValue, type OwnerId } from '@map-editor/registry'
+import { defineContextKey, keymap, type ContextKey, type KeyValue, type OwnerId } from '@map-editor/registry'
 
 import type { PaintVerb, SculptVerb, TerrainMode } from './verbs'
 
@@ -37,6 +37,11 @@ export function defineTerrainKeys(owner: OwnerId): void {
   // The mode under the feature's own owner, for a panel's `when`: the host
   // mints one too, but a feature may not import the host to name it.
   mode = defineContextKey<TerrainMode>(owner, 'terrain.mode', 'sculpt')
+  // The feature's own bindings, at the feature weight: the mode toggle and the brush nudge.
+  keymap.declare(owner, { chord: 'tab', command: 'terrain.params', args: { terrainMode: 'paint' }, when: mode.is('sculpt'), weight: 'feature' })
+  keymap.declare(owner, { chord: 'tab', command: 'terrain.params', args: { terrainMode: 'sculpt' }, when: mode.is('paint'), weight: 'feature' })
+  keymap.declare(owner, { chord: '[', command: 'terrain.brush.resize', args: { by: -1 }, weight: 'feature' })
+  keymap.declare(owner, { chord: ']', command: 'terrain.brush.resize', args: { by: 1 }, weight: 'feature' })
 }
 
 function minted<T extends KeyValue>(key: ContextKey<T> | null): ContextKey<T> {

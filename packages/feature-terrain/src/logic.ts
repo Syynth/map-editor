@@ -23,7 +23,7 @@
 
 import { setup, types } from 'xstate'
 
-import { terrainEdit } from './commands'
+import { terrainEdit, type TerrainParamsChange } from './commands'
 import type { FeatureDeps } from './deps'
 
 export function terrainLogic(deps: FeatureDeps) {
@@ -41,6 +41,18 @@ export function terrainLogic(deps: FeatureDeps) {
       ready: {
         on: {
           command: ({ event }, enq) => {
+            // The feature's parameters: set whole, or the brush nudged — each an event at the tools actor through `setParams`.
+            if (event.id === 'terrain.params') {
+              enq(() => deps.setParams(event.args as TerrainParamsChange))
+              return {}
+            }
+            if (event.id === 'terrain.brush.resize') {
+              const brush = deps.params().brush
+              const size = Math.min(12, Math.max(1, brush.size + (event.args as { by: number }).by))
+              if (size === brush.size) return undefined
+              enq(() => deps.setParams({ brush: { ...brush, size } }))
+              return {}
+            }
             const edit = terrainEdit(deps.doc(), event.id, event.args)
             // An edit that touches nothing is refused rather than applied: the
             // document actor prunes an empty patch list anyway, and letting it

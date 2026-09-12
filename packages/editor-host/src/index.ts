@@ -45,9 +45,9 @@ export type { Gesture, PointerMotion, PointerPress, PointerRelease } from './ges
 export type { PickSample, PointerModifiers, StrokeSample, ToolsSnapshot } from './strokes'
 
 export { TOOLS_OWNER, toolKeys } from './tools'
-export type { TerrainMode, ToolId, ToolSettings, ToolsContext } from './tools'
+export type { FeatureParams, ToolId, ToolSettings, ToolsContext } from './tools'
 
 export { VIEW_OWNER, viewKeys } from './view'
-export type { ViewContext, ViewSettings } from './view'
+export type { Selection, ViewContext, ViewSettings } from './view'
 
 export { HostProvider, useDocument, useHost, useHostRef, useHostSelector, useToolsSelector, useViewSelector } from './react'

@@ -14,7 +14,8 @@ import {
   type VoxelStructure,
 } from '@map-editor/document'
 import { createHost, type Host, type PointerPress } from '@map-editor/editor-host'
-import { commands, evaluate, panels, tools } from '@map-editor/registry'
+import { commands, evaluate, keymap, panels, parseChords, resolve, tools } from '@map-editor/registry'
+import type { TerrainParams } from '@map-editor/feature-terrain'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { features } from './index'
@@ -91,11 +92,13 @@ describe('what the feature declares, before anything is running', () => {
       .map((command) => command.id)
       .sort()
     expect(ids).toEqual([
+      'terrain.brush.resize',
       'terrain.flatten',
       'terrain.material',
       'terrain.paint.cliff',
       'terrain.paint.tint',
       'terrain.paint.top',
+      'terrain.params',
       'terrain.raise',
       'terrain.ramp',
       'terrain.water',
@@ -183,7 +186,7 @@ describe('the tool contract, which a declaration cannot carry', () => {
     expect(handler?.label).toBe('Raise')
     // The contract reads the tool parameters live, through the deps the host
     // handed it — so a `tools.set` between the press and the tick is seen.
-    expect(dispatch('tools.set', { brush: { size: 3, shape: 'square' } })).toEqual({ ok: true })
+    expect(dispatch('terrain.params', { brush: { size: 3, shape: 'square' } })).toEqual({ ok: true })
     const patches = handler?.begin({ pick: { surface: top, point: null, objectId: null }, modifiers: { shift: false, alt: false, ctrl: false } })
     expect(patches).toHaveLength(9)
 
@@ -232,7 +235,7 @@ function raiseOnce(host: Host, x: number, y: number, by = 1): void {
 describe('a terrain stroke, from the pointer to the document', () => {
   it('a left drag sculpts on every tick and lands as one undo entry, one patch per address', () => {
     const { host, dispatch } = live
-    dispatch('tools.set', { brush: { size: 3, shape: 'square' } })
+    dispatch('terrain.params', { brush: { size: 3, shape: 'square' } })
     const doc = host.reader.doc
     const before = ground(doc).terrain.height.slice()
     const at = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
@@ -294,7 +297,7 @@ describe('a terrain stroke, from the pointer to the document', () => {
 
   it('a rect stroke commits nothing until release, then one block from the press cell to the last', () => {
     const { host, dispatch } = live
-    dispatch('tools.set', { strokeShape: 'rect' })
+    dispatch('terrain.params', { strokeShape: 'rect' })
     const doc = host.reader.doc
     const before = ground(doc).terrain.height.slice()
     const height = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
@@ -328,7 +331,7 @@ describe('a terrain stroke, from the pointer to the document', () => {
     // A wall of raised cells down x = 4 bounds the flood: `fillCells` walks
     // cells of equal height, so the press at (2,2) reaches only its own side.
     for (let y = 0; y < 8; y++) raiseOnce(host, 4, y)
-    dispatch('tools.set', { strokeShape: 'fill' })
+    dispatch('terrain.params', { strokeShape: 'fill' })
     const doc = host.reader.doc
     const before = ground(doc).terrain.height.slice()
     const height = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
@@ -345,7 +348,7 @@ describe('a terrain stroke, from the pointer to the document', () => {
   it('the flatten verb levels a drag to the height sampled at the press', () => {
     const { host, dispatch } = live
     raiseOnce(host, 0, 0, 3)
-    dispatch('tools.set', { sculptVerb: 'flatten', brush: { size: 1, shape: 'square' } })
+    dispatch('terrain.params', { sculptVerb: 'flatten', brush: { size: 1, shape: 'square' } })
     const doc = host.reader.doc
     const anchor = ground(doc).terrain.height[cellIndex(ground(doc).size, 0, 0)]
 
@@ -364,7 +367,7 @@ describe('a terrain stroke, from the pointer to the document', () => {
 
   it('the water verb pools one half-tile over the pressed cell (interim, until the layer view), and shift removes it', () => {
     const { host, dispatch } = live
-    dispatch('tools.set', { sculptVerb: 'water' })
+    dispatch('terrain.params', { sculptVerb: 'water' })
     const doc = host.reader.doc
     const level = ground(doc).terrain.height[cellIndex(ground(doc).size, 3, 3)] + 1
 
@@ -385,7 +388,7 @@ describe('a terrain stroke, from the pointer to the document', () => {
 
   it('alt-click runs the eyedropper at the press cell, and a 6 px alt-drag orbits without it', () => {
     const { host, dispatch } = live
-    dispatch('tools.set', { terrainMode: 'paint', paintVerb: 'tint' })
+    dispatch('terrain.params', { terrainMode: 'paint', paintVerb: 'tint' })
     apply(host, 'Tint', paintTint(ground(host.reader.doc), [[2, 2]], 0xff0000))
     apply(host, 'Tint', paintTint(ground(host.reader.doc), [[6, 6]], 0x00ff00))
     const alt = { modifiers: { ...NO_MODIFIERS, alt: true } }
@@ -393,14 +396,14 @@ describe('a terrain stroke, from the pointer to the document', () => {
     expect(host.input.pointerDown(pressAt(2, 2, alt))).toBe('pending')
     expect(host.input.pointerMove({ x: 21, y: 22, modifiers: alt.modifiers })).toBe('pending')
     host.input.pointerUp({ x: 21, y: 22 })
-    expect(host.children.tools.getSnapshot().context.tint).toBe(0xff0000)
+    expect((host.children.tools.getSnapshot().context.features.terrain as unknown as TerrainParams).tint).toBe(0xff0000)
     // The eyedropper wrote a tool parameter, never the document.
     expect(host.reader.undoLabel()).toBe('Tint')
 
     expect(host.input.pointerDown(pressAt(6, 6, alt))).toBe('pending')
     expect(host.input.pointerMove({ x: 66, y: 60, modifiers: alt.modifiers })).toBe('orbit')
     host.input.pointerUp({ x: 66, y: 60 })
-    expect(host.children.tools.getSnapshot().context.tint).toBe(0xff0000)
+    expect((host.children.tools.getSnapshot().context.features.terrain as unknown as TerrainParams).tint).toBe(0xff0000)
   })
 })
 
@@ -409,12 +412,12 @@ describe('the feature\'s context key', () => {
     const { host, dispatch } = live
     expect(host.contextKeys()['terrain.verb']).toBe('raise')
 
-    expect(dispatch('tools.set', { sculptVerb: 'ramp' })).toEqual({ ok: true })
+    expect(dispatch('terrain.params', { sculptVerb: 'ramp' })).toEqual({ ok: true })
     expect(host.contextKeys()['terrain.verb']).toBe('ramp')
 
     // The paint verb is "the verb" in paint mode: the key is the feature's
     // because what counts as a verb is the terrain tool's business.
-    expect(dispatch('tools.set', { terrainMode: 'paint', paintVerb: 'tint' })).toEqual({ ok: true })
+    expect(dispatch('terrain.params', { terrainMode: 'paint', paintVerb: 'tint' })).toEqual({ ok: true })
     expect(host.contextKeys()['terrain.verb']).toBe('tint')
   })
 
@@ -424,7 +427,7 @@ describe('the feature\'s context key', () => {
     expect(ramp?.when).toBeDefined()
     expect(evaluate(ramp!.when!, host.contextKeys())).toMatchObject({ available: false, reason: expect.stringContaining('terrain.verb') as string })
 
-    dispatch('tools.set', { sculptVerb: 'ramp' })
+    dispatch('terrain.params', { sculptVerb: 'ramp' })
     expect(evaluate(ramp!.when!, host.contextKeys())).toEqual({ available: true })
   })
 })
@@ -435,6 +438,39 @@ describe('the feature\'s context key', () => {
  * owner, because the host's own commands have the same guard in
  * `editor-host`'s tests.
  */
+describe('the terrain feature owns its parameters', () => {
+  it('is seeded with its defaults, sets them through its own command, and nudges the brush clamped at both ends', () => {
+    const { host, dispatch } = live
+    const slice = () => host.children.tools.getSnapshot().context.features.terrain as unknown as TerrainParams
+    expect(slice()).toMatchObject({ terrainMode: 'sculpt', sculptVerb: 'raise', strokeShape: 'brush' })
+    expect(dispatch('terrain.params', { terrainMode: 'paint', paintVerb: 'tint' })).toEqual({ ok: true })
+    expect(slice()).toMatchObject({ terrainMode: 'paint', paintVerb: 'tint' })
+    expect(host.contextKeys()['terrain.mode']).toBe('paint')
+    expect(dispatch('terrain.params', { brush: { size: 99, shape: 'circle' } })).toMatchObject({ ok: false, kind: 'invalid-args', issues: [{ path: ['brush', 'size'] }] })
+
+    dispatch('terrain.params', { brush: { size: 1, shape: 'square' } })
+    expect(dispatch('terrain.brush.resize', { by: 4 })).toEqual({ ok: true })
+    expect(slice().brush.size).toBe(5)
+    for (let i = 0; i < 20; i++) dispatch('terrain.brush.resize', { by: -1 })
+    expect(slice().brush.size).toBe(1)
+    for (let i = 0; i < 20; i++) dispatch('terrain.brush.resize', { by: 1 })
+    expect(slice().brush.size).toBe(12)
+    expect(dispatch('terrain.brush.resize', { by: 99 })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    dispatch('terrain.params', { terrainMode: 'sculpt', paintVerb: 'tile', brush: { size: 1, shape: 'square' } })
+  })
+
+  it('binds Tab to its mode toggle and the brackets to the brush, at the feature weight', () => {
+    const { host, dispatch } = live
+    const hit = (spec: string) => resolve({ bindings: keymap.all(), snapshot: host.contextKeys(), platform: 'other' }, [], parseChords(spec, 'other')[0])
+    expect(hit('tab')).toMatchObject({ command: 'terrain.params', args: { terrainMode: 'paint' } })
+    dispatch('terrain.params', { terrainMode: 'paint' })
+    expect(hit('tab')).toMatchObject({ command: 'terrain.params', args: { terrainMode: 'sculpt' } })
+    dispatch('terrain.params', { terrainMode: 'sculpt' })
+    expect(hit('[')).toMatchObject({ command: 'terrain.brush.resize', args: { by: -1 } })
+    expect(hit(']')).toMatchObject({ command: 'terrain.brush.resize', args: { by: 1 } })
+  })
+})
+
 describe('declared but untested', () => {
   it('has dispatched every command the feature declares', () => {
     const untested = commands
@@ -476,3 +512,4 @@ describe('disposing the feature', () => {
     expect(host.toolContract('terrain')).toBeUndefined()
   })
 })
+

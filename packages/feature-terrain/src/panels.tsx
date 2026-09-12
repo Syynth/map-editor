@@ -36,7 +36,7 @@ export interface TerrainPanelProps {
 }
 
 export function TerrainBar({ params, set, platform }: TerrainPanelProps) {
-  const modeKbd = chordFor('tools.set', { terrainMode: params.terrainMode === 'sculpt' ? 'paint' : 'sculpt' }, platform)
+  const modeKbd = chordFor('terrain.params', { terrainMode: params.terrainMode === 'sculpt' ? 'paint' : 'sculpt' }, platform)
   return (
     <>
       <IconSegmented
@@ -92,7 +92,7 @@ export function TerrainBar({ params, set, platform }: TerrainPanelProps) {
       <BarLabel>Size</BarLabel>
       <BarSlider
         title="Brush size"
-        kbd={[chordFor('brush.resize', { by: -1 }, platform), chordFor('brush.resize', { by: 1 }, platform)].filter(Boolean).join(' ')}
+        kbd={[chordFor('terrain.brush.resize', { by: -1 }, platform), chordFor('terrain.brush.resize', { by: 1 }, platform)].filter(Boolean).join(' ')}
         value={params.brush.size}
         min={1}
         max={12}

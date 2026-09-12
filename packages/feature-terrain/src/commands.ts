@@ -62,7 +62,28 @@ const tintArgs = z.object({ structure, cells, tint: z.int().min(0).max(0xffffff)
  * is no state in which one of these is meaningless — which tool is selected
  * decides what a POINTER does, not what a command may do.
  */
+/** The feature's own parameters, in the shape the host stores opaquely: validated here, where they are declared. */
+const terrainParams = z
+  .object({
+    terrainMode: z.enum(['sculpt', 'paint']).exactOptional(),
+    sculptVerb: z.enum(['raise', 'flatten', 'ramp', 'water']).exactOptional(),
+    paintVerb: z.enum(['tile', 'material', 'tint']).exactOptional(),
+    strokeShape: z.enum(['brush', 'rect', 'fill']).exactOptional(),
+    brush: z.object({ size: z.int().min(1).max(12), shape: z.enum(['square', 'circle']) }).exactOptional(),
+    material: z.int().min(0).exactOptional(),
+    tile: z.int().min(0).exactOptional(),
+    tint: z.int().min(0).max(0xffffff).exactOptional(),
+    rampDir: z.int().min(NO_RAMP).max(3).exactOptional(),
+    sculptDeadZone: z.number().min(0).max(0.5).exactOptional(),
+  })
+  .strict()
+const brushResize = z.object({ by: z.int().min(-12).max(12) }).strict()
+
+export type TerrainParamsChange = z.infer<typeof terrainParams>
+
 export function declareTerrainCommands(owner: OwnerId): void {
+  commands.declare(owner, { id: 'terrain.params', title: 'Set Terrain Parameters', category: 'Terrain', args: terrainParams })
+  commands.declare(owner, { id: 'terrain.brush.resize', title: 'Resize Brush', category: 'Terrain', args: brushResize })
   commands.declare(owner, { id: 'terrain.raise', title: 'Raise Terrain', category: 'Terrain', args: raiseArgs })
   commands.declare(owner, { id: 'terrain.flatten', title: 'Flatten Terrain', category: 'Terrain', args: flattenArgs })
   commands.declare(owner, { id: 'terrain.ramp', title: 'Set Ramp', category: 'Terrain', args: rampArgs })

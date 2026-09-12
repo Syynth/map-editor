@@ -36,7 +36,7 @@ import { defineTerrainKeys, terrainKeys } from './keys'
 import { terrainLogic, type TerrainLogic } from './logic'
 import { declareTerrainPanels } from './panels'
 import { terrainContract, type TerrainSample } from './stroke'
-import { activeVerb } from './verbs'
+import { TERRAIN_DEFAULTS, activeVerb } from './verbs'
 
 /**
  * `import.meta.hot` without depending on the bundler. `registry` types the
@@ -56,6 +56,7 @@ tools.declare(TERRAIN, { id: 'terrain', title: 'Terrain', icon: 'terrain' })
 
 export const terrainFeature = provideFeature({
   owner: TERRAIN,
+  params: TERRAIN_DEFAULTS,
   create(deps: FeatureDeps): FeatureInstance<TerrainLogic, TerrainSample, Patch> {
     return {
       logic: terrainLogic(deps),

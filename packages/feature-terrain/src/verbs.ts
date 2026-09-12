@@ -67,6 +67,20 @@ export interface TerrainParams {
 }
 
 /** The modifiers a stroke reads, on every terrain verb that has an inverse. */
+/** What the feature starts with; the host seeds its parameter slice from this. */
+export const TERRAIN_DEFAULTS: TerrainParams = {
+  terrainMode: 'sculpt',
+  sculptVerb: 'raise',
+  paintVerb: 'tile',
+  strokeShape: 'brush',
+  brush: { size: 1, shape: 'square' },
+  material: 0,
+  tile: 0,
+  tint: 0xffffff,
+  rampDir: -1,
+  sculptDeadZone: 0.2,
+}
+
 export interface TerrainModifiers {
   readonly shift: boolean
   readonly alt: boolean

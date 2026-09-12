@@ -38,20 +38,12 @@ const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.
  * are pinned in `feature-terrain` and end to end in `apps/editor`.
  */
 
-const SCULPT: ToolsSnapshot = {
-  tool: 'terrain',
-  terrainMode: 'sculpt',
-  sculptVerb: 'raise',
-  paintVerb: 'tile',
-  strokeShape: 'brush',
-  brush: { size: 3, shape: 'square' },
-  material: 0,
-  tile: 0,
-  tint: 0xffffff,
-  rampDir: -1,
-  sculptDeadZone: 0.2,
-  spriteName: 'tree',
-}
+/** The terrain feature's slice as this package sees it: opaque, except the brush the stub contract reads. */
+const BRUSH = { size: 3, shape: 'square' as const }
+const SCULPT: ToolsSnapshot = { tool: 'terrain', spriteName: 'tree', features: { terrain: { brush: BRUSH } } }
+const brushOf = (tools: ToolsSnapshot) => (tools.features.terrain as { brush: { size: number; shape: 'square' | 'circle' } }).brush
+/** The same snapshot with a one-cell brush. */
+const withBrush = (size: number): ToolsSnapshot => ({ ...SCULPT, features: { terrain: { brush: { size, shape: 'square' } } } })
 
 function top(x: number, y: number): SurfaceAddress {
   return { structure: 'ground', kind: 0, x, y, dir: -1, level: 0 }
@@ -73,7 +65,7 @@ function raiseContract(deps: StrokeDeps): ToolContract<StrokeSample, Patch> {
     const address = tick.pick.surface
     if (!address) return []
     const doc = deps.reader.doc
-    return raise(doc, ground(doc), brushCells(ground(doc), address.x, address.y, deps.tools().brush), tick.modifiers.shift ? -1 : 1)
+    return raise(doc, ground(doc), brushCells(ground(doc), address.x, address.y, brushOf(deps.tools())), tick.modifiers.shift ? -1 : 1)
   }
   return {
     stroke: (press) =>
@@ -188,7 +180,7 @@ describe('the stroke actor', () => {
   })
 
   it('keeps the first inverse and the last value: raise, raise, lower undoes to the start in one step', () => {
-    const { reader, document, start, record } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
+    const { reader, document, start, record } = rig(withBrush(1))
     const doc = reader.doc
     const index = cellIndex(ground(doc).size, 3, 3)
     const before = ground(doc).terrain.height[index]
@@ -212,7 +204,7 @@ describe('the stroke actor', () => {
   })
 
   it('drops an address put back where it started, and commits no Edit when nothing remains', () => {
-    const { reader, start, patchEvents, record } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
+    const { reader, start, patchEvents, record } = rig(withBrush(1))
     const stroke = start(sample(2, 2))
     stroke.send({ type: 'move', sample: sample(3, 2) })
     stroke.send({ type: 'move', sample: sample(2, 2, { shift: true }) })
@@ -233,7 +225,7 @@ describe('the stroke actor', () => {
   })
 
   it('stops itself on end, so a late move dead-letters rather than landing', () => {
-    const { reader, start, dead } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
+    const { reader, start, dead } = rig(withBrush(1))
     const doc = reader.doc
     const stroke = start(sample(1, 1))
     stroke.send({ type: 'end', sample: sample(1, 1) })
@@ -249,7 +241,7 @@ describe('the stroke actor', () => {
   it('leaves each tick a Patch the document takes as-is', () => {
     // The handler contract types patches as the document's own `Patch`; a
     // consumer never constructs one, so this only checks the wiring's shape.
-    const { start, patchEvents } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
+    const { start, patchEvents } = rig(withBrush(1))
     const stroke = start(sample(0, 0))
     stroke.send({ type: 'end', sample: sample(0, 0) })
     const patch: Patch | undefined = patchEvents()[0]?.patches[0]

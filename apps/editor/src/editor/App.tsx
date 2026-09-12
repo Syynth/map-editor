@@ -29,13 +29,13 @@ import {
   useToolsSelector,
   useViewSelector,
   type Host,
-  type ToolsSnapshot,
 } from '@map-editor/editor-host'
 // The brush preview draws the cells a terrain stroke will touch, so it calls
 // the same function the stroke does (`feature-terrain`'s, the one
 // implementation). An app is the only thing that may import a feature (#35),
 // and this file is an app.
 import { strokeCells } from '@map-editor/feature-terrain'
+import { mergeParams, type EditorParams } from './params'
 // The canvas-drawing generator lives behind its own subpath (#48): re-exporting it
 // from the package root would force `DOM` into every consumer's tsconfig, including
 // `apps/export-cli`'s, whose whole point is compiling without it.
@@ -159,7 +159,7 @@ function report(id: string, result: ReturnType<Host['dispatch']>): void {
 }
 
 /** The status bar's hints per tool: what the pointer and the modifiers do right now. */
-function hintsFor(params: ToolsSnapshot): ReadonlyArray<{ kbd?: string; text: string }> {
+function hintsFor(params: EditorParams): ReadonlyArray<{ kbd?: string; text: string }> {
   switch (params.tool) {
     case 'select':
       return [
@@ -185,6 +185,8 @@ function hintsFor(params: ToolsSnapshot): ReadonlyArray<{ kbd?: string; text: st
             { kbd: 'drag', text: `paint ${params.paintVerb}` },
             { kbd: '⌥ click', text: 'pick up the tile' },
           ]
+    default:
+      return []
   }
 }
 
@@ -205,10 +207,7 @@ export default function App() {
   const viewSnapshot = useViewSelector(snapshotOf)
   const playing = useHostSelector(isPlaying)
   const view = viewSnapshot.context
-  const params = useMemo<ToolsSnapshot>(
-    () => ({ ...toolsSnapshot.context, terrainMode: toolsSnapshot.value }),
-    [toolsSnapshot],
-  )
+  const params = useMemo<EditorParams>(() => mergeParams(toolsSnapshot.context), [toolsSnapshot])
 
   const doc = useDocument(wholeDocument)
   const dormant = useDocument(dormantPaint)
@@ -233,7 +232,15 @@ export default function App() {
 
   /** The one write verb the panels get, routed to the actor that owns the parameters. */
   const setParams = useCallback(
-    (changes: Partial<ToolsSnapshot>) => report('tools.set', host.dispatch('tools.set', changes)),
+    (changes: Partial<EditorParams>) => {
+      // The host owns the tool and the sprite; everything else here is the app's terrain-specific UI (the tile palette) speaking to the terrain feature.
+      const { tool, spriteName, ...rest } = changes
+      const own: { tool?: string; spriteName?: string } = {}
+      if (tool !== undefined) own.tool = tool
+      if (spriteName !== undefined) own.spriteName = spriteName
+      if (Object.keys(own).length > 0) report('tools.set', host.dispatch('tools.set', own))
+      if (Object.keys(rest).length > 0) report('terrain.params', host.dispatch('terrain.params', rest))
+    },
     [host],
   )
 
@@ -559,7 +566,7 @@ export default function App() {
         ) : params.tool === 'object' ? (
           <ObjectBar params={params} set={setParams} />
         ) : (
-          <FeaturePanels slot="bar" tool={params.tool} doc={doc} params={params} set={setParams} platform={platform} />
+          <FeaturePanels slot="bar" tool={params.tool} doc={doc} params={params} platform={platform} />
         )
       }
       stage={
