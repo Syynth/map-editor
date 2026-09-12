@@ -61,6 +61,8 @@ export interface TerrainParams {
   readonly tile: number
   readonly tint: number
   readonly rampDir: number
+  /** Cells past a boundary before a sculpt stroke moves to the next cell; the prototype's dial. */
+  readonly sculptDeadZone: number
 }
 
 /** The modifiers a stroke reads, on every terrain verb that has an inverse. */
@@ -172,9 +174,11 @@ export function sculptPatches(
     }
     case 'water':
       if (modifiers.shift) return setWater(doc, cells, null)
-      // Fill to the height of the cell that was clicked, so water pools at a
-      // level rather than following the terrain.
-      return setWater(doc, cells, doc.terrain.height[cellIndex(doc.size, address.x, address.y)])
+      // INTERIM (2026-09-12): pool one half-tile over the pressed cell, so
+      // the verb does something visible on flat ground now that water is
+      // never level with its ground. The verb is to be redesigned with the
+      // layer view — water painted at the active layer — and this goes then.
+      return setWater(doc, cells, doc.terrain.height[cellIndex(doc.size, address.x, address.y)] + 1)
   }
 }
 

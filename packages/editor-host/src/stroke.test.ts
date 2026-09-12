@@ -33,6 +33,7 @@ const SCULPT: ToolsSnapshot = {
   tile: 0,
   tint: 0xffffff,
   rampDir: -1,
+  sculptDeadZone: 0.2,
   spriteName: 'tree',
 }
 

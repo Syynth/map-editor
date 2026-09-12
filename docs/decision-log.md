@@ -216,3 +216,28 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** The `visual` job (Chromium install + `pnpm tour`, screenshots as an artifact) leaves `gate.yml` for its own `visual.yml` on `workflow_dispatch` only — `gh workflow run visual.yml --ref <branch>` when a rendering change warrants it. The per-PR path is the `gate` job alone (build, bundle-size, test, typecheck, lint; ~1 minute). `gate` stays the one required check; `strict` (branch must be up to date) stays on for now.
 - **WHY:** The tour took ~4 minutes to the gate's ~1 and was never a required check, so it only ever added wall-clock to every PR without gating anything; right now that wait is an impediment to iterating on the UI, and a human looking at the running editor catches what the tour was for.
+
+## Select tool: snapping, modifiers, nudge, framing, context menu
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** editor-ui
+- **SCOPE:** moderate
+- **WHAT:** Dragging an object snaps by default (grid; half/free as the Objects bar offers), with a modifier key temporarily disabling snapping. Modifier keys constrain a drag (e.g. to one axis). With an object selected, the arrow keys nudge it one grid cell. Dropping an object into water is allowed for now (a setting may prevent it later). Framing an object is a viewport operation, not tied to double-click (binding undecided). Selection gets a context menu; cut/copy/paste work on it.
+- **WHY:** Continuous placement without snapping does not fit a grid-based level; the modifier conventions (constrain, snap-off, nudge) are what every reference art app trains, so they cost nothing to learn.
+
+## Water is a heightmap bound to the terrain; terrain sculpted to the water's height clears it
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** document
+- **SCOPE:** architectural
+- **WHAT:** Water cannot exist at the same height as the terrain under it. Raising or flattening a cell to or above its water level clears the water in the same edit; setting water at or below terrain height does nothing. Unlike the terrain, which is to become voxel data (#100), water stays a per-cell height.
+- **WHY:** Water is a surface, not volume: it is exactly what a heightmap represents, and a cell that is both land and water at one height is not a state the renderer or the game can mean anything by.
+
+## Sculpt strokes apply on a cell boundary crossing with hysteresis
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** feature-terrain
+- **SCOPE:** minor/local
+- **STATUS:** tentative
+- **WHAT:** A sculpt stroke applies once per cell, when the pointer has fully passed from one cell into the next, decided from the pointer's position on the press plane rather than from the picked surface, with a dead zone past the boundary. The dead zone's size is dialed in by feel on a prototype and then fixed.
+- **WHY:** Applying on every change of the picked surface re-triggers off the geometry the stroke just raised and chatters along edges; the artist wants a stroke that lands where the brush clearly is.

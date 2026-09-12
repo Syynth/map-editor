@@ -109,19 +109,28 @@ export function raise(doc: ReadonlyMapDoc, cells: Cell[], delta: number): Patch[
   for (const [x, y] of cells) {
     const index = cellIndex(doc.size, x, y)
     const next = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, doc.terrain.height[index] + delta))
-    patches.push({ t: 'terrain', field: 'height', index, value: next })
+    patches.push({ t: 'terrain', field: 'height', index, value: next }, ...drainedBy(doc, index, next))
   }
   return [...patches, ...regroundObjects(doc, cells, patches)]
 }
 
+/**
+ * Water is a surface over the terrain, never level with it (ruling of
+ * 2026-09-12): a column whose ground reaches its water line has no water.
+ * Every height write goes through here so the invariant holds in the same
+ * edit rather than depending on whoever sculpted to remember it.
+ */
+function drainedBy(doc: ReadonlyMapDoc, index: number, height: number): Patch[] {
+  const water = doc.terrain.water[index]
+  return water !== NO_WATER && height >= water ? [{ t: 'terrain', field: 'water', index, value: NO_WATER }] : []
+}
+
 export function flatten(doc: ReadonlyMapDoc, cells: Cell[], height: number): Patch[] {
   const clamped = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, height))
-  const patches: Patch[] = cells.map(([x, y]) => ({
-    t: 'terrain',
-    field: 'height',
-    index: cellIndex(doc.size, x, y),
-    value: clamped,
-  }))
+  const patches: Patch[] = cells.flatMap(([x, y]) => {
+    const index = cellIndex(doc.size, x, y)
+    return [{ t: 'terrain', field: 'height', index, value: clamped }, ...drainedBy(doc, index, clamped)]
+  })
   return [...patches, ...regroundObjects(doc, cells, patches)]
 }
 
@@ -149,14 +158,21 @@ export function setRamp(doc: ReadonlyMapDoc, cells: Cell[], dir: number): Patch[
   return [...patches, ...regroundObjects(doc, cells, patches)]
 }
 
+/**
+ * Set the water line, or clear it with `null`. A line at or below a column's
+ * ground is not water (see `drainedBy`), so such a cell is left alone rather
+ * than given an invisible, invalid value.
+ */
 export function setWater(doc: ReadonlyMapDoc, cells: Cell[], level: number | null): Patch[] {
-  return cells.map(([x, y]) => ({
-    t: 'terrain',
-    field: 'water',
-    index: cellIndex(doc.size, x, y),
-    value: level === null ? NO_WATER : level,
-  }))
+  const patches: Patch[] = []
+  for (const [x, y] of cells) {
+    const index = cellIndex(doc.size, x, y)
+    if (level !== null && level <= doc.terrain.height[index]) continue
+    patches.push({ t: 'terrain', field: 'water', index, value: level === null ? NO_WATER : level })
+  }
+  return patches
 }
+
 
 // --- paint -------------------------------------------------------------------
 

@@ -93,6 +93,10 @@ const toolSettings = z
     tile: z.int().min(0).exactOptional(),
     tint: z.int().min(0).max(0xffffff).exactOptional(),
     rampDir: z.int().min(NO_RAMP).max(3).exactOptional(),
+    // How far past a cell boundary the pointer travels before a sculpt stroke
+    // moves on to the next cell, in cells (0 is the exact boundary). A dial
+    // for the feel, on the way to a fixed number (ruling of 2026-09-12).
+    sculptDeadZone: z.number().min(0).max(0.5).exactOptional(),
     spriteName: z.string().min(1).exactOptional(),
   })
   .strict()
@@ -135,6 +139,7 @@ const initialTools: ToolsContext = {
   tile: 0,
   tint: 0xffffff,
   rampDir: NO_RAMP,
+  sculptDeadZone: 0.2,
   spriteName: 'tree',
 }
 

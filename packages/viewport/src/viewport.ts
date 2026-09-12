@@ -523,6 +523,9 @@ export class Viewport {
   /** A flat overlay quad hugging a cell's top surface. */
   private cellQuad(doc: ReadonlyMapDoc, x: number, y: number, out: number[], lift = 0.03): void {
     if (!inBounds(doc.size, x, y)) return
+    // On the ground, under any water: the water surface neither writes depth
+    // nor draws before the overlays (see the scene's water material), so a
+    // preview on a lake bed shows through the water rather than under it.
     const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => h * 0.5 + lift)
     out.push(
       x, c00, y, x, c01, y + 1, x + 1, c11, y + 1,

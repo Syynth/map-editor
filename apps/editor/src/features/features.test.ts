@@ -118,8 +118,12 @@ describe('the terrain commands, dispatched through the host', () => {
     expect(dispatch('terrain.ramp', { cells: [[1, 1]], dir: 2 })).toEqual({ ok: true })
     expect(host.reader.doc.terrain.ramp[cellIndex(size, 1, 1)]).toBe(2)
 
+    // Water is a line above the ground, never level with it: 3 over a column
+    // flattened to 4 is refused (ok, no patch), 5 lands.
     expect(dispatch('terrain.water', { cells: [[1, 1]], level: 3 })).toEqual({ ok: true })
-    expect(host.reader.doc.terrain.water[cellIndex(size, 1, 1)]).toBe(3)
+    expect(host.reader.doc.terrain.water[cellIndex(size, 1, 1)]).toBeLessThan(0)
+    expect(dispatch('terrain.water', { cells: [[1, 1]], level: 5 })).toEqual({ ok: true })
+    expect(host.reader.doc.terrain.water[cellIndex(size, 1, 1)]).toBe(5)
 
     expect(dispatch('terrain.material', { cells: [[1, 1]], material: 1 })).toEqual({ ok: true })
     expect(host.reader.doc.terrain.material[cellIndex(size, 1, 1)]).toBe(1)
@@ -340,11 +344,11 @@ describe('a terrain stroke, from the pointer to the document', () => {
     expect(doc.terrain.height[cellIndex(doc.size, 1, 0)]).not.toBe(anchor)
   })
 
-  it('the water verb pools at the pressed cell\'s height, and shift removes it', () => {
+  it('the water verb pools one half-tile over the pressed cell (interim, until the layer view), and shift removes it', () => {
     const { host, dispatch } = live
     dispatch('tools.set', { sculptVerb: 'water' })
     const doc = host.reader.doc
-    const level = doc.terrain.height[cellIndex(doc.size, 3, 3)]
+    const level = doc.terrain.height[cellIndex(doc.size, 3, 3)] + 1
 
     host.input.pointerDown(pressAt(3, 3))
     host.input.pointerUp({ x: 30, y: 30 })
