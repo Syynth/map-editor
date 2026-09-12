@@ -110,8 +110,12 @@ move rather than to the whole restructure. Order follows the dependency directio
       never recomputes. This already shipped one bug (the frozen coverage
       readout). Prefer a `useRevision()` hook that makes the correct thing the
       easy thing, with a lint rule as backstop.
-- [ ] GitHub Actions: typecheck, lint, test, build on every PR.
-- [ ] Branch protection on `main` once CI is green.
+- [x] ~~GitHub Actions: typecheck, lint, test, build on every PR.~~ —
+      [#25](https://github.com/Syynth/map-editor/issues/25): `.github/workflows/gate.yml`,
+      build ordered before lint so a fresh runner exercises the case that would actually
+      catch a broken `dist/` ignore (see the workflow's header comment).
+- [x] ~~Branch protection on `main` once CI is green.~~ — same PR: the `gate` check is
+      required, `strict`, and applies to admins.
 - [ ] husky + lint-staged for format and lint only — tests belong in CI.
 - [ ] Issue and PR templates.
 
@@ -125,10 +129,11 @@ The largest gap, and not where it looks.
       `FINDINGS.md` were found by looking at screenshots, and the unit tests
       passed throughout — they checked buffer lengths, not whether the UVs
       described a rectangle.
-- [ ] **Prerequisite:** make `tour.mjs` and `probe.mjs` portable. Both hardcode
-      `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` and force
-      `--use-angle=swiftshader`. They should resolve Playwright's own browser
-      and take a `--gpu` flag.
+- [x] ~~**Prerequisite:** make `tour.mjs` and `probe.mjs` portable.~~ —
+      [#26](https://github.com/Syynth/map-editor/issues/26): both resolve
+      Playwright's own bundled Chromium now (`CHROMIUM_PATH` stays as an
+      override) and take a shared `--gpu` flag; see
+      `scripts/chromium-launch.mjs`.
 - [ ] Decide where screenshot baselines live; `shots/` is gitignored today.
 - [ ] Break up `viewport.ts` (770), `panels.tsx` (749) and `App.tsx` (533) as
       tests arrive.

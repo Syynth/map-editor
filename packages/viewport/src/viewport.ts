@@ -144,6 +144,9 @@ function isSoftwareRenderer(renderer: THREE.WebGLRenderer): boolean {
   }
 }
 
+// window.__viewport (wired in apps/editor) exposes this class's *ForProbe
+// methods to an unlinted, untypechecked consumer — see the "scripting hooks"
+// section below for which scripts and why a rename needs a grep first.
 export class Viewport {
   /** True when post-processing had to be switched off. */
   readonly softwareRenderer: boolean

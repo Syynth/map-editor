@@ -5,19 +5,21 @@
  * the pixel-art-in-perspective spike, since it can pose the camera at a range
  * of pitches and save the frames for comparison.
  *
- * Usage:  node scripts/screenshot.mjs [outputDir]
+ * Usage:  node scripts/screenshot.mjs [outputDir] [--gpu]
  */
 import { chromium } from 'playwright'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { chromiumArgs, stripGpuFlag, wantsGpu } from './chromium-launch.mjs'
 
 // Vite's config, `index.html` and `dist/` all live with the app now, so both
 // spawns below run from there rather than from the repo root.
 const APP = fileURLToPath(new URL('../apps/editor', import.meta.url))
 
-const OUT = process.argv[2] ?? 'shots'
+const GPU = wantsGpu()
+const OUT = stripGpuFlag()[0] ?? 'shots'
 const PORT = 4300 + Math.floor(Math.random() * 400)
 mkdirSync(OUT, { recursive: true })
 
@@ -57,16 +59,13 @@ try {
   await waitForServer()
 
   const browser = await chromium.launch({
-    // The container ships a Chromium that may not match the installed
-    // Playwright's expected build, so point at it explicitly rather than
-    // downloading another one.
-    executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-    args: [
-      '--enable-unsafe-swiftshader',
-      '--use-gl=angle',
-      '--use-angle=swiftshader',
-      '--ignore-gpu-blocklist',
-    ],
+    // No executablePath by default: Playwright resolves its own bundled
+    // build (`npx playwright install chromium`, or `pnpm browsers`), the
+    // only build guaranteed to match the Playwright version in
+    // package.json. CHROMIUM_PATH stays as an override for a machine that
+    // already pins its own browser.
+    executablePath: process.env.CHROMIUM_PATH,
+    args: chromiumArgs(GPU),
   })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   // Always start from the sample map rather than whatever a previous run
