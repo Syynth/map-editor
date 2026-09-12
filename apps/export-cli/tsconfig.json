@@ -1,0 +1,44 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+
+    // `DOM` is here under protest, and its presence is not a claim that this
+    // app touches a browser — the whole point of the app is that it does not.
+    // It is here because tsc compiles the sources it imports under *this*
+    // config, and `@map-editor/runtime/export` still speaks
+    // `HTMLCanvasElement`: `ExportOptions.sheet` is one, `generateTerrainSheet`
+    // returns one, and `atlasFor` builds one. Issue #3 already named that as
+    // the remaining headless obstacle and its fix as a reshape (raw RGBA
+    // crossing the boundary instead of a canvas), which is not this move's
+    // work. Drop this the day that reshape lands — nothing in `src` here needs
+    // a DOM type of its own.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+
+    // The one package in the repo that DOES want Node's globals: it reads a
+    // file, writes a file and reads `process.argv`. Every other tsconfig here
+    // sets `types: []` so that reaching for `fs` is a compile error; this app
+    // is the reason that rule has an exception rather than no meaning.
+    "types": ["node"]
+  },
+
+  // `vite.config.ts` is listed so the app's own build config is typechecked
+  // here, matching `apps/editor`. No `references`, for the reason spelled out
+  // in `geometry`'s tsconfig: a referenced project must be `composite`, and
+  // `composite` forbids `noEmit`. Resolution reaches `document` and `runtime`
+  // through their `exports` maps, which is also what pins the export entry
+  // point to the `./export` subpath.
+  "include": ["src", "vite.config.ts"]
+}
