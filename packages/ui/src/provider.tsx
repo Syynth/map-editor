@@ -6,7 +6,13 @@
  * same palette while they are being retired.
  */
 
-import '@mantine/core/styles.css'
+// Mantine's base stylesheet is NOT imported yet. It has to be imported from
+// this package (#12: only `ui` depends on Mantine — the app cannot resolve
+// it, by design), but a side-effect `.css` import here has no module shape
+// for the consumers that compile this file under their own tsconfig, and
+// there are no project references until #46 lands. Until then the provider
+// supplies the theme and the CSS variables; Mantine-backed primitives follow
+// the moment #46 merges.
 
 import { MantineProvider } from '@mantine/core'
 import type { ReactNode } from 'react'

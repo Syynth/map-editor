@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 
 import { createDocument } from '@map-editor/document'
 import { HostProvider, createHost } from '@map-editor/editor-host'
+import { UiProvider } from '@map-editor/ui'
 
 import App from './editor/App'
 import { loadAutosave } from './editor/autosave'
@@ -28,10 +29,14 @@ const source = createDocument(loadAutosave())
 // and the panels they declare are what the left-hand column renders.
 const host = createHost({ document: source, features })
 
+// `UiProvider` sits outside the host: it is the one place Mantine is mounted
+// and the tokens become CSS variables, and it needs nothing from the host.
 const app = (
-  <HostProvider host={host}>
-    <App />
-  </HostProvider>
+  <UiProvider>
+    <HostProvider host={host}>
+      <App />
+    </HostProvider>
+  </UiProvider>
 )
 
 // Not StrictMode-doubled: the viewport owns a WebGL context and a render loop,
