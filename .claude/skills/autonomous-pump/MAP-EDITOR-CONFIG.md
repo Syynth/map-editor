@@ -12,43 +12,35 @@ material in *this* file so the re-copy stays clean.
 
 ## ⚠ Readiness: the pump is not usable yet
 
-The skill's own "when not to use" rules rule it out today, on two counts:
+The restructure is done (branch `restructure`, twelve commits, verified in
+[`docs/audit-2026-09-11.md`](../../../docs/audit-2026-09-11.md)), so the layout objection is
+gone. One blocker remains, and it is the one Gate 0 is strictest about:
 
-1. **There is no build-ready backlog.** Every open issue is either a wayfinder decision
-   ticket (`needs-design` by definition — [#10](https://github.com/Syynth/map-editor/issues/10),
-   [#14](https://github.com/Syynth/map-editor/issues/14), [#22](https://github.com/Syynth/map-editor/issues/22),
-   [#23](https://github.com/Syynth/map-editor/issues/23)), a question needing a human or a
-   real GPU ([#16](https://github.com/Syynth/map-editor/issues/16)–[#19](https://github.com/Syynth/map-editor/issues/19)),
-   or the toolchain task ([#24](https://github.com/Syynth/map-editor/issues/24)). Gate 0 admits
-   only build-ready issues, and there are none.
-2. **The restructure is the opposite of what the pump is for.** It is one coherent
-   migration that touches every file, with a strict bottom-up order. The pump parallelises
-   *disjoint* work; running it on the restructure would put N agents in one hot tree.
-
-**The restructure IS Gate 0 step 3** — *"refactor for parallelism first… then agents
-won't collide."* Twelve packages with enforced boundaries is precisely that refactor. So
-the sequence is: finish the restructure serially, then pump.
+**There is no build-ready backlog.** Every open issue is a wayfinder decision ticket
+(`needs-design` by definition), a question needing a human or a real GPU, or already done.
+The three waves produced ~56 scope notes and gaps that live only in workflow journals.
+**Scope reconciliation — turning those into triaged issues — is the prerequisite for the
+first parallel wave**, and per the wayfinder-feed rule each item sorts into either a map
+ticket (a decision) or an ordinary issue (merely unbuilt). That sorting is a human call.
 
 ## Gate
 
-**Today (single package, pre-restructure):**
 ```
-npm test && npm run typecheck
+pnpm install --prefer-offline && pnpm turbo run test typecheck lint
 ```
-`npm test` runs `scripts/check-boundaries.mjs` then `vitest run` — 53 tests, ~0.3 s.
-`tsc --noEmit` is ~1.8 s. The whole gate is seconds, which is the fast green gate the
-pump requires.
+Twelve turbo tasks across seven packages and two apps; 60 tests (53 pre-existing + a
+5-test dependency-direction suite + 2 for `export-cli`). ~6 s cold, single-digit ms on a
+cache hit — the gate is fast enough that agents should run it on every iteration.
 
-**After the restructure** (fill once Phase 1 lands, per
-[#24](https://github.com/Syynth/map-editor/issues/24) and [#20](https://github.com/Syynth/map-editor/issues/20)):
-```
-pnpm install --prefer-offline && pnpm turbo run test typecheck lint build
-```
-- `check-boundaries.mjs` is **deleted at Phase 2** and replaced by the workspace structure
-  plus a dependency-direction test — pnpm blocks undeclared imports but does not enforce
-  direction.
-- `lint` joins the gate in **Phase 1**, not Phase 3: ESLint 10 + typescript-eslint 8,
-  type-aware, `noInlineConfig: true`.
+`scripts/check-boundaries.mjs` is gone. `tests/dependency-direction.test.ts` replaces it:
+it builds the workspace graph from declared dependencies, asserts the decided direction
+and acyclicity, and **fails on an unplaced package**, so a new package cannot be silently
+unchecked. pnpm's strict `node_modules` handles the other half — an undeclared import fails
+to resolve (verified: `import 'three'` inside `packages/document` is TS2307).
+
+`lint` is ESLint 10 + typescript-eslint 8, type-aware, `noInlineConfig: true`. Test files,
+benchmarks and `scripts/` are scoped out; `packages/fixtures` is not. The custom-rules
+package (`packages/eslint-rules`) is a wired-in **empty** skeleton until #22 and #12 land.
 
 **CACHE prefix** (once Turborepo is installed):
 ```
@@ -119,16 +111,16 @@ empirically in this repo, and all of them are on the wayfinder map
 ## Verification: how the human drives it
 
 ```
-npm run dev      # http://localhost:5173
-npm run tour     # 25-step guided walkthrough captured to shots/tour/
-npm run probe    # whether post-processing survives on this GPU
+pnpm --filter @map-editor/editor dev      # http://localhost:5173
+pnpm tour                                  # 25-step guided walkthrough to shots/tour/
+pnpm probe                                 # whether post-processing survives on this GPU
 ```
 
-⚠ `scripts/tour.mjs` and `scripts/probe.mjs` hardcode a Linux Chromium path
-(`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) and force
-`--use-angle=swiftshader`. Making them portable is a Phase 4 item and a prerequisite for
-using them as the pump's drive-it gate. On this Mac the app runs at 60fps through
-ANGLE/Metal, so a software-renderer fallback firing is itself a signal.
+⚠ `scripts/tour.mjs` and `scripts/probe.mjs` still hardcode a Linux Chromium path
+(`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) and force `--use-angle=swiftshader`.
+Making them portable is a prerequisite for using them as the pump's drive-it gate. On this
+Mac the app runs at 60fps through ANGLE/Metal, so a software-renderer fallback firing is
+itself a signal.
 
 ## Reference material for Gate 0
 

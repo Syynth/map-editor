@@ -27,7 +27,7 @@ repository structure rather than technology choice.
 This is the part most likely to be broken by a well-meaning refactor, so it is
 written down explicitly.
 
-**1. The document — `core/store.ts`. One write path, one read path, both
+**1. The document — `packages/document` (formerly `core/store.ts`). One write path, one read path, both
 enforced by the compiler. Do not move this into a library or into machine
 context.** Mutation goes through the actor, which alone holds the write handle;
 everyone else sees a deep-readonly view, so a direct write is a compile error.
