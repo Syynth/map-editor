@@ -391,7 +391,7 @@ export default function App() {
       return [x, y, z] as const
     })
     const selected = view.selection?.kind === 'sketchPoint' && view.selection.structure === sketch.id ? view.selection.index : null
-    return { points, closed: sketch.closed, selected }
+    return { structure: sketch.id, points, closed: sketch.closed, selected }
   })()
   // Pushed to the viewport by content, not identity: the object is new every render, its key only when the sketch changed.
   const sketchOverlayKey = sketchOverlay ? `${sketchOverlay.closed}:${sketchOverlay.selected}:${sketchOverlay.points.map((p) => p.join(',')).join(';')}` : ''

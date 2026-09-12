@@ -40,6 +40,7 @@ export interface SketchSample {
     readonly surface: SurfaceAddress | null
     readonly point: { readonly x: number; readonly z: number } | null
     readonly plane?: { readonly x: number; readonly z: number } | null
+    readonly handle?: { readonly structure: string; readonly index: number } | null
   }
   readonly modifiers: { readonly shift: boolean; readonly alt: boolean; readonly ctrl: boolean }
 }
@@ -118,6 +119,17 @@ function drawStroke(deps: FeatureDeps): SketchStrokeHandler {
   }
 }
 
+function grabbedHandle(doc: ReadonlyMapDoc, sample: SketchSample): { sketch: string; index: number } | null {
+  const handle = sample.pick.handle
+  if (!handle || !structureOf(doc, handle.structure, 'sketch')?.points[handle.index]) return null
+  return { sketch: handle.structure, index: handle.index }
+}
+
+function nearest(doc: ReadonlyMapDoc, world: { x: number; z: number }): { sketch: string; index: number } | null {
+  const hit = nearestSketchPoint(doc, world.x, world.z)
+  return hit ? { sketch: hit.sketch.id, index: hit.index } : null
+}
+
 function editStroke(deps: FeatureDeps): SketchStrokeHandler {
   /** A point being dragged, or a whole sketch being moved by the offset between its placement and the grab. */
   let target: { kind: 'point'; sketch: string; index: number } | { kind: 'sketch'; sketch: string; offset: { x: number; z: number } } | null = null
@@ -126,10 +138,11 @@ function editStroke(deps: FeatureDeps): SketchStrokeHandler {
     begin(sample) {
       const doc = deps.doc()
       const world = pointOf(sample)
-      const hit = world ? nearestSketchPoint(doc, world.x, world.z) : null
+      // The handle the viewport found under the pointer, where it is drawn; failing that, the nearest point to the hit.
+      const hit = grabbedHandle(doc, sample) ?? (world ? nearest(doc, world) : null)
       if (hit) {
-        target = { kind: 'point', sketch: hit.sketch.id, index: hit.index }
-        deps.select({ kind: 'sketchPoint', structure: hit.sketch.id, index: hit.index })
+        target = { kind: 'point', ...hit }
+        deps.select({ kind: 'sketchPoint', structure: hit.sketch, index: hit.index })
         return []
       }
       const surface = sample.pick.surface
