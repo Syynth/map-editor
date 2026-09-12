@@ -11,7 +11,10 @@
  * The two context keys are the document's contribution to the availability
  * vocabulary. The host derives their values from `reader` on every dispatch,
  * never from a held snapshot (#8's finding 2); this file only mints the keys
- * so a predicate can name them and a disabled Undo button can say why.
+ * so a predicate can name them and a disabled Undo button can say why. They
+ * are minted under the same reserved owner as the commands: a key is revoked
+ * with everything else its owner declared, and a reserved owner is never
+ * disposed, so these two stand for the life of the process.
  */
 
 import { commands, defineContextKey, reserveOwner } from '@map-editor/registry'
@@ -19,8 +22,8 @@ import { commands, defineContextKey, reserveOwner } from '@map-editor/registry'
 export const DOCUMENT_OWNER = reserveOwner('document')
 
 export const documentKeys = {
-  canUndo: defineContextKey('document.canUndo', false),
-  canRedo: defineContextKey('document.canRedo', false),
+  canUndo: defineContextKey(DOCUMENT_OWNER, 'document.canUndo', false),
+  canRedo: defineContextKey(DOCUMENT_OWNER, 'document.canRedo', false),
 }
 
 commands.declare(DOCUMENT_OWNER, { id: 'undo', title: 'Undo', category: 'Edit', when: documentKeys.canUndo.is(true) })

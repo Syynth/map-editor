@@ -93,6 +93,7 @@ packages/geometry/      meshers and the autotile template     — no three.js, n
 packages/runtime/       the reference runtime: scene, billboards, camera, export
 packages/viewport/      the imperative GL shell the editor drives
 packages/editor-host/   the root actor, dispatch, the tools and view actors, React glue  — xstate, React
+packages/feature-terrain/ the terrain tools as a feature module: commands, panels, the stroke contract
 packages/ui/            the editor's design vocabulary (Mantine primitives)
 packages/fixtures/      generated sample documents
 packages/eslint-rules/  custom lint rules the workspace's own eslint.config.js plugs in

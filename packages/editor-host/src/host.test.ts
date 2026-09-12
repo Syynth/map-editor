@@ -4,15 +4,12 @@ import {
   cellIndex,
   createMap,
   defaultFacing,
-  paintTint,
-  patchAddress,
   raise,
   removeObject,
   type MapObject,
-  type Patch,
   type SurfaceAddress,
 } from '@map-editor/document'
-import { commands, dispose } from '@map-editor/registry'
+import { commands, defineFeature, dispose, provideFeature, type HotHandle } from '@map-editor/registry'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from 'xstate'
 
@@ -277,73 +274,18 @@ function pressAt(x: number, y: number, extra: Partial<PointerPress> = {}): Point
 }
 
 /**
- * The editor's gestures through `Host.input`, end to end: the arbitration
- * actor, the stroke actor it spawns, the handler the tools actor configures,
- * and the document actor the patches reach — asserted through `reader`.
+ * The editor's gestures through `Host.input`: the arbitration actor, the
+ * stroke actor it spawns, and the document actor the patches reach — asserted
+ * through `reader`.
+ *
+ * Every press below is the OBJECT tool's, which is the only tool whose handler
+ * this package still owns. The terrain tool's is `feature-terrain`'s, reached
+ * through the contract its owner contributed, and a host built here installs
+ * no features — so a terrain press finds no contract and starts nothing. The
+ * same gestures over the real terrain contract are in `apps/editor`, which is
+ * the only place the two halves may be seen at once (#35).
  */
 describe('pointer input through the host', () => {
-  it('a left drag sculpts on every tick and lands as one undo entry, one patch per address', () => {
-    const { host, store, dispatch } = makeHost()
-    dispatch('tools.set', { brush: { size: 3, shape: 'square' } })
-    const doc = store.reader.doc
-    const before = doc.terrain.height.slice()
-    const at = (x: number, y: number) => doc.terrain.height[cellIndex(doc.size, x, y)]
-    // What the document actor received, off the system's inspector (v6's
-    // `Actor.send` is a getter and cannot be spied on). Matched by the id the
-    // host spawns it under: `ActorRefLike`, which is what an inspection event
-    // carries, has no typed `sessionId` to compare a child ref against.
-    const received: Array<{ type: string } & Record<string, unknown>> = []
-    host.actor.system.inspect((event) => {
-      if (event.type === '@xstate.transition' && 'id' in event.actorRef && event.actorRef.id === 'document') received.push(event.event)
-    })
-
-    expect(host.input.pointerDown(pressAt(3, 3))).toBe('stroke')
-    expect(at(3, 3)).toBe(before[cellIndex(doc.size, 3, 3)] + 1)
-    for (const [x, y] of [[4, 3], [5, 3], [4, 3], [3, 3]] as const) {
-      expect(host.input.pointerMove({ x: x * 10, y: y * 10, modifiers: NO_MODIFIERS })).toBe('stroke')
-      const seen = at(x, y)
-      host.input.strokeMove({ surface: topAt(x, y), point: null, objectId: null }, NO_MODIFIERS)
-      expect(at(x, y)).toBe(seen + 1)
-    }
-    expect(host.input.strokeOrigin()).toEqual([3, 3])
-    host.input.pointerUp({ x: 30, y: 30 })
-    expect(host.input.gesture()).toBe('none')
-    expect(host.input.strokeOrigin()).toBeNull()
-
-    const patches = received.flatMap((event) => (event.type === 'strokePatch' ? (event.patches as Patch[]) : []))
-    const record = received.find((event) => event.type === 'endStroke')
-    const unique = new Set(patches.map(patchAddress)).size
-    expect(patches.length).toBeGreaterThan(unique)
-    expect((record?.patches as Patch[] | undefined)?.length).toBe(unique)
-
-    expect(store.reader.undoLabel()).toBe('Raise')
-    expect(dispatch('undo')).toEqual({ ok: true })
-    expect(doc.terrain.height).toEqual(before)
-  })
-
-  it('records an app write that lands mid-drag, so one undo brings it back', () => {
-    // `App`'s Delete keybinding is a `window` keydown listener: pointer
-    // capture does not stop it, so `store.apply` is reachable in the middle of
-    // an open stroke. Once, that write was applied and recorded by nothing —
-    // the store refused it and the stroke's compaction map holds only patches
-    // the stroke itself produced.
-    const { host, store, dispatch } = makeHost()
-    const doc = store.reader.doc
-    const height = (x: number, y: number) => doc.terrain.height[cellIndex(doc.size, x, y)]
-    const before = doc.terrain.height.slice()
-
-    expect(host.input.pointerDown(pressAt(3, 3))).toBe('stroke')
-    store.apply('Elsewhere', raise(doc, [[7, 7]], 1))
-    expect(height(7, 7)).toBe(before[cellIndex(doc.size, 7, 7)] + 1)
-    host.input.pointerUp({ x: 30, y: 30 })
-
-    expect(dispatch('undo')).toEqual({ ok: true })
-    expect(height(3, 3)).toBe(before[cellIndex(doc.size, 3, 3)])
-    expect(store.reader.undoLabel()).toBe('Elsewhere')
-    expect(dispatch('undo')).toEqual({ ok: true })
-    expect(doc.terrain.height).toEqual(before)
-  })
-
   it('refuses a mid-drag delete of the object being dragged, so no orphan survives the undo', () => {
     // Same keydown listener as the test above, but now the write collides:
     // the object tool drags the SELECTED object, and Delete deletes the
@@ -382,6 +324,7 @@ describe('pointer input through the host', () => {
 
   it('refuses undo and redo while the stroke is open, and says which key failed', () => {
     const { host, store, dispatch } = makeHost()
+    dispatch('tools.set', { tool: 'object' })
     raiseOnce(store, 5, 5)
     expect(store.reader.canUndo()).toBe(true)
 
@@ -392,125 +335,28 @@ describe('pointer input through the host', () => {
     expect(dispatch('undo')).toEqual({ ok: true })
   })
 
-  it('a rect stroke commits nothing until release, then one block from the press cell to the last', () => {
-    const { host, store, dispatch } = makeHost()
-    dispatch('tools.set', { strokeShape: 'rect' })
-    const doc = store.reader.doc
-    const before = doc.terrain.height.slice()
-    const height = (x: number, y: number) => doc.terrain.height[cellIndex(doc.size, x, y)]
+  it('a press with a tool whose feature was never installed starts nothing', () => {
+    // The default tool is `terrain`, whose handler belongs to a feature this
+    // host was not given. `toolContract` answers `undefined`, so the gesture
+    // actor spawns no stroke — the same fall-through a declined press gets,
+    // rather than a half-live stroke over a tool nothing implements.
+    const { host, store } = makeHost()
+    expect(host.contextKeys()['tools.tool']).toBe('terrain')
+    expect(host.toolContract('terrain')).toBeUndefined()
 
-    expect(host.input.pointerDown(pressAt(2, 2))).toBe('stroke')
-    // Nothing on the press, and nothing mid-drag: a rectangle is only known
-    // once both corners are.
-    expect(doc.terrain.height).toEqual(before)
-    for (const [x, y] of [[3, 3], [4, 4]] as const) {
-      host.input.pointerMove({ x: x * 10, y: y * 10, modifiers: NO_MODIFIERS })
-      host.input.strokeMove({ surface: topAt(x, y), point: null, objectId: null }, NO_MODIFIERS)
-    }
-    expect(doc.terrain.height).toEqual(before)
-    // The preview grows from the press cell, which is what `strokeOrigin` is for.
-    expect(host.input.strokeOrigin()).toEqual([2, 2])
-
-    host.input.pointerUp({ x: 40, y: 40 })
-    for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) expect(height(x, y)).toBe(before[cellIndex(doc.size, x, y)] + 1)
-    expect(height(5, 5)).toBe(before[cellIndex(doc.size, 5, 5)])
-    expect(height(1, 1)).toBe(before[cellIndex(doc.size, 1, 1)])
-
-    // One entry for the block, not nine.
-    expect(store.reader.undoLabel()).toBe('Raise')
-    expect(dispatch('undo')).toEqual({ ok: true })
-    expect(doc.terrain.height).toEqual(before)
+    expect(host.input.pointerDown(pressAt(3, 3))).toBe('none')
+    host.input.pointerUp({ x: 30, y: 30 })
     expect(store.reader.canUndo()).toBe(false)
-  })
-
-  it('a fill stroke floods the contiguous plateau under the press and stops at the step', () => {
-    const { host, store, dispatch } = makeHost()
-    // A wall of raised cells down x = 4 bounds the flood: `fillCells` walks
-    // cells of equal height, so the press at (2,2) reaches only its own side.
-    for (let y = 0; y < 8; y++) raiseOnce(store, 4, y)
-    dispatch('tools.set', { strokeShape: 'fill' })
-    const doc = store.reader.doc
-    const before = doc.terrain.height.slice()
-    const height = (x: number, y: number) => doc.terrain.height[cellIndex(doc.size, x, y)]
-
-    host.input.pointerDown(pressAt(2, 2))
-    host.input.pointerUp({ x: 20, y: 20 })
-
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) expect(height(x, y)).toBe(before[cellIndex(doc.size, x, y)] + 1)
-    expect(height(5, 5)).toBe(before[cellIndex(doc.size, 5, 5)])
-    expect(dispatch('undo')).toEqual({ ok: true })
-    expect(doc.terrain.height).toEqual(before)
-  })
-
-  it('the flatten verb levels a drag to the height sampled at the press', () => {
-    const { host, store, dispatch } = makeHost()
-    raiseOnce(store, 0, 0, 3)
-    dispatch('tools.set', { sculptVerb: 'flatten', brush: { size: 1, shape: 'square' } })
-    const doc = store.reader.doc
-    const anchor = doc.terrain.height[cellIndex(doc.size, 0, 0)]
-
-    host.input.pointerDown(pressAt(0, 0))
-    for (const [x, y] of [[1, 0], [2, 0]] as const) {
-      host.input.pointerMove({ x: x * 10, y: y * 10, modifiers: NO_MODIFIERS })
-      host.input.strokeMove({ surface: topAt(x, y), point: null, objectId: null }, NO_MODIFIERS)
-      // Flattened to the press height, not to each cell's own.
-      expect(doc.terrain.height[cellIndex(doc.size, x, y)]).toBe(anchor)
-    }
-    host.input.pointerUp({ x: 20, y: 0 })
-    expect(store.reader.undoLabel()).toBe('Flatten')
-    expect(dispatch('undo')).toEqual({ ok: true })
-    expect(doc.terrain.height[cellIndex(doc.size, 1, 0)]).not.toBe(anchor)
-  })
-
-  it('the water verb pools at the pressed cell\'s height, and shift removes it', () => {
-    const { host, store, dispatch } = makeHost()
-    dispatch('tools.set', { sculptVerb: 'water' })
-    const doc = store.reader.doc
-    const level = doc.terrain.height[cellIndex(doc.size, 3, 3)]
-
-    host.input.pointerDown(pressAt(3, 3))
-    host.input.pointerUp({ x: 30, y: 30 })
-    expect(doc.terrain.water[cellIndex(doc.size, 3, 3)]).toBe(level)
-    expect(store.reader.undoLabel()).toBe('Carve water')
-
-    const shift = { modifiers: { ...NO_MODIFIERS, shift: true } }
-    host.input.pointerDown(pressAt(3, 3, shift))
-    host.input.pointerUp({ x: 30, y: 30 })
-    expect(doc.terrain.water[cellIndex(doc.size, 3, 3)]).toBeLessThan(0)
-    expect(store.reader.undoLabel()).toBe('Remove water')
-
-    expect(dispatch('undo')).toEqual({ ok: true })
-    expect(doc.terrain.water[cellIndex(doc.size, 3, 3)]).toBe(level)
-  })
-
-  it('alt-click runs the eyedropper at the press cell, and a 6 px alt-drag orbits without it', () => {
-    const { host, store, dispatch } = makeHost()
-    dispatch('tools.set', { terrainMode: 'paint', paintVerb: 'tint' })
-    store.apply('Tint', paintTint(store.reader.doc, [[2, 2]], 0xff0000))
-    store.apply('Tint', paintTint(store.reader.doc, [[6, 6]], 0x00ff00))
-    const alt = { modifiers: { ...NO_MODIFIERS, alt: true } }
-
-    expect(host.input.pointerDown(pressAt(2, 2, alt))).toBe('pending')
-    expect(host.input.pointerMove({ x: 21, y: 22, modifiers: alt.modifiers })).toBe('pending')
-    host.input.pointerUp({ x: 21, y: 22 })
-    expect(host.children.tools.getSnapshot().context.tint).toBe(0xff0000)
-    // The eyedropper wrote a tool parameter, never the document.
-    expect(store.reader.undoLabel()).toBe('Tint')
-
-    expect(host.input.pointerDown(pressAt(6, 6, alt))).toBe('pending')
-    expect(host.input.pointerMove({ x: 66, y: 60, modifiers: alt.modifiers })).toBe('orbit')
-    host.input.pointerUp({ x: 66, y: 60 })
-    expect(host.children.tools.getSnapshot().context.tint).toBe(0xff0000)
   })
 
   it('in play mode a left press starts no stroke, while middle and right still orbit and pan', () => {
     const { host, store, dispatch } = makeHost()
+    dispatch('tools.set', { tool: 'object', spriteName: 'tree' })
     dispatch('mode.play')
-    const before = store.reader.doc.terrain.height.slice()
 
     expect(host.input.pointerDown(pressAt(1, 1))).toBe('none')
     host.input.pointerUp({ x: 10, y: 10 })
-    expect(store.reader.doc.terrain.height).toEqual(before)
+    expect(store.reader.doc.objectOrder).toEqual([])
     expect(store.reader.canUndo()).toBe(false)
 
     expect(host.input.pointerDown(pressAt(1, 1, { button: 1, pick: null }))).toBe('orbit')
@@ -522,6 +368,7 @@ describe('pointer input through the host', () => {
     dispatch('mode.edit')
     expect(host.input.pointerDown(pressAt(1, 1))).toBe('stroke')
     host.input.pointerUp({ x: 10, y: 10 })
+    expect(store.reader.doc.objectOrder).toHaveLength(1)
     expect(store.reader.canUndo()).toBe(true)
   })
 
@@ -592,7 +439,7 @@ describe('a child with a lifetime: dead letters are observable', () => {
   afterAll(() => dispose('test.job'))
 
   it('routes to the feature while it runs, dead-letters once it has stopped, and the host survives', () => {
-    const { host, dispatch } = makeHost([{ owner: 'test.job', logic: jobLogic }])
+    const { host, dispatch } = makeHost([{ owner: 'test.job', create: () => ({ logic: jobLogic }) }])
     const job = host.child('test.job')
     expect(job).toBeDefined()
 
@@ -618,7 +465,7 @@ describe('a child with a lifetime: dead letters are observable', () => {
 
   it('dispose(owner): revokes the declarations, sends dispose, stops the ref, keeps the ref', () => {
     commands.declare('test.job2', { id: 'test.job2.poke', title: 'Poke' })
-    const { host, dispatch } = makeHost([{ owner: 'test.job2', logic: jobLogic }])
+    const { host, dispatch } = makeHost([{ owner: 'test.job2', create: () => ({ logic: jobLogic }) }])
     const job = host.child('test.job2')
     expect(dispatch('test.job2.poke')).toEqual({ ok: true })
 
@@ -637,6 +484,82 @@ describe('a child with a lifetime: dead letters are observable', () => {
     const { host, dispatch } = makeHost()
     expect(() => host.dispose('editor-host.tools')).toThrow(/reserved/)
     expect(dispatch('tools.set', { tile: 3 })).toEqual({ ok: true })
+  })
+})
+
+/**
+ * Vite's half of a hot update, as a stub: it records the disposer so a test
+ * can fire it in Vite's own order — the changed module's disposer runs and is
+ * awaited, and only THEN is the new module imported (#21 §4 read that out of
+ * `vite/dist/client/client.mjs`). No Vite here, and none needed: what the host
+ * has to get right is what happens on either side of that call.
+ */
+function fakeHot(): HotHandle & { fire(): void } {
+  let disposer: (() => void) | null = null
+  return {
+    accept: () => undefined,
+    dispose: (callback) => void (disposer = callback),
+    fire: () => disposer?.(),
+  }
+}
+
+function pokesOf(ref: AnyActorRef | undefined): number {
+  return (ref?.getSnapshot() as { context: { pokes: number } } | undefined)?.context.pokes ?? -1
+}
+
+describe('a hot re-import: the install hook (#21 §6)', () => {
+  it('replaces the owner\'s actor with the re-minted logic, and keeps routing to the address', () => {
+    const hot = fakeHot()
+    const owner = defineFeature('test.hmr', hot)
+    commands.declare(owner, { id: 'test.hmr.poke', title: 'Poke' })
+    // Published before the host exists, exactly as an app's `features/index.ts`
+    // does it: nobody is listening yet, and the module value is handed in.
+    const { host, dispatch } = makeHost([provideFeature({ owner, create: () => ({ logic: jobLogic }) })])
+    const first = host.child(owner)
+    expect(dispatch('test.hmr.poke')).toEqual({ ok: true })
+    expect(pokesOf(first)).toBe(1)
+
+    hot.fire()
+
+    // The registry revoked, the host drained and stopped. Both halves, and in
+    // that order: a command that arrives now is `unknown`, not `unhandled`.
+    expect(commands.get('test.hmr.poke')).toBeUndefined()
+    expect(first?.getSnapshot().status).toBe('stopped')
+    expect(dispatch('test.hmr.poke')).toMatchObject({ ok: false, kind: 'unknown' })
+
+    // The module re-executes: same owner, new declarations, NEW logic the host
+    // has never spawned. Nothing hands it in this time — the install hook is
+    // the only thing that tells the host at all.
+    const remint = defineFeature('test.hmr', hot)
+    commands.declare(remint, { id: 'test.hmr.poke', title: 'Poke' })
+    provideFeature({ owner: remint, create: () => ({ logic: jobLogic }) })
+
+    const second = host.child(owner)
+    expect(second).toBeDefined()
+    expect(second).not.toBe(first)
+    expect(second?.getSnapshot().status).toBe('active')
+    expect(dispatch('test.hmr.poke')).toEqual({ ok: true })
+    // A fresh actor, not the old one's state: the count restarts.
+    expect(pokesOf(second)).toBe(1)
+
+    host.dispose(owner)
+    host.stop()
+  })
+
+  it('stops installing into a host that has stopped', () => {
+    const hot = fakeHot()
+    const owner = defineFeature('test.hmr2', hot)
+    const { host } = makeHost([provideFeature({ owner, create: () => ({ logic: jobLogic }) })])
+    host.stop()
+
+    hot.fire()
+    defineFeature('test.hmr2', hot)
+    provideFeature({ owner, create: () => ({ logic: jobLogic }) })
+
+    // Nothing was sent at the stopped root, so nothing dead-lettered: the hook
+    // is released by `stop`, not left to fire at a corpse.
+    expect(host.deadLetters).toEqual([])
+    dispose('test.hmr2')
   })
 })
 
@@ -674,7 +597,7 @@ describe('dead-letter attribution', () => {
   afterAll(() => dispose('test.noisy'))
 
   it('reports a delivered command ok even when its handler dead-lettered something else', () => {
-    const { host, dispatch } = makeHost([{ owner: 'test.noisy', logic: noisyLogic }])
+    const { host, dispatch } = makeHost([{ owner: 'test.noisy', create: () => ({ logic: noisyLogic }) }])
 
     expect(dispatch('test.noisy.poke')).toEqual({ ok: true })
 

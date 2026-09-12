@@ -53,8 +53,8 @@ export type TerrainMode = 'sculpt' | 'paint'
  * numeric parameters are not, since no command is gated on a brush size.
  */
 export const toolKeys = {
-  tool: defineContextKey<ToolId>('tools.tool', 'terrain'),
-  terrainMode: defineContextKey<TerrainMode>('tools.terrainMode', 'sculpt'),
+  tool: defineContextKey<ToolId>(TOOLS_OWNER, 'tools.tool', 'terrain'),
+  terrainMode: defineContextKey<TerrainMode>(TOOLS_OWNER, 'tools.terrainMode', 'sculpt'),
 }
 
 /**

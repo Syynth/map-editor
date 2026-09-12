@@ -30,7 +30,7 @@ import { z } from 'zod'
 export const VIEW_OWNER = reserveOwner('editor-host.view')
 
 export const viewKeys = {
-  hasSelection: defineContextKey('view.hasSelection', false),
+  hasSelection: defineContextKey(VIEW_OWNER, 'view.hasSelection', false),
 }
 
 /**

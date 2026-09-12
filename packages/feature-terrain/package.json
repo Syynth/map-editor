@@ -1,5 +1,5 @@
 {
-  "name": "@map-editor/editor-host",
+  "name": "@map-editor/feature-terrain",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,8 +11,9 @@
   },
   "dependencies": {
     "@map-editor/document": "workspace:*",
+    "@map-editor/geometry": "workspace:*",
     "@map-editor/registry": "workspace:*",
-    "@xstate/react": "7.0.0-alpha.2",
+    "@map-editor/ui": "workspace:*",
     "xstate": "6.0.0-alpha.53",
     "zod": "4.6.2"
   },

@@ -5,12 +5,16 @@
  * app composes them (#35). So the interfaces a feature implements and the host
  * runs have to live below both, here. The stroke FRAMEWORK (the actor spawned
  * per pointer-down that owns the compaction map, applies patches immediately
- * and commits one `Edit` on release — #11) will be host code, built in #66
- * step 4; what is here is only the CONTRACT it runs against, kept structural
- * and minimal so a feature module is writable against nothing but this
- * package. The host exists (step 3) but runs no strokes yet, and the first
- * feature (step 5) does not exist: every "the host does X" below states what
- * the stroke framework must do with a handler, not what shipped code does.
+ * and commits one `Edit` on release — #11) is host code; what is here is only
+ * the CONTRACT it runs against, kept structural and minimal so a feature
+ * module is writable against nothing but this package.
+ *
+ * `feature-terrain` implements this for the `terrain` tool, and the host finds
+ * it through `FeatureInstance.tools` (`feature.ts`) keyed by the tool's id —
+ * the join a `ToolDecl` cannot carry, since a declaration is enumerable before
+ * any actor and a contract cannot exist before the deps do. The host's stroke
+ * actor runs what it finds there, so the terrain verbs have exactly one
+ * implementation and it is the feature's.
  *
  * Nothing here imports XState. An actor-facing shape is written structurally
  * (`{ send(event): void }`) so the declaration half stays free of the actor

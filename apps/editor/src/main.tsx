@@ -6,6 +6,7 @@ import { HostProvider, createHost } from '@map-editor/editor-host'
 
 import App from './editor/App'
 import { loadAutosave } from './editor/autosave'
+import { features } from './features'
 import './editor/styles.css'
 
 const root = document.getElementById('root')
@@ -18,7 +19,11 @@ if (!root) throw new Error('No #root element')
 // imperative. `App` still takes the store as well, because it writes through
 // it directly until #66 step 7 gives those writes commands of their own.
 const store = new EditorStore(loadAutosave())
-const host = createHost({ store })
+// The features are installed here and nowhere else (#35): only an app composes
+// a feature into a host. Their commands are dispatchable from this point on;
+// the panels they declare are not yet what the left-hand column renders, which
+// is #66 step 7's rewire.
+const host = createHost({ store, features })
 
 const app = (
   <HostProvider host={host}>

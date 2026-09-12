@@ -22,7 +22,6 @@ import {
   type SurfaceAddress,
 } from '@map-editor/document'
 import {
-  strokeCells,
   useHost,
   useHostSelector,
   useToolsSelector,
@@ -31,6 +30,11 @@ import {
   type ToolSettings,
   type ViewSettings,
 } from '@map-editor/editor-host'
+// The brush preview draws the cells a terrain stroke will touch, so it calls
+// the same function the stroke does (`feature-terrain`'s, the one
+// implementation). An app is the only thing that may import a feature (#35),
+// and this file is an app.
+import { strokeCells } from '@map-editor/feature-terrain'
 // The canvas-drawing generator lives behind its own subpath (#48): re-exporting it
 // from the package root would force `DOM` into every consumer's tsconfig, including
 // `apps/export-cli`'s, whose whole point is compiling without it.

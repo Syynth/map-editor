@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // `DOM` for the same reason `ui`'s tsconfig gives: the primitives this
+    // package's panel composes are `<input>`s and `<select>`s, and their
+    // element and event types are part of the surface it consumes. It is NOT
+    // here for the bundler — `import.meta.hot` is typed structurally by
+    // `registry`, because a feature has to compile without the thing that
+    // loads it.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No ambient `@types`, matching every other package: React and the
+    // workspace packages are reached through their imports.
+    "types": []
+  },
+
+  // No `references`, for the reason spelled out in `geometry`'s tsconfig: a
+  // referenced project must be `composite`, and `composite` forbids `noEmit`.
+  "include": ["src"]
+}

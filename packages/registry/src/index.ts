@@ -12,13 +12,18 @@
  * an outside consumer plus the types to name what those consumers receive, so
  * narrowing it is a visible edit here. `onDispose` is exported for surface
  * packages that hold something on an owner's behalf (#21 §1); `dispose` and
- * `reserveOwner` for the host and the built-in declarers respectively.
+ * `reserveOwner` for the host and the built-in declarers respectively;
+ * `defineFeature` for a feature module and `onFeatureChange` for the one host
+ * that installs what it publishes (#21 §4, §6).
  */
 
 export { dispose, isReservedOwner, onDispose, reserveOwner } from './owners'
 export type { OwnerId } from './owners'
 
 export type { Declaration, DeclarationRegistry } from './registry'
+
+export { defineFeature, onFeatureChange, provideFeature } from './feature'
+export type { FeatureChangeHooks, FeatureDeps, FeatureInstance, FeatureModule, HotHandle } from './feature'
 
 export { always, and, defineContextKey, evaluate, never, not, or, parsePredicate } from './context'
 export type { Availability, ContextKey, ContextSnapshot, KeyValue, Predicate, PredicateNode } from './context'

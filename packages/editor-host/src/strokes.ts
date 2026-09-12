@@ -2,17 +2,23 @@
  * What a stroke means, per tool — the handlers the stroke actor runs.
  *
  * Moved here from `apps/editor/src/editor/tools.ts` with the stroke actor
- * (#66 step 4): the actor needs them and the app must not be the thing that
- * supplies them. The terrain and object tools are still one switch statement
- * rather than a feature module; step 5 pulls the terrain half into
- * `feature-terrain` against the same `StrokeHandler` contract, which is why
- * the shape here is the registry's rather than the app's old `StrokeContext`.
+ * (#66 step 4). What is left is the SWITCH and the object tool: the terrain
+ * tool's handler is the `feature-terrain` module's, reached through the
+ * `ToolContract` its owner contributed (`deps.contract`), so the host holds no
+ * copy of a terrain verb at all. The host cannot import a feature (#35), and
+ * the contract is exactly the seam that makes it unnecessary — a declared tool
+ * is enumerable before anything runs, and its handler arrives with the deps.
+ *
+ * A tool whose feature is not installed simply strokes nothing: `contract`
+ * answers `undefined`, `createStrokeHandler` passes that on, and the gesture
+ * actor spawns no stroke. That is the same answer a press that missed the
+ * terrain gets, and the same one the camera tool gets.
  *
  * The contract (registry `tools.ts`) is deliberately STATEFUL: a handler is
- * fresh per stroke and whatever the stroke accumulates — the rectangle anchor,
- * the height flatten samples at the press, the cell the last tick edited —
- * lives on it and dies with it. So a handler's methods are called exactly once
- * per phase, inside `enq`, never in a transition body (see `stroke.ts`).
+ * fresh per stroke and whatever the stroke accumulates — the object a drag is
+ * moving, and on the terrain side the rectangle anchor and the flatten height
+ * — lives on it and dies with it. So a handler's methods are called exactly
+ * once per phase, inside `enq`, never in a transition body (see `stroke.ts`).
  *
  * The shared verbs behave identically everywhere:
  *   Shift  — erase / invert (lower instead of raise, clear paint, remove water)
@@ -26,43 +32,22 @@
  * and none of that is true of these. #11 has handlers never read ambient
  * selection, so the object being dragged is fixed at the press from the id
  * the host filled in, and a change to selection is the host sending `select`
- * to the view actor on the handler's behalf.
+ * to the view actor on the handler's behalf. A feature's handler reaches the
+ * same two doors through `FeatureDeps.setParams`, which is the same event.
  */
 
 import {
-  SURFACE_CLIFF,
-  SURFACE_TOP,
   addObject,
-  autotileMask,
-  brushCells,
-  cellIndex,
-  cliffPaint,
   defaultFacing,
-  fillCells,
-  flatten,
   groundedPosition,
-  inBounds,
   newId,
-  paintCliff,
-  paintTint,
-  paintTop,
-  raise,
-  rectCells,
-  setMaterial,
-  setRamp,
-  setWater,
-  tintPaint,
-  topPaint,
   updateObject,
-  type Cell,
   type DocumentReader,
   type MapObject,
   type Patch,
-  type ReadonlyMapDoc,
   type SurfaceAddress,
 } from '@map-editor/document'
-import { defaultTopTile, sheetLayoutFor } from '@map-editor/geometry'
-import type { StrokeHandler } from '@map-editor/registry'
+import type { StrokeHandler, ToolContract } from '@map-editor/registry'
 
 import type { TerrainMode, ToolSettings, ToolsContext } from './tools'
 
@@ -106,27 +91,16 @@ export interface StrokeDeps {
   setTools(settings: ToolSettings): void
   /** The object tool's output. The host turns it into a `select` event to the view actor. */
   select(id: string | null): void
+  /**
+   * The contract behind a declared tool, or `undefined` when nobody declared
+   * it or its owner contributed none — `Host.toolContract`, handed in rather
+   * than imported, because this file is below `host.ts` and the lookup needs
+   * the live feature instances.
+   */
+  contract(toolId: string): ToolContract<StrokeSample, Patch> | undefined
 }
 
 export type EditorStrokeHandler = StrokeHandler<StrokeSample, Patch>
-
-/** Cells a stroke touches, given the shape the artist chose. Also drives the brush preview, so it is exported. */
-export function strokeCells(
-  doc: ReadonlyMapDoc,
-  shape: Pick<ToolsContext, 'strokeShape' | 'brush'>,
-  address: SurfaceAddress,
-  anchor: Cell | null,
-): Cell[] {
-  switch (shape.strokeShape) {
-    case 'rect':
-      if (!anchor) return [[address.x, address.y]]
-      return rectCells(doc, anchor[0], anchor[1], address.x, address.y)
-    case 'fill':
-      return fillCells(doc, address.x, address.y)
-    case 'brush':
-      return brushCells(doc, address.x, address.y, shape.brush)
-  }
-}
 
 /**
  * The handler for a left press at `sample` under the current tool, or
@@ -138,160 +112,14 @@ export function strokeCells(
 export function createStrokeHandler(deps: StrokeDeps, sample: StrokeSample, selection: string | null): EditorStrokeHandler | undefined {
   switch (deps.tools().tool) {
     case 'terrain':
-      return terrainStroke(deps, sample)
+      // The feature's, by the tool's id and nothing else (#9's join). It
+      // declines a press that missed the terrain by answering `undefined`,
+      // which is the same thing this function does with it.
+      return deps.contract('terrain')?.stroke(sample)
     case 'object':
       return objectStroke(deps, selection)
     case 'camera':
       return undefined
-  }
-}
-
-// --- terrain ------------------------------------------------------------------
-
-/** The tile the template would use here with nothing painted. */
-function templateTileAt(doc: ReadonlyMapDoc, x: number, y: number): number {
-  const layout = sheetLayoutFor(doc)
-  const material = doc.terrain.material[cellIndex(doc.size, x, y)]
-  return defaultTopTile(layout, material, autotileMask(doc, x, y))
-}
-
-function eyedrop(deps: StrokeDeps, address: SurfaceAddress): void {
-  const doc = deps.reader.doc
-  const tools = deps.tools()
-
-  if (tools.terrainMode === 'paint' && tools.paintVerb === 'tint') {
-    const tint = tintPaint(doc.paint, address.x, address.y)
-    if (tint !== undefined) deps.setTools({ tint })
-    return
-  }
-
-  if (tools.terrainMode === 'paint' && tools.paintVerb === 'material') {
-    deps.setTools({ material: doc.terrain.material[cellIndex(doc.size, address.x, address.y)] })
-    return
-  }
-
-  if (address.kind === SURFACE_CLIFF) {
-    const painted = cliffPaint(doc.paint, address.x, address.y, address.dir, address.level)
-    if (painted !== undefined) deps.setTools({ tile: painted })
-    return
-  }
-
-  const painted = topPaint(doc.paint, address.x, address.y)
-  deps.setTools({ tile: painted ?? templateTileAt(doc, address.x, address.y) })
-}
-
-/**
- * The undo label, fixed at the press. Inside a stroke the store ignores each
- * tick's label — one stroke is one `Edit` — so this is the only label a
- * terrain drag ever shows, and it names the verb rather than the old blanket
- * "Edit".
- */
-function terrainLabel(tools: ToolsSnapshot, modifiers: PointerModifiers): string {
-  if (tools.terrainMode === 'sculpt') {
-    switch (tools.sculptVerb) {
-      case 'raise':
-        return modifiers.shift ? 'Lower' : 'Raise'
-      case 'flatten':
-        return 'Flatten'
-      case 'ramp':
-        return 'Toggle ramp'
-      case 'water':
-        return modifiers.shift ? 'Remove water' : 'Carve water'
-    }
-  }
-  switch (tools.paintVerb) {
-    case 'material':
-      return 'Set material'
-    case 'tint':
-      return modifiers.shift ? 'Clear tint' : 'Tint'
-    case 'tile':
-      return modifiers.shift ? 'Clear paint' : 'Paint'
-  }
-}
-
-function terrainStroke(deps: StrokeDeps, press: StrokeSample): EditorStrokeHandler {
-  const doc = deps.reader.doc
-  const address = press.pick.surface
-  /** Anchor cell for rectangle strokes, and the corner a rectangle preview grows from. */
-  const anchor: Cell | null = address ? [address.x, address.y] : null
-  /** Height sampled when the stroke began, for flatten. */
-  const anchorHeight = address && inBounds(doc.size, address.x, address.y) ? doc.terrain.height[cellIndex(doc.size, address.x, address.y)] : 0
-  /** Cell last edited, so a drag does not re-apply to the same cell. */
-  let lastCell: string | null = null
-
-  function sculpt(address: SurfaceAddress, cells: Cell[], modifiers: PointerModifiers): Patch[] {
-    const doc = deps.reader.doc
-    const tools = deps.tools()
-    switch (tools.sculptVerb) {
-      case 'raise':
-        return raise(doc, cells, modifiers.shift ? -1 : 1)
-      case 'flatten':
-        return flatten(doc, cells, anchorHeight)
-      case 'ramp': {
-        // Clicking a cliff face turns that edge into a ramp descending the way
-        // the face points, which is the most direct reading of "toggle an edge
-        // between cliff and ramp".
-        const dir = address.kind === SURFACE_CLIFF ? address.dir : tools.rampDir
-        return dir < 0 ? [] : setRamp(doc, cells, dir)
-      }
-      case 'water':
-        if (modifiers.shift) return setWater(doc, cells, null)
-        // Fill to the height of the cell that was clicked, so water pools at a
-        // level rather than following the terrain.
-        return setWater(doc, cells, doc.terrain.height[cellIndex(doc.size, address.x, address.y)])
-    }
-  }
-
-  function paint(address: SurfaceAddress, cells: Cell[], modifiers: PointerModifiers): Patch[] {
-    const doc = deps.reader.doc
-    const tools = deps.tools()
-    const erase = modifiers.shift
-    switch (tools.paintVerb) {
-      case 'material':
-        return setMaterial(doc, cells, tools.material)
-      case 'tint':
-        return paintTint(doc, cells, erase ? undefined : tools.tint)
-      case 'tile':
-        if (address.kind === SURFACE_CLIFF) {
-          // Paint the band that was clicked. A brush wider than one cell walks
-          // the same level along the same face.
-          const faces = cells
-            .filter(([x, y]) => x === address.x || y === address.y)
-            .map(([x, y]) => ({ x, y, dir: address.dir, level: address.level }))
-          return paintCliff(doc, faces, erase ? undefined : tools.tile)
-        }
-        if (address.kind === SURFACE_TOP) return paintTop(doc, cells, erase ? undefined : tools.tile)
-        return []
-    }
-  }
-
-  function tick(sample: StrokeSample, phase: 'start' | 'move' | 'end'): Patch[] {
-    const address = sample.pick.surface
-    if (!address) return []
-
-    if (sample.modifiers.alt) {
-      if (phase === 'start') eyedrop(deps, address)
-      return []
-    }
-
-    const tools = deps.tools()
-    // Rectangle strokes only commit on release; everything else is live.
-    if (tools.strokeShape === 'rect' && phase !== 'end') return []
-    if (tools.strokeShape !== 'rect' && phase === 'end') return []
-
-    const cellKey = `${address.x},${address.y},${address.kind},${address.dir},${address.level}`
-    if (phase === 'move' && lastCell === cellKey) return []
-    lastCell = cellKey
-
-    const cells = strokeCells(deps.reader.doc, tools, address, anchor)
-    return tools.terrainMode === 'sculpt' ? sculpt(address, cells, sample.modifiers) : paint(address, cells, sample.modifiers)
-  }
-
-  return {
-    label: terrainLabel(deps.tools(), press.modifiers),
-    begin: (sample) => tick(sample, 'start'),
-    move: (sample) => tick(sample, 'move'),
-    end: (sample) => tick(sample, 'end'),
   }
 }
 

@@ -45,6 +45,15 @@
  *    declarations, send `dispose`, stop the ref (#21 §5) — and `stop()` is a
  *    method, not a state.
  *
+ * A FEATURE IS INSTALLED IN TWO PLACES, and they are not interchangeable. An
+ * app hands its features to `createHost`, which builds each one's half from
+ * deps only a composition root can supply and spawns it under its owner. After
+ * that, a hot re-import of a feature module arrives through the registry's
+ * install hook instead (#21 §6): the module that re-executes exports a NEW
+ * `create` this host has never spawned, and nothing else would tell it so. The
+ * hook is released by `stop`, because a stopped host must not be installed
+ * into.
+ *
  * Context keys are derived on EVERY dispatch, never held (#8's finding 2:
  * a frozen snapshot left `play.stop` permanently unavailable). The cost is a
  * handful of `getSnapshot` calls per dispatch; a palette rendering every
@@ -59,16 +68,23 @@ import {
   type DocumentActorLogic,
   type DocumentReader,
   type EditorStore,
+  type Patch,
+  type ReadonlyMapDoc,
 } from '@map-editor/document'
 import {
   commands,
   dispose as disposeDeclarations,
   defineContextKey,
+  onFeatureChange,
   reserveOwner,
   resolveCommand,
+  tools as toolDeclarations,
   type ContextSnapshot,
   type DispatchResult,
+  type FeatureDeps,
+  type FeatureInstance,
   type OwnerId,
+  type ToolContract,
 } from '@map-editor/registry'
 import {
   createActor,
@@ -84,7 +100,7 @@ import {
 } from 'xstate'
 
 import { gestureLogic, type Gesture, type GestureLogic, type PointerMotion, type PointerPress, type PointerRelease } from './gesture'
-import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps } from './strokes'
+import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps, type StrokeSample, type ToolsSnapshot } from './strokes'
 import { TOOLS_OWNER, toolKeys, toolsLogic, type ToolsLogic } from './tools'
 import { VIEW_OWNER, viewKeys, viewLogic, type ViewLogic } from './view'
 
@@ -95,21 +111,38 @@ export const GESTURE_OWNER = reserveOwner('editor-host.gesture')
 export type Mode = 'edit' | 'play'
 
 export const hostKeys = {
-  mode: defineContextKey<Mode>('host.mode', 'edit'),
+  mode: defineContextKey<Mode>(HOST_OWNER, 'host.mode', 'edit'),
 }
 
 commands.declare(HOST_OWNER, { id: 'mode.play', title: 'Enter Play Mode', category: 'Mode', when: hostKeys.mode.is('edit') })
 commands.declare(HOST_OWNER, { id: 'mode.edit', title: 'Leave Play Mode', category: 'Mode', when: hostKeys.mode.is('play') })
 
 /**
+ * What the host hands a feature when it spawns it: the document's read path,
+ * the tool parameters, and the one write door — `apply` is an event at the
+ * document actor, which is the only holder of `writer` (#13). A feature builds
+ * its actor from these and closes over them; they never travel as `input`
+ * (#4), which would put the document in reach of an inspector.
+ */
+export type EditorFeatureDeps = FeatureDeps<ReadonlyMapDoc, Patch, ToolsSnapshot>
+
+/** What a feature's `create` answers with, in the host's own types. */
+export type EditorFeatureInstance = FeatureInstance<AnyActorLogic, StrokeSample, Patch>
+
+/**
  * A feature module as the host sees it (#9, #35): the owner id its
- * declarations were registered under and the logic it exports. The host
- * spawns the logic under that id and routes the owner's commands to it; it
- * never imports the feature — an app hands these in.
+ * declarations were registered under, and the factory that builds its half
+ * once the deps exist. The host spawns the logic under that id and routes the
+ * owner's commands to it; it never imports the feature — an app hands these
+ * in, and a hot re-import arrives through `onFeatureChange` instead (#21 §6).
+ *
+ * `create` is a METHOD rather than a function-typed property, deliberately:
+ * see `registry`'s `feature.ts` for why the seam stops working if that
+ * changes.
  */
 export interface Feature {
   readonly owner: OwnerId
-  readonly logic: AnyActorLogic
+  create(deps: EditorFeatureDeps): EditorFeatureInstance
 }
 
 /** A command on its way down: the routed form of `CommandEvent`, carrying the owner the registry resolved. */
@@ -151,7 +184,40 @@ export interface HostOptions {
   readonly features?: readonly Feature[]
 }
 
-function hostLogic(store: EditorStore, features: readonly Feature[]) {
+/**
+ * The deps a feature is built from, closed over the sibling refs the context
+ * factory spawned — the same mechanism the gesture actor's stroke deps use,
+ * and the reason neither the store nor the document travels as `input` (#4).
+ * `apply` is one labelled edit as an EVENT at the document actor: a feature
+ * has no writer and no route to one (#13).
+ */
+function featureDeps(reader: DocumentReader, document: AnyActorRef, tools: ActorRefFrom<ToolsLogic>): EditorFeatureDeps {
+  return {
+    // Read per call, never captured: the document is mutated in place.
+    doc: () => reader.doc,
+    params: () => {
+      const snapshot = tools.getSnapshot()
+      return { ...snapshot.context, terrainMode: snapshot.value }
+    },
+    setParams: (changes) => tools.send({ type: 'settings', settings: changes }),
+    apply: (label, patches) => document.send({ type: 'patch', label, patches: [...patches] }),
+  }
+}
+
+/**
+ * The contract behind a declared tool (#9's handler half), by DECLARING OWNER
+ * rather than by an id prefix (#8): the tool registry is what says whose tool
+ * this is, exactly as it does for a command. One implementation, read by two
+ * callers — `Host.toolContract` for anything outside, and the stroke deps
+ * below, which is how the stroke actor runs a feature's handler without this
+ * package importing a feature (#35).
+ */
+function contractFor(instances: Map<OwnerId, EditorFeatureInstance>, toolId: string): ToolContract<StrokeSample, Patch> | undefined {
+  const owner = toolDeclarations.ownerOf(toolId)
+  return owner === undefined ? undefined : instances.get(owner)?.tools?.[toolId]
+}
+
+function hostLogic(store: EditorStore, features: readonly Feature[], instances: Map<OwnerId, EditorFeatureInstance>) {
   const documentLogic = createDocumentActorLogic(store)
 
   return setup({
@@ -160,6 +226,7 @@ function hostLogic(store: EditorStore, features: readonly Feature[]) {
       events: {
         command: types<RoutedCommand>(),
         dispose: types<{ owner: OwnerId }>(),
+        install: types<{ owner: OwnerId; logic: AnyActorLogic }>(),
       },
     },
   }).createMachine({
@@ -171,10 +238,11 @@ function hostLogic(store: EditorStore, features: readonly Feature[]) {
       const document = spawn(documentLogic, { id: 'document' })
       const tools = spawn(toolsLogic, { id: 'tools' })
       const view = spawn(viewLogic, { id: 'view' })
-      // The gesture actor's stroke children write through the document ref
-      // and read tool parameters from the tools ref, so its logic is built
-      // here, closed over the sibling refs — a factory closure, the same
-      // mechanism that keeps the store off `input` (#4).
+      // The gesture actor's stroke children write through the document ref,
+      // read tool parameters from the tools ref, and reach a feature's tool
+      // contract through `instances`, so its logic is built here, closed over
+      // the sibling refs — a factory closure, the same mechanism that keeps
+      // the store off `input` (#4).
       //
       // The eyedropper's tool write and the object tool's selection leave
       // through `settings` and `select`: TYPED HOST-INTERNAL EVENTS, not
@@ -195,6 +263,10 @@ function hostLogic(store: EditorStore, features: readonly Feature[]) {
         },
         setTools: (settings) => tools.send({ type: 'settings', settings }),
         select: (id) => view.send({ type: 'select', id }),
+        // Read per press, never captured: a feature installed by a hot
+        // re-import replaces its instance wholesale, and the next stroke must
+        // run the new contract rather than one closed over at spawn.
+        contract: (toolId) => contractFor(instances, toolId),
       }
       const gesture = spawn(
         gestureLogic({
@@ -206,13 +278,23 @@ function hostLogic(store: EditorStore, features: readonly Feature[]) {
         }),
         { id: 'gesture' },
       )
+      // A feature's half is built HERE, where the sibling refs it needs exist,
+      // and the instance is kept beside the ref: `create` answers with the
+      // actor to spawn plus the tool contracts and context keys the
+      // declarations alone cannot carry (#9's two-registry split).
+      const deps = featureDeps(store.reader, document, tools)
+      const spawned = features.map((feature) => {
+        const instance = feature.create(deps)
+        instances.set(feature.owner, instance)
+        return [feature.owner, spawn(instance.logic, { id: feature.owner })] as const
+      })
       return {
         children: {
           [DOCUMENT_OWNER]: document,
           [TOOLS_OWNER]: tools,
           [VIEW_OWNER]: view,
           [GESTURE_OWNER]: gesture,
-          ...Object.fromEntries(features.map((feature) => [feature.owner, spawn(feature.logic, { id: feature.owner })])),
+          ...Object.fromEntries(spawned),
         },
       }
     },
@@ -231,6 +313,15 @@ function hostLogic(store: EditorStore, features: readonly Feature[]) {
             enq.stop(ref)
             return {}
           },
+          // A hot re-import (#21 §6). The previous incarnation's declarations
+          // and keys were revoked by the registry and its actor stopped by the
+          // `dispose` above, both before this arrives, so what is left is to
+          // spawn the module's new logic under the same owner: an id a stopped
+          // child still holds is free, which is what lets the address stay the
+          // one the registry routes by.
+          install: ({ context, event }, enq) => ({
+            context: { children: { ...context.children, [event.owner]: enq.spawn(event.logic, { id: event.owner }) } },
+          }),
         },
       },
       play: {
@@ -246,6 +337,15 @@ function hostLogic(store: EditorStore, features: readonly Feature[]) {
             enq.stop(ref)
             return {}
           },
+          // A hot re-import (#21 §6). The previous incarnation's declarations
+          // and keys were revoked by the registry and its actor stopped by the
+          // `dispose` above, both before this arrives, so what is left is to
+          // spawn the module's new logic under the same owner: an id a stopped
+          // child still holds is free, which is what lets the address stay the
+          // one the registry routes by.
+          install: ({ context, event }, enq) => ({
+            context: { children: { ...context.children, [event.owner]: enq.spawn(event.logic, { id: event.owner }) } },
+          }),
         },
       },
     },
@@ -296,6 +396,13 @@ export interface Host {
   dispatch(id: string, args?: unknown): DispatchResult
   /** The live availability vocabulary, derived now — what a palette evaluates every declaration against. */
   contextKeys(): ContextSnapshot
+  /**
+   * The contract behind a declared tool (#9's handler half), or `undefined`
+   * when the tool is unknown or its owner contributed none. This is the join a
+   * `ToolDecl` cannot carry: the declaration is enumerable before any actor,
+   * the contract cannot exist before the deps do.
+   */
+  toolContract(toolId: string): ToolContract<StrokeSample, Patch> | undefined
   /** The ref an owner's commands route to, stopped or not; `undefined` if that owner was never installed. */
   child(owner: OwnerId): AnyActorRef | undefined
   /**
@@ -311,6 +418,9 @@ export interface Host {
 
 export function createHost({ store, clock, features = [] }: HostOptions): Host {
   const deadLetters: DeadLetter[] = []
+  // Built by `create` beside each spawned ref, and replaced wholesale when a
+  // hot re-import re-mints the owner.
+  const instances = new Map<OwnerId, EditorFeatureInstance>()
 
   const inspect = (event: InspectionEvent): void => {
     if (event.type !== '@xstate.deadletter') return
@@ -322,7 +432,7 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
     deadLetters.push({ reason: event.reason, target, event: event.event })
   }
 
-  const actor = createActor(hostLogic(store, features), clock ? { clock, inspect } : { inspect })
+  const actor = createActor(hostLogic(store, features, instances), clock ? { clock, inspect } : { inspect })
   actor.start()
 
   const { reader } = store
@@ -362,6 +472,14 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
     const tools = children.tools.getSnapshot()
     const view = children.view.getSnapshot()
     return {
+      // A feature contributes the values for the keys IT minted, derived on
+      // the same per-dispatch schedule as everything else (#8's finding 2).
+      // Spread first, so an installed feature cannot shadow `host.mode`: the
+      // built-ins below win an id collision, and minting a colliding id throws
+      // at import in any case.
+      ...Object.fromEntries(
+        [...instances.values()].flatMap((instance) => (instance.keys ? Object.entries(instance.keys()) : [])),
+      ),
       [hostKeys.mode.id]: actor.getSnapshot().value,
       [toolKeys.tool.id]: tools.context.tool,
       [toolKeys.terrainMode.id]: tools.value,
@@ -369,6 +487,10 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
       [documentKeys.canUndo.id]: reader.canUndo(),
       [documentKeys.canRedo.id]: reader.canRedo(),
     }
+  }
+
+  function toolContract(toolId: string): ToolContract<StrokeSample, Patch> | undefined {
+    return contractFor(instances, toolId)
   }
 
   function child(owner: OwnerId): AnyActorRef | undefined {
@@ -401,8 +523,30 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
 
   function dispose(owner: OwnerId): void {
     disposeDeclarations(owner)
+    stopFeature(owner)
+  }
+
+  /** #21 §5's second and third steps, with the revocation already done. */
+  function stopFeature(owner: OwnerId): void {
+    instances.delete(owner)
     if (child(owner) !== undefined) actor.send({ type: 'dispose', owner })
   }
+
+  // The install hook #21 §6 named: a hot re-import revokes and re-mints under
+  // the same owner, and the module it exports carries a NEW `create` this host
+  // has never spawned. Registered once, released when the host stops — a
+  // stopped host must not be installed into, and in a test several hosts share
+  // one module registry.
+  const releaseFeatureHook = onFeatureChange<Feature['create']>({
+    install: ({ owner, create }) => {
+      const instance = create(featureDeps(reader, children.document, children.tools))
+      instances.set(owner, instance)
+      actor.send({ type: 'install', owner, logic: instance.logic })
+    },
+    // The registry revoked the declarations before calling this (its order,
+    // not ours), so this is the drain-and-stop half only.
+    uninstall: stopFeature,
+  })
 
   return {
     actor,
@@ -412,8 +556,12 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
     deadLetters,
     dispatch,
     contextKeys,
+    toolContract,
     child,
     dispose,
-    stop: () => void actor.stop(),
+    stop: () => {
+      releaseFeatureHook()
+      actor.stop()
+    },
   }
 }

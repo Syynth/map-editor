@@ -23,6 +23,8 @@
  * this file is the pure resolver and compiles without `DOM`.
  */
 
+import { onDispose, type OwnerId } from './owners'
+
 /** Values a key may take: JSON scalars, so a snapshot and a predicate both serialise as-is. */
 export type KeyValue = string | number | boolean | null
 
@@ -97,12 +99,29 @@ function collectKeys(node: PredicateNode, into: Set<string>): Set<string> {
 type Widen<T extends KeyValue> = T extends boolean ? boolean : T extends number ? number : T
 
 /**
- * Mint a key. The vocabulary is declared-but-extensible (#3's handoff to #8):
- * any package may add a key, but a predicate can only be built from one that
- * exists, and two definitions of one id throw because the second would either
- * disagree about the default or silently alias the first.
+ * Mint a key under `owner`. The vocabulary is declared-but-extensible (#3's
+ * handoff to #8): any package may add a key, but a predicate can only be built
+ * from one that exists, and two definitions of one id throw because the second
+ * would either disagree about the default or silently alias the first.
+ *
+ * The owner is what makes that throw survivable for a feature (#21 §4, #66
+ * step 5's handoff). Without it the vocabulary was global and permanent: a
+ * feature module that minted a key threw on the HMR re-import that #21 §4
+ * requires, because the id was still taken by the incarnation the hot update
+ * was replacing. Keys are revoked with everything else the owner declared, in
+ * the same `dispose(owner)` and by the same mechanism, so a re-mint under the
+ * same id is exactly as legal as re-declaring a command.
+ *
+ * The revocation is UNCONDITIONAL, and `owners.ts` is what makes that safe:
+ * `dispose` drops an owner's teardown list before running it, so a list runs
+ * at most once. An id is only free to be minted again after the teardown
+ * holding it has run, and that teardown is gone by then — so at any instant at
+ * most one live teardown names a given id, and the key it would delete is the
+ * one the slot holds. Guarding the delete with `definedKeys.get(id) === key`
+ * therefore tests a condition that cannot be false; it was written as if a
+ * stale teardown could outlive its owner's re-mint, and none can.
  */
-export function defineContextKey<T extends KeyValue>(id: string, defaultValue: T): ContextKey<Widen<T>> {
+export function defineContextKey<T extends KeyValue>(owner: OwnerId, id: string, defaultValue: T): ContextKey<Widen<T>> {
   if (definedKeys.has(id)) throw new Error(`context key "${id}" is already defined`)
   const key: ContextKey<Widen<T>> = {
     id,
@@ -110,6 +129,7 @@ export function defineContextKey<T extends KeyValue>(id: string, defaultValue: T
     is: (value) => wrap({ op: 'is', key: id, value }),
   }
   definedKeys.set(id, key)
+  onDispose(owner, () => definedKeys.delete(id))
   return key
 }
 

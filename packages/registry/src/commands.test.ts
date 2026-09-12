@@ -4,8 +4,9 @@ import { z } from 'zod'
 
 import { and, commands, defineContextKey, dispose, resolveCommand, validateArgs } from './index'
 
-const tool = defineContextKey<'select' | 'raise' | 'paint'>('test.commands.tool', 'select')
-const documentOpen = defineContextKey('test.commands.documentOpen', false)
+const KEYS = 'test:commands:keys'
+const tool = defineContextKey<'select' | 'raise' | 'paint'>(KEYS, 'test.commands.tool', 'select')
+const documentOpen = defineContextKey(KEYS, 'test.commands.documentOpen', false)
 
 const scratch: string[] = []
 function owner(name: string): string {

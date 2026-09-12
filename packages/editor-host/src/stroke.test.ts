@@ -1,10 +1,10 @@
-import { EditorStore, cellIndex, createDocumentActorLogic, createMap, paintTop, patchAddress, type Patch, type SurfaceAddress } from '@map-editor/document'
+import { EditorStore, brushCells, cellIndex, createDocumentActorLogic, createMap, patchAddress, raise, type Patch, type SurfaceAddress } from '@map-editor/document'
+import type { ToolContract } from '@map-editor/registry'
 import { describe, expect, it } from 'vitest'
 import { createActor, type InspectionEvent } from 'xstate'
 
 import { strokeLogic, type DocumentRef } from './stroke'
 import { createStrokeHandler, type StrokeDeps, type StrokeSample, type ToolsSnapshot } from './strokes'
-import type { ToolSettings } from './tools'
 
 /**
  * The stroke actor's two invariants (#11), each asserted through `reader` and
@@ -12,6 +12,14 @@ import type { ToolSettings } from './tools'
  * ONE `Edit` lands on release with one patch per address touched. The second
  * is the regression test `docs/stack.md` asked for — committed patch count
  * equals unique addresses — against the measured 3,780-over-260 baseline.
+ *
+ * The handler under the actor is a STUB contract declared here, not the
+ * terrain tool's: this package holds no terrain verbs any more (`strokes.ts`
+ * routes the `terrain` tool at whatever `deps.contract` answers with), and
+ * #35 forbids importing the feature that does. What matters to the actor is
+ * only that a handler answers with patches per phase, which is exactly what
+ * the stub is — and the routing itself is pinned below, while the real verbs
+ * are pinned in `feature-terrain` and end to end in `apps/editor`.
  */
 
 const SCULPT: ToolsSnapshot = {
@@ -36,7 +44,29 @@ function sample(x: number, y: number, modifiers: Partial<StrokeSample['modifiers
   return { pick: { surface: top(x, y), point: { x: x + 0.5, z: y + 0.5 }, objectId: null }, modifiers: { shift: false, alt: false, ctrl: false, ...modifiers } }
 }
 
-function rig(tools: ToolsSnapshot = SCULPT) {
+/**
+ * A handler that raises the brush under the pointer: the smallest thing that
+ * produces one patch per cell per tick, which is what the compaction map is
+ * measured against. Shift lowers, so a test can put a cell back where it
+ * started; `end` answers with nothing, the way a live (non-rectangle) stroke
+ * does — the release is a bracket, not a tick.
+ */
+function raiseContract(deps: StrokeDeps): ToolContract<StrokeSample, Patch> {
+  const patches = (tick: StrokeSample): Patch[] => {
+    const address = tick.pick.surface
+    if (!address) return []
+    const doc = deps.reader.doc
+    return raise(doc, brushCells(doc, address.x, address.y, deps.tools().brush), tick.modifiers.shift ? -1 : 1)
+  }
+  return {
+    stroke: (press) =>
+      press.pick.surface
+        ? { label: 'Raise', begin: patches, move: patches, end: () => [] }
+        : undefined,
+  }
+}
+
+function rig(tools: ToolsSnapshot = SCULPT, contract: (deps: StrokeDeps) => ToolContract<StrokeSample, Patch> | undefined = raiseContract) {
   const store = new EditorStore(createMap(16, 16))
   const document = createActor(createDocumentActorLogic(store)).start()
   // What the document actor RECEIVED, off the system's inspector: `send` is a
@@ -46,17 +76,17 @@ function rig(tools: ToolsSnapshot = SCULPT) {
   document.system.inspect((event) => {
     if (event.type === '@xstate.transition' && event.actorRef.sessionId === document.sessionId) received.push(event.event)
   })
-  const toolsSet: ToolSettings[] = []
   const deps: StrokeDeps = {
     reader: store.reader,
     tools: () => tools,
-    setTools: (settings) => void toolsSet.push(settings),
+    setTools: () => undefined,
     select: () => undefined,
+    contract: (toolId) => (toolId === 'terrain' ? contract(deps) : undefined),
   }
   const dead: InspectionEvent[] = []
   const start = (at: StrokeSample) => {
     const handler = createStrokeHandler(deps, at, null)
-    if (!handler) throw new Error('the terrain tool always strokes')
+    if (!handler) throw new Error('the installed tool declined the press')
     const stroke = createActor(strokeLogic(handler, store.reader, document as DocumentRef), {
       inspect: (event) => void (event.type === '@xstate.deadletter' && dead.push(event)),
     }).start()
@@ -69,8 +99,33 @@ function rig(tools: ToolsSnapshot = SCULPT) {
     if (!end) throw new Error('no endStroke was sent')
     return end
   }
-  return { store, document, deps, start, patchEvents, record, toolsSet, dead }
+  return { store, document, deps, start, patchEvents, record, dead }
 }
+
+/**
+ * The routing `strokes.ts` does, which is the whole of what this package knows
+ * about the terrain tool: a press with it selected runs the contract the
+ * tool's owner contributed, and there is nothing to fall back on when no
+ * owner did.
+ */
+describe('the tool contract behind a press', () => {
+  it('runs the contract for the active tool, and its label is the one the Edit gets', () => {
+    const { store, start } = rig()
+    start(sample(4, 4)).send({ type: 'end', sample: sample(4, 4) })
+    expect(store.reader.undoLabel()).toBe('Raise')
+  })
+
+  it('starts no stroke when the tool\'s feature contributed no contract', () => {
+    const { deps } = rig(SCULPT, () => undefined)
+    expect(createStrokeHandler(deps, sample(4, 4), null)).toBeUndefined()
+  })
+
+  it('starts no stroke when the contract declines the press', () => {
+    const { deps } = rig()
+    const missed: StrokeSample = { pick: { surface: null, point: null, objectId: null }, modifiers: { shift: false, alt: false, ctrl: false } }
+    expect(createStrokeHandler(deps, missed, null)).toBeUndefined()
+  })
+})
 
 describe('the stroke actor', () => {
   it('applies every tick immediately, then commits one Edit with one patch per address', () => {
@@ -152,19 +207,6 @@ describe('the stroke actor', () => {
     // …and the record is empty, so the stroke closed without an entry.
     expect(record().patches).toEqual([])
     expect(store.reader.canUndo()).toBe(false)
-  })
-
-  it('runs the eyedropper on an alt press: a tools.set, and nothing sent to the document but the brackets', () => {
-    const tools: ToolsSnapshot = { ...SCULPT, terrainMode: 'paint', paintVerb: 'tile' }
-    const { store, start, patchEvents, toolsSet, document } = rig(tools)
-    store.apply('Paint', paintTop(store.reader.doc, [[5, 5]], 17))
-
-    const stroke = start(sample(5, 5, { alt: true }))
-    stroke.send({ type: 'end', sample: sample(5, 5, { alt: true }) })
-
-    expect(toolsSet).toEqual([{ tile: 17 }])
-    expect(patchEvents()).toEqual([])
-    expect(document.getSnapshot().status).toBe('active')
   })
 
   it('records where it began, for the rectangle preview', () => {

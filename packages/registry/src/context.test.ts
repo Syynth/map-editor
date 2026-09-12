@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { always, and, defineContextKey, evaluate, never, not, or, parsePredicate } from './index'
+import { always, and, defineContextKey, dispose, evaluate, never, not, or, parsePredicate } from './index'
 
-const tool = defineContextKey<'select' | 'raise' | 'paint'>('test.context.tool', 'select')
-const mode = defineContextKey<'edit' | 'play'>('test.context.mode', 'edit')
-const canUndo = defineContextKey('test.context.canUndo', false)
+const KEYS = 'test:context:keys'
+const tool = defineContextKey<'select' | 'raise' | 'paint'>(KEYS, 'test.context.tool', 'select')
+const mode = defineContextKey<'edit' | 'play'>(KEYS, 'test.context.mode', 'edit')
+const canUndo = defineContextKey(KEYS, 'test.context.canUndo', false)
 
 describe('evaluate', () => {
   it('reads a key from the snapshot, falling back to its declared default', () => {
@@ -92,6 +93,53 @@ describe('serialisation', () => {
 
 describe('defineContextKey', () => {
   it('refuses to define the same id twice', () => {
-    expect(() => defineContextKey('test.context.tool', 'select')).toThrow(/already defined/)
+    expect(() => defineContextKey(KEYS, 'test.context.tool', 'select')).toThrow(/already defined/)
+  })
+
+  // The vocabulary used to be global and permanent, which made a feature
+  // module's key a one-shot: the HMR re-import #21 §4 requires re-runs the
+  // module, and the second `defineContextKey` threw on an id its own previous
+  // incarnation had taken. Revoking with the owner is what makes a re-mint
+  // legal, and the `parsePredicate` check is what proves the key is really
+  // gone rather than merely unreferenced — a stored predicate naming it must
+  // stop parsing.
+  it('revokes a key with its owner, so the id can be minted again', () => {
+    const owner = 'test:context:revoked'
+    const flag = defineContextKey(owner, 'test.context.revoked', false)
+    expect(parsePredicate(flag.is(true).toJSON()).keys()).toEqual(['test.context.revoked'])
+
+    dispose(owner)
+
+    expect(() => parsePredicate({ op: 'is', key: 'test.context.revoked', value: true })).toThrow(/unknown context key/)
+    expect(() => defineContextKey(owner, 'test.context.revoked', false)).not.toThrow()
+    dispose(owner)
+  })
+
+  // A revoked id is free for ANYBODY, not just its previous owner, and the
+  // second owner's key is the one a predicate then reads — including its
+  // default, which is the half a `parsePredicate` check cannot see.
+  //
+  // What this does NOT show, and did not when its name said otherwise: that a
+  // stale teardown could take the second key down. `dispose` drops an owner's
+  // teardown list before running it (`owners.ts`), so the second `dispose`
+  // below returns at `if (!list) return` and runs nothing at all. That is the
+  // reason the revocation in `context.ts` is unconditional: no teardown can
+  // outlive the mint it belongs to, so there is nothing to guard against.
+  it('lets a different owner mint a revoked id, with its own default', () => {
+    const first = 'test:context:first'
+    const second = 'test:context:second'
+    defineContextKey(first, 'test.context.contested', 1)
+    dispose(first)
+    const live = defineContextKey(second, 'test.context.contested', 2)
+
+    // `first` declared nothing else and has already been disposed, so this is
+    // a no-op — asserted, because it is the shape a double HMR dispose takes.
+    expect(() => dispose(first)).not.toThrow()
+
+    expect(evaluate(live.is(2), {})).toEqual({ available: true })
+    // The default is the SECOND key's: an empty snapshot reads 2, not 1.
+    expect(evaluate(live.is(1), {})).toMatchObject({ available: false })
+    dispose(second)
+    expect(() => parsePredicate({ op: 'is', key: 'test.context.contested', value: 2 })).toThrow(/unknown context key/)
   })
 })
