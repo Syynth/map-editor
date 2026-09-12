@@ -19,6 +19,30 @@ import { fileURLToPath } from 'node:url'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromiumArgs, stripGpuFlag, wantsGpu } from './chromium-launch.mjs'
+import { meanLuminance } from './luminance.mjs'
+
+// Thresholds below were read off a real green run against the sample map
+// (`node scripts/tour.mjs`, default SwiftShader path, as CI runs it) and are
+// set with headroom under that reading, not at it — the point is to catch a
+// collapse, not to pin the exact pixel this scene happens to render today.
+//
+// A black (or near-black) frame is this project's worst rendering
+// regression — see FINDINGS.md, "Bloom renders black under software GL" —
+// and it can clear every other check here: no console error, no thrown
+// `expect()`, a perfectly ordinary status bar. Averaged over the WHOLE
+// canvas rather than a small centre crop: a fixed crop can land on one dark
+// cliff face or water tile by pure camera framing (measured 36 there on a
+// known-good frame, against 82 for the same frame averaged over the full
+// canvas) and a floor set to survive that framing accident would no longer
+// separate "renders something" from "renders nothing". The whole-canvas
+// average of a real black frame is still near zero regardless of framing, so
+// 30 stays well clear of both the bug and this scene's own variation.
+const LUMINANCE_FLOOR = 30
+// A clean run reports "5k tris" in the status bar at the opening step (the
+// sample map, default camera). A mesher that silently emitted nothing, or a
+// scene that failed to load, reports 0; 1000 sits well under the real count
+// without pinning the exact figure this map happens to produce today.
+const TRIANGLE_FLOOR = 1000
 
 // Vite's config, `index.html` and `dist/` all live with the app now, so both
 // spawns below run from there rather than from the repo root.
@@ -48,7 +72,9 @@ for (let i = 0; i < 80; i++) {
   await sleep(250)
 }
 
+/** @type {string[]} */
 const problems = []
+/** @type {{ file: string, caption: string }[]} */
 const steps = []
 let index = 0
 
@@ -71,34 +97,56 @@ await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' })
 await sleep(5000)
 
 const stage = await page.$('.stage canvas')
+if (!stage) throw new Error('".stage canvas" not found — did the editor mount?')
 const box = await stage.boundingBox()
+if (!box) throw new Error('".stage canvas" has no bounding box — is it hidden or zero-sized?')
 const cx = box.x + box.width / 2
 const cy = box.y + box.height / 2
+// `shot` below is a hoisted `function` declaration, and `tsc` does not carry
+// the null checks just above into it — see `probe.mjs`'s
+// `boxX`/`boxY`/`boxW`/`boxH` destructuring for the same reason (an arrow
+// function would keep the narrowing; a hoisted `function` does not).
+const stageBox = box
 
-/** Capture a numbered screenshot with a caption. */
+/**
+ * Capture a numbered screenshot with a caption.
+ * @param {string} name
+ * @param {string} caption
+ * @param {{ settle?: number, viewportOnly?: boolean }} [options]
+ */
 async function shot(name, caption, { settle = 900, viewportOnly = false } = {}) {
   await sleep(settle)
   index += 1
   const file = `${String(index).padStart(2, '0')}-${name}.png`
   await page.screenshot({
     path: `${OUT}/${file}`,
-    ...(viewportOnly ? { clip: box } : {}),
+    ...(viewportOnly ? { clip: stageBox } : {}),
   })
   steps.push({ file, caption })
   console.log(`  ${file}  ${caption}`)
 }
 
-/** Click a button by its visible text, scoped to a panel side. */
+/**
+ * Click a button by its visible text, scoped to a panel side.
+ * @param {string} text
+ * @param {string} [scope]
+ */
 async function clickText(text, scope = '') {
   const target = page.locator(`${scope} button`, { hasText: new RegExp(`^${text}$`) }).first()
   await target.click()
   await sleep(400)
 }
 
+/** @param {Partial<{ yaw: number, pitch: number, distance: number }>} state */
 async function camera(state) {
   await page.evaluate((s) => window.__viewport.setCameraForProbe(s), state)
 }
 
+/**
+ * @param {number} x
+ * @param {number} y
+ * @param {number} distance
+ */
 async function focus(x, y, distance) {
   await page.evaluate(
     ([fx, fy, d]) => window.__viewport.focusCellForProbe(fx, fy, d),
@@ -127,6 +175,8 @@ async function statusBar() {
  * that landed on a terrain top, a coverage readout that never recomputed —
  * and all three looked plausible until the image was read closely. So each
  * step states a measurable consequence and the tour fails loudly without it.
+ * @param {string} label
+ * @param {() => unknown} fn
  */
 async function expect(label, fn) {
   const value = await page.evaluate(fn)
@@ -153,6 +203,25 @@ console.log('\nCapturing tour...\n')
 
 // ---------------------------------------------------------------- 1. opening
 await shot('opening', 'First run opens the sample map, not an empty plane.')
+
+// Structural signals a machine can judge reliably, per #56/#60: no pixel
+// baselines yet (SwiftShader-vs-Metal and run-to-run GL noise would make
+// tolerance tuning a treadmill), so CI asserts on things a rendering
+// collapse actually breaks instead — a black frame, a mesh that produced no
+// triangles. Checked at the very first frame: it is the earliest point a
+// silent renderer failure could already be hiding behind a green console.
+const openingLuma = await meanLuminance(page, box)
+if (openingLuma < LUMINANCE_FLOOR) {
+  throw new Error(
+    `opening frame is too dark to be a real render: luma=${openingLuma.toFixed(1)}, floor=${LUMINANCE_FLOOR}`,
+  )
+}
+
+// "Xk tris" in the fifth status-bar span — see App.tsx's <footer className="status">.
+const openingTris = Number((await statusBar())[4].match(/([\d.]+)k tris/)?.[1]) * 1000
+if (!(openingTris >= TRIANGLE_FLOOR)) {
+  throw new Error(`mesh produced too few triangles to be real geometry: tris=${openingTris}, floor=${TRIANGLE_FLOOR}`)
+}
 
 // ---------------------------------------------------------------- 2. sculpt
 await clickText('Terrain', '.left')
@@ -218,6 +287,9 @@ async function faceCamera(distance = 10, pitch = 10) {
  * So ask the editor: hover a spiral of candidate points and read the status
  * bar, which reports the picked surface. Searching outward from the centre
  * usually settles in a handful of probes.
+ * @param {string} kind
+ * @param {number} [radius]
+ * @param {number} [step]
  */
 async function findSurfacePixel(kind, radius = 200, step = 25) {
   const candidates = []
@@ -237,8 +309,16 @@ async function findSurfacePixel(kind, radius = 200, step = 25) {
   return null
 }
 
+/**
+ * @param {number} [radius]
+ * @param {number} [step]
+ */
 const findCliffPixel = (radius, step) => findSurfacePixel('cliff', radius, step)
-/** Terrain top with no object in front of it: picking reports objects as no surface. */
+/**
+ * Terrain top with no object in front of it: picking reports objects as no surface.
+ * @param {number} [radius]
+ * @param {number} [step]
+ */
 const findTopPixel = (radius, step) => findSurfacePixel('top', radius, step)
 
 await clickText('Ramp', '.left')
@@ -286,7 +366,9 @@ await shot('paint-palette', 'Tab switches to Paint. The template sheet is the pa
 
 // Pick a stone tile from the sheet, then brush it on.
 const palette = await page.$('.palette-sheet')
+if (!palette) throw new Error('".palette-sheet" not found — did Paint mode mount its sheet?')
 const pbox = await palette.boundingBox()
+if (!pbox) throw new Error('".palette-sheet" has no bounding box — is it hidden or zero-sized?')
 await page.mouse.click(pbox.x + pbox.width * 0.66, pbox.y + pbox.height * 0.4)
 await page.keyboard.press('[')
 await page.keyboard.press('[')

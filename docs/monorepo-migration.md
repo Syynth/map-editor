@@ -152,16 +152,22 @@ The largest gap, and not where it looks.
 
 - [ ] **`src/editor` is the biggest layer (~2,640 lines) and has zero tests.**
       All 53 tests live in core and runtime.
-- [ ] Put `scripts/tour.mjs` in CI as a smoke test. Both rendering bugs in
-      `FINDINGS.md` were found by looking at screenshots, and the unit tests
-      passed throughout — they checked buffer lengths, not whether the UVs
-      described a rectangle.
+- [x] ~~Put `scripts/tour.mjs` in CI as a smoke test.~~ — [#56](https://github.com/Syynth/map-editor/issues/56):
+      a separate `visual` job in `.github/workflows/gate.yml` installs Chromium and runs
+      `pnpm tour`, which now fails CI on a console error, a below-floor luminance reading
+      (the black-frame signature from "Bloom renders black under software GL" below) or too
+      few triangles, on top of its own scripted assertions. Screenshots upload as a workflow
+      artifact on every run, pass or fail.
 - [x] ~~**Prerequisite:** make `tour.mjs` and `probe.mjs` portable.~~ —
       [#26](https://github.com/Syynth/map-editor/issues/26): both resolve
       Playwright's own bundled Chromium now (`CHROMIUM_PATH` stays as an
       override) and take a shared `--gpu` flag; see
       `scripts/chromium-launch.mjs`.
-- [ ] Decide where screenshot baselines live; `shots/` is gitignored today.
+- [x] ~~Decide where screenshot baselines live; `shots/` is gitignored today.~~ —
+      [#60](https://github.com/Syynth/map-editor/issues/60): no pixel baselines for now
+      (SwiftShader-vs-Metal and run-to-run GL noise would make tolerance tuning a
+      treadmill without a stable GPU runner); CI asserts structural signals instead and
+      keeps `shots/` gitignored, uploading it as a workflow artifact per run.
 - [ ] Break up `viewport.ts` (770), `panels.tsx` (749) and `App.tsx` (533) as
       tests arrive.
 
