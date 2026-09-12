@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // `DOM` stays, unlike `document` and `geometry`: a sprite is an
+    // `HTMLCanvasElement` and a texture is uploaded from one, so the canvas
+    // types are part of this package's surface rather than an accident.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No ambient `@types`. Issue #3 measured that nothing here creates a WebGL
+    // context, which is what lets the export CLI reuse this package headlessly;
+    // keeping Node's globals out means the day someone reaches for `process` or
+    // `fs` the compiler says so here, while the same file still builds under
+    // the root config. `@types/three` is reached through its import, not
+    // through this list.
+    "types": []
+  },
+
+  // No `references`, for the reason spelled out in `geometry`'s tsconfig: a
+  // referenced project must be `composite`, and `composite` forbids `noEmit`.
+  // Nothing emits, and resolution reaches `document` and `geometry` through
+  // their `exports` maps, which tsc follows across the boundary on its own.
+  "include": ["src"]
+}

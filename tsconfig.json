@@ -1,8 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "useDefineForClassFields": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022"],
     "module": "ESNext",
     "skipLibCheck": true,
     "moduleResolution": "bundler",
@@ -11,18 +10,21 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "noEmit": true,
-    "jsx": "react-jsx",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": false,
-    "baseUrl": ".",
-    "paths": {
-      "@core/*": ["src/core/*"],
-      "@runtime/*": ["src/runtime/*"],
-      "@editor/*": ["src/editor/*"]
-    }
+    "exactOptionalPropertyTypes": false
   },
-  "include": ["src", "scripts", "vite.config.ts"]
+
+  // The root compiles repo-wide tooling only: every line of application code
+  // now lives in `apps/editor` or `packages/*`, each with its own tsconfig.
+  // Path aliases are gone with it — `@editor/*` was declared here and again in
+  // the Vite config, and the two had drifted; a workspace package name is the
+  // one spelling that both tsc and the bundler resolve the same way.
+  //
+  // `tests` is repo-wide by the same definition — it holds the workspace
+  // dependency-direction test, whose subject is the set of `package.json`s
+  // rather than any one package's source, so it belongs to no package.
+  "include": ["scripts", "tests", "vitest.config.ts"]
 }

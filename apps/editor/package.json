@@ -1,0 +1,30 @@
+{
+  "name": "@map-editor/editor",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {},
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@map-editor/document": "workspace:*",
+    "@map-editor/fixtures": "workspace:*",
+    "@map-editor/geometry": "workspace:*",
+    "@map-editor/runtime": "workspace:*",
+    "@map-editor/ui": "workspace:*",
+    "@map-editor/viewport": "workspace:*",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "6.0.3",
+    "vite": "^8.3.0"
+  }
+}

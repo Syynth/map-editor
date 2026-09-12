@@ -25,7 +25,8 @@ packages/editor-host       root actor, dispatch wiring, tool/stroke framework, f
 packages/feature-terrain   the one extracted feature, proving the import surface is sufficient.
 packages/fixtures          procedural texture generation + the sample map. Dev-only, but NOT lint-exempt.
 apps/editor                index.html, Vite config, mount, composition root, features/index.ts.
-apps/export-cli            headless glTF exporter.
+apps/export-cli            headless glTF exporter. CUT 2026-09-11 — needed a native canvas;
+                           returns once export has a canvas-free texture path.
 ```
 
 Direction: `registry <- document <- geometry <- runtime <- viewport <- editor-host`, with
@@ -76,20 +77,30 @@ Extract bottom-up and run the suite after each step, so a break is attributable 
 move rather than to the whole restructure. Order follows the dependency direction above:
 `registry` and `document` first, `apps/*` last.
 
-- [ ] Every package needs a real `index.ts`. There are no barrel files anywhere today and
+- [x] Every package needs a real `index.ts`. There are no barrel files anywhere today and
       every import reaches into a file path.
-- [ ] Replace the `@core` / `@runtime` / `@editor` path aliases with workspace package
+- [x] Replace the `@core` / `@runtime` / `@editor` path aliases with workspace package
       names. They are declared twice — in `tsconfig.json` and `vite.config.ts` — and drift
       silently.
 - [ ] Per-package `tsconfig.json` with project references; the root config currently
-      covers everything with `noEmit: true`.
+      covers everything with `noEmit: true`. Half done: every package has its own
+      `tsconfig.json`, but none carries `references`, because a referenced project must
+      be `composite` and `composite` forbids `noEmit`. Taking the references means
+      deciding build emit first — the next box.
 - [ ] Build emit (tsup or unbuild) where a package needs to be consumable.
-- [ ] `apps/export-cli` must produce a `.glb` with **no WebGL context** — the forcing
+- [ ] `apps/export-cli` must produce a `.glb` with **no WebGL context** — *built, then cut:
+      it needed `@napi-rs/canvas`, a native binary, because both `textures.ts` and three's
+      GLTFExporter draw through a 2D canvas. Revive after the canvas-free texture path.* — the forcing
       function the boundary script always named.
-- [ ] A test enforcing dependency direction, since pnpm does not.
-- [ ] **Delete `scripts/check-boundaries.mjs`.** Its header has always said to, and
+- [x] A test enforcing dependency direction, since pnpm does not.
+      `tests/dependency-direction.test.ts`: it reads every workspace `package.json`,
+      checks each declared arrow against the ladder above and checks the graph is
+      acyclic. A workspace package with no entry in its table fails, so a new package
+      cannot be silently unchecked — which is the bug the deleted script had.
+- [x] **Delete `scripts/check-boundaries.mjs`.** Its header has always said to, and
       [#20](https://github.com/Syynth/map-editor/issues/20) found it is regex-over-source
-      and therefore blind to types.
+      and therefore blind to types. It had also started passing vacuously: it walked
+      `src/{core,runtime,editor}`, which no longer exists, so it inspected zero files.
 
 ## Phase 3 — Development practices
 

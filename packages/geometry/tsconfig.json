@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Same as the root config, and same reason as `document`'s: `vitest`'s own
+    // declarations reach for `DOM` and Node types this package does not load.
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No `DOM`, no ambient `@types` — the mesher's whole claim is that it is a
+    // pure function from document data to vertex buffers, so it can be
+    // benchmarked on its own and moved into a Web Worker as a wiring change.
+    // Leaving `window` and Node's globals out makes that compiler-checked here
+    // instead of asserted in the file's header comment.
+    "types": []
+  },
+
+  // No `references`, despite depending on `@map-editor/document`. A referenced
+  // project must set `composite: true`, and `composite` forbids `noEmit` —
+  // so references would require every package to emit `.d.ts` and the whole
+  // tree to build before it typechecks. Nothing emits today; resolution goes
+  // straight to `document`'s source through its `exports` map, and tsc
+  // typechecks across the boundary fine without them (TS6306/TS6310 are the
+  // errors that say so). Revisit when a package needs real build output.
+  "include": ["src"]
+}

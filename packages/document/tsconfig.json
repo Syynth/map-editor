@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Same as the root config. `vitest`'s own declarations reach for `DOM` and
+    // Node types that this package deliberately does not load, and checking a
+    // dependency's `.d.ts` is not this package's job either way.
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No `DOM` above, and no ambient `@types` below. The map data and its verbs
+    // are the bottom of the graph and have to stay runnable in a worker, in the
+    // export CLI and in a headless editing session, so the absence of `window`
+    // and of Node's globals is checked here rather than asserted in prose. A
+    // file that reaches for one fails to compile in this package while still
+    // compiling under the root config, which is what makes the check useful.
+    "types": []
+  },
+
+  // No `references`: this package has no workspace dependencies. `registry`
+  // sits below it in the target layout and does not exist yet; the reference
+  // lands with that package.
+  "include": ["src"]
+}

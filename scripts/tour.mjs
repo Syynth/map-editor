@@ -13,18 +13,24 @@
  */
 import { chromium } from 'playwright'
 import { spawn, spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+
+// Vite's config, `index.html` and `dist/` all live with the app now, so both
+// spawns below run from there rather than from the repo root.
+const APP = fileURLToPath(new URL('../apps/editor', import.meta.url))
 
 const OUT = process.argv[2] ?? 'shots/tour'
 mkdirSync(OUT, { recursive: true })
 
 console.log('Building...')
-const build = spawnSync('npx', ['vite', 'build'], { stdio: ['ignore', 'ignore', 'inherit'] })
+const build = spawnSync('npx', ['vite', 'build'], { cwd: APP, stdio: ['ignore', 'ignore', 'inherit'] })
 if (build.status !== 0) process.exit(build.status ?? 1)
 
 const PORT = 4900 + Math.floor(Math.random() * 90)
 const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {
+  cwd: APP,
   stdio: ['ignore', 'ignore', 'inherit'],
 })
 

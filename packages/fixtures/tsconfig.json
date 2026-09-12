@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Same as the root config, and the same reason as `document`'s and
+    // `geometry`'s: dependencies' declarations reach for `DOM` and Node types
+    // this package does not load.
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No `DOM`, no ambient `@types`. A fixture is dev-only in the sense that
+    // nothing shipped depends on it, but what it produces is a real `MapDoc`
+    // the editor loads — so it is built out of document verbs and sheet layout
+    // and nothing else. Leaving `window` and Node's globals out is what keeps
+    // that true: the day a fixture reaches for a canvas or the filesystem to
+    // fake something up, the compiler says so here.
+    "types": []
+  },
+
+  // No `references`, for the reason spelled out in `geometry`'s tsconfig: a
+  // referenced project must be `composite`, and `composite` forbids `noEmit`.
+  // Nothing emits, and resolution reaches `document` and `geometry` through
+  // their `exports` maps, which tsc follows across the boundary on its own.
+  "include": ["src"]
+}
