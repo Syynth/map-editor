@@ -1,0 +1,99 @@
+name: Gate
+
+# Every PR and every push to main gets a fresh GitHub-hosted runner: no
+# leftover node_modules, dist, or turbo cache from a prior run unless we put
+# it there ourselves below. Freshness by itself does not catch anything here
+# — it is where the bug this workflow guards against HIDES: `eslint .`
+# without a `**/`-anchored `ignores` entry lints the built `dist/` bundle
+# wherever one exists on disk, throwing thousands of `no-undef`s, but a fresh
+# checkout has no `dist/` yet, so a job that lints before it ever builds stays
+# green regardless of whether that ignore is broken (see eslint.config.js's
+# `ignores` comment, which is the actual record of this bug). Building the
+# editor before lint (below) is what makes this job exercise the case that
+# exposes the bug instead of the case that hides it.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    # Equal to turbo's own default — a fresh checkout with this unset still
+    # resolves to `.turbo/cache` — so this exists only to say so once instead
+    # of repeating it on every step below that happens to invoke turbo.
+    env:
+      TURBO_CACHE_DIR: .turbo/cache
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: '.nvmrc'
+          # v5 auto-detects `packageManager` and tries to cache pnpm's store
+          # by shelling out to `pnpm store path` — before corepack has ever
+          # put a `pnpm` on PATH, which fails outright. We don't want that
+          # cache anyway (see the "Do NOT cache pnpm's store" comment below),
+          # so turn the feature off rather than reorder around it.
+          package-manager-cache: false
+
+      # Node has been dropping corepack from the default install (deprecated
+      # since v22, no longer guaranteed bundled by the Node version pinned in
+      # .nvmrc), so `corepack enable` alone is not reliable across runner
+      # images. Installing it explicitly makes the step work the same whether
+      # or not this Node build ships it, and corepack then reads
+      # package.json's `packageManager` to fetch the exact pinned pnpm. Pinned
+      # to an exact version rather than `@latest`: this runs on a cold runner
+      # before anything has verified corepack itself, which is exactly the
+      # kind of install `@latest` should never drive on a workflow whose whole
+      # point is cold supply-chain verification (see the `minimumReleaseAge`
+      # comment below) — 0.36.0 is current as of this writing.
+      - name: Enable corepack
+        run: |
+          npm install -g corepack@0.36.0
+          corepack enable
+
+      # Cache only turbo's own local cache. Do NOT cache pnpm's store or its
+      # `lockfile-verified.jsonl` (under the pnpm home/cache dir): that file
+      # records lockfile entries pnpm has already re-verified against the
+      # minimumReleaseAge supply-chain guard, and a warm copy lets
+      # `--frozen-lockfile` skip that re-verification — passing on a runner
+      # what a genuinely cold one would reject. Turbo's cache carries no such
+      # trust decision, only task outputs keyed by content hash, so caching it
+      # is free of that risk. The key mixes the lockfile (dependency graph)
+      # and tracked sources (what turbo actually hashes tasks against), but
+      # correctness does not come from the key: it comes from turbo re-hashing
+      # and re-validating every task's own inputs regardless of which cache
+      # entry got restored. `restore-keys` is allowed to fall back all the way
+      # to any prior cache for this OS precisely because a wrong restore is
+      # merely a wasted download, never a false cache hit.
+      - name: Cache turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('packages/**/src/**', 'apps/**/src/**') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Requested as its own step rather than folded into `pnpm gate` (or
+      # `gate:full`, which runs `turbo run build test typecheck lint` in one
+      # invocation): `test`/`typecheck`/`lint` only depend on `^build` — a
+      # package's OWN dependencies — never on that same package's own `build`
+      # task, so nothing in turbo's graph forces apps/editor's `build` to
+      # finish before its `lint` when both are requested in one `turbo run`.
+      # Two separate CI steps make the runner's own shell sequencing do what
+      # turbo's task graph does not: `dist/` is fully written before the next
+      # step can start.
+      - name: Build
+        run: pnpm turbo run build
+
+      # `pnpm gate` is the same script a local run uses (turbo.json calls
+      # `gate`/`gate:full` the turbo-fronted entry points for exactly this
+      # reason), so CI and local runs share one gate definition instead of two
+      # command lists drifting apart.
+      - name: Gate
+        run: pnpm gate

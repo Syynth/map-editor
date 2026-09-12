@@ -32,6 +32,15 @@ Twelve turbo tasks across seven packages and two apps; 60 tests (53 pre-existing
 5-test dependency-direction suite + 2 for `export-cli`). ~6 s cold, single-digit ms on a
 cache hit — the gate is fast enough that agents should run it on every iteration.
 
+CI (`.github/workflows/gate.yml`) runs a superset of this on every PR and every push to
+`main`: it also builds `apps/editor` — the only package with a `build` script, and not
+covered by the `test`/`typecheck`/`lint` tasks above, which depend only on `^build` — as
+its own step *before* linting, in a fresh checkout with no pre-existing `dist/`. That
+ordering is load-bearing, not incidental: see the workflow's header comment and
+`eslint.config.js`'s `ignores` comment for the bug a lint-before-build job would never
+catch. `pnpm gate` / `pnpm gate:full` in root `package.json` are the turbo-fronted entry
+points CI and a local run both call, so the two do not drift into separate command lists.
+
 `scripts/check-boundaries.mjs` is gone. `tests/dependency-direction.test.ts` replaces it:
 it builds the workspace graph from declared dependencies, asserts the decided direction
 and acyclicity, and **fails on an unplaced package**, so a new package cannot be silently
@@ -56,9 +65,11 @@ with `cp -c -R` (APFS) as the `DISK` preamble already instructs.
 - **Repo:** `Syynth/map-editor` · **default branch:** `main` · **assignee:** `Syynth`
 - **Trailer:** `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`
 - **PR footer:** `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
-- **No CI yet.** Branch protection and GitHub Actions are Phase 3. Until they exist the
-  gate is only what agents run locally, so the adversarial review step carries more weight
-  than usual, not less.
+- **CI is live.** `.github/workflows/gate.yml` runs the gate above (plus a build) on every
+  PR and push to `main`; branch protection on `main` requires the `gate` check, `strict`
+  (up to date before merge), and applies to admins too (#25). The adversarial review step
+  still carries the weight it always did — CI catches what the gate checks, not what a
+  review does.
 
 ## Conventions (CONV)
 
@@ -111,16 +122,16 @@ empirically in this repo, and all of them are on the wayfinder map
 ## Verification: how the human drives it
 
 ```
+pnpm browsers                              # once, to fetch Playwright's matching Chromium
 pnpm --filter @map-editor/editor dev      # http://localhost:5173
-pnpm tour                                  # 25-step guided walkthrough to shots/tour/
-pnpm probe                                 # whether post-processing survives on this GPU
+pnpm tour --gpu                            # 25-step guided walkthrough to shots/tour/
+pnpm probe --gpu                           # whether post-processing survives on this GPU
 ```
 
-⚠ `scripts/tour.mjs` and `scripts/probe.mjs` still hardcode a Linux Chromium path
-(`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) and force `--use-angle=swiftshader`.
-Making them portable is a prerequisite for using them as the pump's drive-it gate. On this
-Mac the app runs at 60fps through ANGLE/Metal, so a software-renderer fallback firing is
-itself a signal.
+`--gpu` is what makes the probe mean anything on this Mac: without it, both scripts force
+SwiftShader for CI parity, so a software-renderer fallback firing is not a signal — it's
+the default. `--gpu` requests the real backend (ANGLE/Metal here) so the probe reports
+whether the fallback is happening for real.
 
 ## Reference material for Gate 0
 
