@@ -122,16 +122,16 @@ empirically in this repo, and all of them are on the wayfinder map
 ## Verification: how the human drives it
 
 ```
+pnpm browsers                              # once, to fetch Playwright's matching Chromium
 pnpm --filter @map-editor/editor dev      # http://localhost:5173
-pnpm tour                                  # 25-step guided walkthrough to shots/tour/
-pnpm probe                                 # whether post-processing survives on this GPU
+pnpm tour --gpu                            # 25-step guided walkthrough to shots/tour/
+pnpm probe --gpu                           # whether post-processing survives on this GPU
 ```
 
-⚠ `scripts/tour.mjs` and `scripts/probe.mjs` still hardcode a Linux Chromium path
-(`/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) and force `--use-angle=swiftshader`.
-Making them portable is a prerequisite for using them as the pump's drive-it gate. On this
-Mac the app runs at 60fps through ANGLE/Metal, so a software-renderer fallback firing is
-itself a signal.
+`--gpu` is what makes the probe mean anything on this Mac: without it, both scripts force
+SwiftShader for CI parity, so a software-renderer fallback firing is not a signal — it's
+the default. `--gpu` requests the real backend (ANGLE/Metal here) so the probe reports
+whether the fallback is happening for real.
 
 ## Reference material for Gate 0
 

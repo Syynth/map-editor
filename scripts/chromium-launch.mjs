@@ -14,8 +14,12 @@ const SOFTWARE_ARGS = ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-a
 // resolves ANGLE to SwiftShader. `--use-angle=default` tells ANGLE to pick
 // its normal hardware backend (Metal here, GL/Vulkan on Linux) the way a
 // headed browser already does, instead of leaving headless mode to fall
-// back on its own.
-const GPU_ARGS = ['--use-angle=default']
+// back on its own. --ignore-gpu-blocklist belongs here, not on the software
+// side: the blocklist gates hardware GPU use, and SwiftShader is what fires
+// when it does — under SOFTWARE_ARGS the flag is a no-op, but here it is
+// what stops a blocklisted Linux headless/container GPU from silently
+// landing back on SwiftShader anyway.
+const GPU_ARGS = ['--use-angle=default', '--ignore-gpu-blocklist']
 
 /**
  * SwiftShader is the default because it is the only renderer CI and every
@@ -33,12 +37,7 @@ export function stripGpuFlag(argv = process.argv.slice(2)) {
   return argv.filter((arg) => arg !== '--gpu')
 }
 
-/**
- * Launch args for `chromium.launch`. `extraSoftwareArgs` covers a flag one
- * script needs only in its software path (screenshot.mjs's
- * --ignore-gpu-blocklist); real GPU mode drops the software stack entirely,
- * so it never applies there.
- */
-export function chromiumArgs(gpu, extraSoftwareArgs = []) {
-  return gpu ? GPU_ARGS : [...SOFTWARE_ARGS, ...extraSoftwareArgs]
+/** Launch args for `chromium.launch`. */
+export function chromiumArgs(gpu) {
+  return gpu ? GPU_ARGS : SOFTWARE_ARGS
 }

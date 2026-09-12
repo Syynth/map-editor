@@ -65,7 +65,7 @@ try {
     // package.json. CHROMIUM_PATH stays as an override for a machine that
     // already pins its own browser.
     executablePath: process.env.CHROMIUM_PATH,
-    args: chromiumArgs(GPU, ['--ignore-gpu-blocklist']),
+    args: chromiumArgs(GPU),
   })
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } })
   // Always start from the sample map rather than whatever a previous run
