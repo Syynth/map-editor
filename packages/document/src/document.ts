@@ -20,7 +20,7 @@
  *     rule in this file.
  */
 
-import type { ReadonlyVoxel, Structure, VoxelStructure } from './structure'
+import { defaultSurfaceMaterials, type FillEdgeMaterial, type ReadonlyVoxel, type Structure, type VoxelStructure } from './structure'
 
 export const FORMAT_VERSION = 2
 
@@ -217,6 +217,8 @@ export interface MapDoc {
   texelDensity: number
   filtering: 'nearest' | 'linear'
   materials: MaterialDef[]
+  /** The fill-and-edge materials sketches are dressed in, by name. */
+  surfaceMaterials: Record<string, FillEdgeMaterial>
   /**
    * What the level is made of: a scene graph of structures (see
    * `structure.ts`). The terrain, its size and its paint live on a voxel
@@ -439,6 +441,7 @@ export function createMap(width = 32, height = 32, name = 'Untitled Map'): MapDo
     texelDensity: 16,
     filtering: 'nearest',
     materials: DEFAULT_MATERIALS.map((m) => ({ ...m })),
+    surfaceMaterials: defaultSurfaceMaterials(),
     structures: { [ground.id]: ground },
     structureOrder: [ground.id],
     objects: {},

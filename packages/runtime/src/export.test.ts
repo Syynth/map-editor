@@ -50,6 +50,7 @@ const sprites: Record<string, SpriteAsset> = {
 
 function options(overrides: Partial<ExportOptions> = {}): ExportOptions {
   return {
+    textures: {},
     merge: false,
     sheet: solid(16, 5, [0, 255, 0, 255]),
     sprites,

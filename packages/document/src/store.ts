@@ -67,8 +67,8 @@ import {
   type StrokeRecord,
 } from './edits'
 import type { MapDoc, ReadonlyMapDoc } from './document'
-import { CHUNK_SIZE, chunkKey } from './chunks'
-import { descendantsOf, rootVoxel, type ReadonlyVoxel } from './structure'
+import { CHUNK_SIZE, structureChunkKey } from './chunks'
+import { descendantsOf } from './structure'
 
 type Listener = () => void
 
@@ -233,23 +233,18 @@ export class EditorStore implements DocumentWriter {
   }
 
   markAllDirty(): void {
-    // TRANSITIONAL: chunk keys are the root voxel's; every other structure is
-    // marked whole. The per-structure runtime step keys chunks by structure.
-    let root: ReadonlyVoxel | null
-    try {
-      root = rootVoxel(this.doc)
-    } catch {
-      root = null
-    }
-    if (root) {
-      const { width, height } = root.size
+    for (const id of this.doc.structureOrder) {
+      const structure = this.doc.structures[id]
+      if (!structure) continue
+      this.dirtyStructures.add(id)
+      if (structure.kind !== 'voxel') continue
+      const { width, height } = structure.size
       for (let cy = 0; cy < Math.ceil(height / CHUNK_SIZE); cy++) {
         for (let cx = 0; cx < Math.ceil(width / CHUNK_SIZE); cx++) {
-          this.dirtyChunks.add(chunkKey(cx, cy))
+          this.dirtyChunks.add(structureChunkKey(id, cx, cy))
         }
       }
     }
-    for (const id of this.doc.structureOrder) this.dirtyStructures.add(id)
   }
 
   /** Structures whose own data changed since last taken — a sketch's points, a placement, an add or a remove. */
@@ -279,11 +274,10 @@ export class EditorStore implements DocumentWriter {
    * cells makes the common case one chunk at ~1 ms and leaves the 9-chunk
    * worst case for the rare stroke that lands exactly on a chunk corner.
    */
-  private dirtyCell(x: number, y: number): void {
+  private dirtyCell(structure: string, x: number, y: number): void {
     const cx = Math.floor(x / CHUNK_SIZE)
     const cy = Math.floor(y / CHUNK_SIZE)
-    this.dirtyChunks.add(chunkKey(cx, cy))
-
+    this.dirtyChunks.add(structureChunkKey(structure, cx, cy))
     const lx = x - cx * CHUNK_SIZE
     const ly = y - cy * CHUNK_SIZE
     const west = lx === 0
@@ -291,14 +285,13 @@ export class EditorStore implements DocumentWriter {
     const north = ly === 0
     const south = ly === CHUNK_SIZE - 1
     if (!west && !east && !north && !south) return
-
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
         if (dx === -1 && !west) continue
         if (dx === 1 && !east) continue
         if (dy === -1 && !north) continue
         if (dy === 1 && !south) continue
-        this.dirtyChunks.add(chunkKey(cx + dx, cy + dy))
+        this.dirtyChunks.add(structureChunkKey(structure, cx + dx, cy + dy))
       }
     }
   }
@@ -307,17 +300,12 @@ export class EditorStore implements DocumentWriter {
     if (patch.t === 'voxel' || patch.t === 'voxelPaint') {
       const voxel = this.doc.structures[patch.id]
       if (!voxel || voxel.kind !== 'voxel') return
-      // TRANSITIONAL: only the root voxel has chunks the runtime draws.
-      if (voxel.parent !== null) {
-        this.dirtyStructures.add(patch.id)
-        return
-      }
       if (patch.t === 'voxel') {
         const width = voxel.size.width
-        this.dirtyCell(patch.index % width, Math.floor(patch.index / width))
+        this.dirtyCell(patch.id, patch.index % width, Math.floor(patch.index / width))
       } else {
         const [x, y] = patch.key.split(',').map(Number)
-        this.dirtyCell(x, y)
+        this.dirtyCell(patch.id, x, y)
       }
     } else if (patch.t === 'sketch' || patch.t === 'structure' || patch.t === 'structure.meta') {
       this.dirtyStructures.add(patch.id)
@@ -325,7 +313,7 @@ export class EditorStore implements DocumentWriter {
       for (const id of descendantsOf(this.doc, patch.id)) this.dirtyStructures.add(id)
     } else if (patch.t === 'structureOrder') {
       for (const id of patch.value) this.dirtyStructures.add(id)
-    } else if (patch.t === 'doc' && (patch.field === 'materials' || patch.field === 'texelDensity')) {
+    } else if (patch.t === 'doc' && (patch.field === 'materials' || patch.field === 'texelDensity' || patch.field === 'surfaceMaterials')) {
       this.markAllDirty()
     }
   }

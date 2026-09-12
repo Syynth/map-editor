@@ -16,7 +16,7 @@
  */
 
 import {
-  rootVoxel,
+  structureOf,
   MAX_HEIGHT,
   MIN_HEIGHT,
   NO_RAMP,
@@ -41,18 +41,20 @@ import { z } from 'zod'
  */
 const cell = z.tuple([z.int().min(0), z.int().min(0)])
 const cells = z.array(cell).min(1)
+/** The voxel volume the cells are in: nothing ambient, a command names its structure. */
+const structure = z.string().min(1)
 
 /** One cliff band: a cell, the face it points along, and the level on that face. */
 const face = z.object({ x: z.int().min(0), y: z.int().min(0), dir: z.int().min(0).max(3), level: z.int().min(0) }).strict()
 
-const raiseArgs = z.object({ cells, delta: z.int().min(-MAX_HEIGHT).max(MAX_HEIGHT) }).strict()
-const flattenArgs = z.object({ cells, height: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT) }).strict()
-const rampArgs = z.object({ cells, dir: z.int().min(NO_RAMP).max(3) }).strict()
-const waterArgs = z.object({ cells, level: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT).nullable() }).strict()
-const materialArgs = z.object({ cells, material: z.int().min(0) }).strict()
-const topArgs = z.object({ cells, tile: z.int().min(0).nullable() }).strict()
-const cliffArgs = z.object({ faces: z.array(face).min(1), tile: z.int().min(0).nullable() }).strict()
-const tintArgs = z.object({ cells, tint: z.int().min(0).max(0xffffff).nullable() }).strict()
+const raiseArgs = z.object({ structure, cells, delta: z.int().min(-MAX_HEIGHT).max(MAX_HEIGHT) }).strict()
+const flattenArgs = z.object({ structure, cells, height: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT) }).strict()
+const rampArgs = z.object({ structure, cells, dir: z.int().min(NO_RAMP).max(3) }).strict()
+const waterArgs = z.object({ structure, cells, level: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT).nullable() }).strict()
+const materialArgs = z.object({ structure, cells, material: z.int().min(0) }).strict()
+const topArgs = z.object({ structure, cells, tile: z.int().min(0).nullable() }).strict()
+const cliffArgs = z.object({ structure, faces: z.array(face).min(1), tile: z.int().min(0).nullable() }).strict()
+const tintArgs = z.object({ structure, cells, tint: z.int().min(0).max(0xffffff).nullable() }).strict()
 
 /**
  * Declared at import, under the feature's owner, and revoked with it. No
@@ -87,9 +89,8 @@ export interface TerrainEdit {
  * routing (#23), which is what the casts rest on.
  */
 export function terrainEdit(doc: ReadonlyMapDoc, id: string, args: unknown): TerrainEdit | undefined {
-  // TRANSITIONAL: the commands address cells of "the terrain"; they gain a
-  // structure id when the runtime goes per-structure.
-  const voxel = rootVoxel(doc)
+  const voxel = structureOf(doc, (args as { structure: string }).structure, 'voxel')
+  if (!voxel) return undefined
   switch (id) {
     case 'terrain.raise': {
       const { cells, delta } = args as z.infer<typeof raiseArgs>

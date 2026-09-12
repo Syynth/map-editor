@@ -26,9 +26,11 @@ import {
   inBounds,
   type DocumentReader,
   type SurfaceAddress,
-  rootVoxel,
   structureOf,
   type ReadonlyVoxel,
+  frameOf,
+  levelCentre,
+  toWorld,
 } from '@map-editor/document'
 import {
   Character,
@@ -279,7 +281,7 @@ export class Viewport {
     this.renderer.toneMappingExposure = 1.0
 
     this.scene = new RuntimeScene(reader.doc, assets)
-    this.scene.rebuildChunks()
+    this.scene.rebuildAll()
     this.drawnGeneration = reader.generation
 
     const centre = this.scene.mapCentre()
@@ -360,7 +362,7 @@ export class Viewport {
     const layers = this.options.layers
     if (layers?.lo !== wasLayers?.lo || layers?.hi !== wasLayers?.hi) {
       this.scene.setLayerRange(layers)
-      this.scene.rebuildChunks()
+      this.scene.rebuildAll()
     }
   }
 
@@ -380,7 +382,7 @@ export class Viewport {
   reset(): void {
     this.scene.setDocument(this.reader.doc)
     this.scene.applyAtmosphere()
-    this.scene.rebuildChunks()
+    this.scene.rebuildAll()
     this.rebuildGrid()
     // Framing, not re-pointing: the previous map's orbit target can sit
     // outside a smaller new map entirely, and the new map carries its own rig.
@@ -398,11 +400,13 @@ export class Viewport {
     if (this.reader.generation !== this.drawnGeneration) {
       this.drawnGeneration = this.reader.generation
       this.reader.takeDirtyChunks()
+      this.reader.takeDirtyStructures()
       this.reset()
       return
     }
-    if (!this.reader.hasDirtyChunks()) return
-    this.scene.rebuildChunks(this.reader.takeDirtyChunks())
+    const structures = this.reader.takeDirtyStructures()
+    if (!this.reader.hasDirtyChunks() && structures.length === 0) return
+    this.scene.rebuild({ chunks: this.reader.takeDirtyChunks(), structures })
     // The grid follows the terrain, so sculpting invalidates it too. Rebuilt
     // wholesale rather than per chunk: it is one cheap line buffer, and only
     // the editor pays for it.
@@ -485,9 +489,9 @@ export class Viewport {
    * thing to open on. Zooming out from there is one scroll away.
    */
   frameMap(): void {
-    const { width, height } = rootVoxel(this.reader.doc).size
+    const [cx, cy, cz] = levelCentre(this.reader.doc)
     const rig = this.reader.doc.camera
-    this.orbit.target.set(width / 2, 1, height / 2)
+    this.orbit.target.set(cx, cy + 1, cz)
     this.orbit.distance = Math.min(rig.bounds.distMax, Math.max(rig.bounds.distMin, rig.distance))
   }
 
@@ -509,20 +513,30 @@ export class Viewport {
       this.gridLines.geometry.dispose()
     }
     // The grid hugs the terrain rather than lying on the ground plane, where
-    // any raised cell would bury it.
-    const voxel = rootVoxel(this.reader.doc)
-    const { width, height } = voxel.size
+    // any raised cell would bury it. Every voxel volume's cells, each in its
+    // own frame.
+    const doc = this.reader.doc
     const points: number[] = []
     const lift = 0.025
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const [c00, c01, c11, c10] = cornerHeights(voxel, x, y).map((h) => h * 0.5 + lift)
-        points.push(
-          x, c00, y, x, c01, y + 1,
-          x, c01, y + 1, x + 1, c11, y + 1,
-          x + 1, c11, y + 1, x + 1, c10, y,
-          x + 1, c10, y, x, c00, y,
-        )
+    for (const id of doc.structureOrder) {
+      const voxel = doc.structures[id]
+      if (!voxel || voxel.kind !== 'voxel') continue
+      const frame = frameOf(doc, id)
+      const at = (lx: number, h: number, lz: number) => {
+        const [wx, wz] = toWorld(frame, lx, lz)
+        return [wx, frame.y + h, wz]
+      }
+      const { width, height } = voxel.size
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const [c00, c01, c11, c10] = cornerHeights(voxel, x, y).map((h) => h * 0.5 + lift)
+          points.push(
+            ...at(x, c00, y), ...at(x, c01, y + 1),
+            ...at(x, c01, y + 1), ...at(x + 1, c11, y + 1),
+            ...at(x + 1, c11, y + 1), ...at(x + 1, c10, y),
+            ...at(x + 1, c10, y), ...at(x, c00, y),
+          )
+        }
       }
     }
     const geometry = new THREE.BufferGeometry()
@@ -534,7 +548,7 @@ export class Viewport {
     this.overlay.add(this.gridLines)
   }
 
-  /** A flat overlay quad hugging a cell's top surface. */
+  /** A flat overlay quad hugging a cell's top surface, in world space through the volume's frame. */
   private cellQuad(voxel: ReadonlyVoxel, x: number, y: number, out: number[], lift = 0.03): void {
     if (!inBounds(voxel.size, x, y)) return
     // On the ground, under any water: the water surface neither writes depth
@@ -542,17 +556,34 @@ export class Viewport {
     // preview on a lake bed shows through the water rather than under it.
     // Under the layer view, the preview sits on the cap the column was cut to.
     const layers = this.options.layers
+    const frame = frameOf(this.reader.doc, voxel.id)
+    const at = (lx: number, h: number, lz: number) => {
+      const [wx, wz] = toWorld(frame, lx, lz)
+      return [wx, frame.y + h, wz]
+    }
     const [c00, c01, c11, c10] = cornerHeights(voxel, x, y).map((h) => (layers === null ? h : Math.min(h, layers.hi)) * 0.5 + lift)
     out.push(
-      x, c00, y, x, c01, y + 1, x + 1, c11, y + 1,
-      x, c00, y, x + 1, c11, y + 1, x + 1, c10, y,
+      ...at(x, c00, y), ...at(x, c01, y + 1), ...at(x + 1, c11, y + 1),
+      ...at(x, c00, y), ...at(x + 1, c11, y + 1), ...at(x + 1, c10, y),
     )
   }
 
-  private updateBrushPreview(): void {
+  /** The voxel volume a cell-addressed overlay belongs to: the hovered one, else the first. */
+  private overlayVoxel(): ReadonlyVoxel | undefined {
     const doc = this.reader.doc
+    const hovered = this.options.hover ? structureOf(doc, this.options.hover.structure, 'voxel') : undefined
+    if (hovered) return hovered
+    for (const id of doc.structureOrder) {
+      const s = doc.structures[id]
+      if (s && s.kind === 'voxel') return s
+    }
+    return undefined
+  }
+
+  private updateBrushPreview(): void {
+    const voxel = this.overlayVoxel()
     const points: number[] = []
-    for (const [x, y] of this.options.brushPreview) this.cellQuad(rootVoxel(doc), x, y, points)
+    if (voxel) for (const [x, y] of this.options.brushPreview) this.cellQuad(voxel, x, y, points)
     const geometry = this.brushMesh.geometry
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
     geometry.computeBoundingSphere()
@@ -563,12 +594,18 @@ export class Viewport {
     const address = this.options.hover
     const doc = this.reader.doc
     const points: number[] = []
+    const voxel = address ? structureOf(doc, address.structure, 'voxel') : undefined
 
-    if (address && address.kind === SURFACE_TOP) {
-      this.cellQuad(rootVoxel(doc), address.x, address.y, points, 0.04)
-    } else if (address && address.kind === SURFACE_CLIFF) {
+    if (address && voxel && address.kind === SURFACE_TOP) {
+      this.cellQuad(voxel, address.x, address.y, points, 0.04)
+    } else if (address && voxel && address.kind === SURFACE_CLIFF) {
       // Highlight exactly the band that was picked, so the artist can see the
       // level their paint would land on.
+      const frame = frameOf(doc, voxel.id)
+      const at = (lx: number, h: number, lz: number) => {
+        const [wx, wz] = toWorld(frame, lx, lz)
+        return [wx, frame.y + h, wz]
+      }
       const geometry = [
         { origin: [1, 1], u: [0, -1] },
         { origin: [0, 1], u: [1, 0] },
@@ -585,8 +622,8 @@ export class Viewport {
       const nx = geometry.u[1] * nudge
       const nz = -geometry.u[0] * nudge
       points.push(
-        ox + nx, bottom, oz + nz, ex + nx, bottom, ez + nz, ex + nx, top, ez + nz,
-        ox + nx, bottom, oz + nz, ex + nx, top, ez + nz, ox + nx, top, oz + nz,
+        ...at(ox + nx, bottom, oz + nz), ...at(ex + nx, bottom, ez + nz), ...at(ex + nx, top, ez + nz),
+        ...at(ox + nx, bottom, oz + nz), ...at(ex + nx, top, ez + nz), ...at(ox + nx, top, oz + nz),
       )
     }
 

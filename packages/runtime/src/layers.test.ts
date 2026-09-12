@@ -3,7 +3,6 @@ import {
   cellIndex,
   createMap,
   tintKey,
-  rootVoxel,
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
@@ -13,7 +12,7 @@ import { describe, expect, it } from 'vitest'
 import { CUT_TINT, GHOST_TINT, layerView, withinLayers } from './layers'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
-const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 
 describe('the layer view', () => {

@@ -6,7 +6,6 @@ import {
   defaultFacing,
   type CameraRig,
   type MapObject,
-  rootVoxel,
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
@@ -22,7 +21,7 @@ import {
 import { analyseCoverage } from './coverage'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
-const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 
 function rig(overrides: Partial<CameraRig['bounds']> = {}, rest: Partial<CameraRig> = {}): CameraRig {

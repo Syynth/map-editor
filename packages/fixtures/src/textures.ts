@@ -406,3 +406,86 @@ export const SPRITE_NAMES = [
   'statue',
   'hero',
 ] as const
+
+/**
+ * Fill-and-edge textures for the sketch materials, by the names
+ * `DEFAULT_SURFACE_MATERIALS` uses: a grass fill and rim, an earth body with
+ * its top and bottom bands. Procedural placeholders until real art lands;
+ * `density` pixels per world unit, like the sheet.
+ */
+export function generateSketchTextures(density: number): Record<string, RgbaImage> {
+  const d = Math.max(8, density)
+  const out: Record<string, RgbaImage> = {}
+  const tile = (name: string, w: number, h: number, draw: (ctx: CanvasRenderingContext2D, rng: () => number) => void) => {
+    const canvas = makeCanvas(w, h)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('2D canvas unavailable')
+    ctx.imageSmoothingEnabled = false
+    draw(ctx, mulberry32(0x51e7 + name.length * 131))
+    out[name] = readPixels(ctx, w, h)
+  }
+  const dots = (ctx: CanvasRenderingContext2D, rng: () => number, w: number, h: number, colors: string[], count: number, size = 1) => {
+    for (let i = 0; i < count; i++) {
+      ctx.fillStyle = colors[Math.floor(rng() * colors.length)]
+      ctx.fillRect(Math.floor(rng() * w), Math.floor(rng() * h), size, size)
+    }
+  }
+  tile('grass_fill', d * 4, d * 4, (ctx, rng) => {
+    ctx.fillStyle = '#5f9c3f'
+    ctx.fillRect(0, 0, d * 4, d * 4)
+    dots(ctx, rng, d * 4, d * 4, ['#69a847', '#558f38', '#72b04f'], d * d * 2)
+    dots(ctx, rng, d * 4, d * 4, ['#4d8432'], Math.floor(d * d * 0.2), 2)
+  })
+  tile('earth_body', d * 4, d * 4, (ctx, rng) => {
+    ctx.fillStyle = '#8a6a48'
+    ctx.fillRect(0, 0, d * 4, d * 4)
+    dots(ctx, rng, d * 4, d * 4, ['#95744f', '#7d5f40', '#a07c55'], d * d * 2)
+    ctx.fillStyle = '#7a5c3e'
+    for (let y = Math.floor(d * 0.4); y < d * 4; y += Math.floor(d * 0.9)) ctx.fillRect(0, y + Math.floor(rng() * 3), d * 4, 1)
+  })
+  // Bands: v = 1 is the top row. The rim's top is the outline side; the top band's top meets the cap; the bottom band's bottom meets the ground.
+  tile('grass_rim', d * 8, d * 2, (ctx, rng) => {
+    const w = d * 8, h = d * 2
+    ctx.fillStyle = '#5f9c3f'
+    ctx.fillRect(0, 0, w, h)
+    for (let y = 0; y < h; y++) {
+      ctx.fillStyle = `rgba(122,184,84,${(1 - y / (h - 1)) * 0.9})`
+      ctx.fillRect(0, y, w, 1)
+    }
+    for (let x = 0; x < w; x += 3) {
+      ctx.fillStyle = '#7fc25a'
+      ctx.fillRect(x, 0, 2, 2 + Math.floor(rng() * (h * 0.3)))
+    }
+    ctx.fillStyle = '#3f7a2a'
+    ctx.fillRect(0, 0, w, 1)
+  })
+  tile('earth_top', d * 8, d * 2, (ctx, rng) => {
+    const w = d * 8, h = d * 2
+    ctx.fillStyle = '#8a6a48'
+    ctx.fillRect(0, 0, w, h)
+    dots(ctx, rng, w, h, ['#95744f', '#7d5f40'], d * d * 3)
+    ctx.fillStyle = '#5a4230'
+    ctx.fillRect(0, Math.floor(h * 0.32), w, Math.max(1, Math.floor(h * 0.08)))
+    ctx.fillStyle = '#4d8432'
+    ctx.fillRect(0, 0, w, Math.floor(h * 0.25))
+    for (let x = 0; x < w; x += 2) {
+      ctx.fillStyle = rng() < 0.5 ? '#5f9c3f' : '#69a847'
+      ctx.fillRect(x, 0, 2, Math.floor(h * 0.25) + Math.floor(rng() * (h * 0.2)))
+    }
+  })
+  tile('earth_bottom', d * 8, d * 2, (ctx, rng) => {
+    const w = d * 8, h = d * 2
+    ctx.fillStyle = '#8a6a48'
+    ctx.fillRect(0, 0, w, h)
+    dots(ctx, rng, w, h, ['#95744f', '#7d5f40'], d * d * 3)
+    for (let y = Math.floor(h * 0.6); y < h; y++) {
+      ctx.fillStyle = `rgba(60,42,28,${((y - h * 0.6) / (h * 0.4)) * 0.85})`
+      ctx.fillRect(0, y, w, 1)
+    }
+    for (let i = 0; i < d; i++) {
+      ctx.fillStyle = rng() < 0.5 ? '#6f7580' : '#8a8f99'
+      ctx.fillRect(Math.floor(rng() * w), Math.floor(h * 0.65 + rng() * h * 0.3), 2, 2)
+    }
+  })
+  return out
+}

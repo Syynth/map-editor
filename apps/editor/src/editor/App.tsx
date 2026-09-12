@@ -15,7 +15,12 @@ import {
   type ReadonlyMapDoc,
   type RgbaImage,
   type SurfaceAddress,
-  rootVoxel,
+  HALF,
+  NO_WATER,
+  frameOf,
+  levelBounds,
+  structureOf,
+  type ReadonlyVoxel,
 } from '@map-editor/document'
 import {
   useDocument,
@@ -34,7 +39,7 @@ import { strokeCells } from '@map-editor/feature-terrain'
 // The canvas-drawing generator lives behind its own subpath (#48): re-exporting it
 // from the package root would force `DOM` into every consumer's tsconfig, including
 // `apps/export-cli`'s, whose whole point is compiling without it.
-import { generateSprites, generateTerrainSheet } from '@map-editor/fixtures/textures'
+import { generateSketchTextures, generateSprites, generateTerrainSheet } from '@map-editor/fixtures/textures'
 import { chordFor } from '@map-editor/registry'
 import { exportGltf } from '@map-editor/runtime/export'
 import {
@@ -82,14 +87,34 @@ const wholeDocument = (doc: ReadonlyMapDoc): ReadonlyMapDoc => doc
  * place, so nothing else about it would tell a memo to recompute.
  */
 function dormantPaint(doc: ReadonlyMapDoc): { top: number; cliff: number } {
-  const voxel = rootVoxel(doc)
-  return countDormant(voxel.paint, (kind, key) => {
-    const [x, y] = key.split(',').map(Number)
-    if (!inBounds(voxel.size, x, y)) return false
-    if (kind === 'top') return true
-    const level = Number(key.split(',')[3])
-    return level < voxel.terrain.height[cellIndex(voxel.size, x, y)]
-  })
+  const totals = { top: 0, cliff: 0 }
+  for (const id of doc.structureOrder) {
+    const voxel = doc.structures[id]
+    if (!voxel || voxel.kind !== 'voxel') continue
+    const counts = countDormant(voxel.paint, (kind, key) => {
+      const [x, y] = key.split(',').map(Number)
+      if (!inBounds(voxel.size, x, y)) return false
+      if (kind === 'top') return true
+      const level = Number(key.split(',')[3])
+      return level < voxel.terrain.height[cellIndex(voxel.size, x, y)]
+    })
+    totals.top += counts.top
+    totals.cliff += counts.cliff
+  }
+  return totals
+}
+
+function levelSize(doc: ReadonlyMapDoc): string {
+  const b = levelBounds(doc)
+  return b ? `${Math.round(b.maxX - b.minX)} × ${Math.round(b.maxZ - b.minZ)}` : '—'
+}
+
+function firstVoxel(doc: ReadonlyMapDoc): ReadonlyVoxel {
+  for (const id of doc.structureOrder) {
+    const s = doc.structures[id]
+    if (s && s.kind === 'voxel') return s
+  }
+  throw new Error('no voxel volume to preview a brush on')
 }
 
 /**
@@ -100,9 +125,15 @@ function dormantPaint(doc: ReadonlyMapDoc): { top: number; cliff: number } {
  */
 function tallestPoint(doc: ReadonlyMapDoc): number {
   let top = MIN_HEIGHT
-  const voxel = rootVoxel(doc)
-  for (const height of voxel.terrain.height) if (height > top) top = height
-  for (const water of voxel.terrain.water) if (water > top) top = water
+  for (const id of doc.structureOrder) {
+    const s = doc.structures[id]
+    if (!s) continue
+    const base = Math.round(frameOf(doc, id).y / HALF)
+    if (s.kind === 'voxel') {
+      for (const height of s.terrain.height) if (base + height > top) top = base + height
+      for (const water of s.terrain.water) if (water !== NO_WATER && base + water > top) top = base + water
+    } else if (s.closed) top = Math.max(top, base + s.layers)
+  }
   return top
 }
 
@@ -223,6 +254,7 @@ export default function App() {
     [doc.materials, doc.texelDensity],
   )
   const sprites = useMemo(() => generateSprites(doc.texelDensity), [doc.texelDensity])
+  const textures = useMemo(() => generateSketchTextures(doc.texelDensity), [doc.texelDensity])
 
   /**
    * The art as of right now, for the ONE effect that must not re-run when it
@@ -231,8 +263,8 @@ export default function App() {
    * and they run on mount too, so the pair here only has to be good enough to
    * construct with.
    */
-  const assetsRef = useRef({ sheet: generatedSheet, sprites })
-  assetsRef.current = { sheet: generatedSheet, sprites }
+  const assetsRef = useRef({ sheet: generatedSheet, sprites, textures })
+  assetsRef.current = { sheet: generatedSheet, sprites, textures }
 
   useEffect(() => {
     setSheet(generatedSheet)
@@ -275,7 +307,7 @@ export default function App() {
         if (pick.surface && live.params.tool === 'terrain' && !live.playing) {
           // The same cells the stroke will touch, grown from the same origin
           // — read off the open stroke rather than recomputed from a copy.
-          setHoverCells(strokeCells(rootVoxel(host.reader.doc), live.params, pick.surface, host.input.strokeOrigin()))
+          setHoverCells(strokeCells(structureOf(host.reader.doc, pick.surface.structure, 'voxel') ?? firstVoxel(host.reader.doc), live.params, pick.surface, host.input.strokeOrigin()))
         } else {
           setHoverCells([])
         }
@@ -414,6 +446,7 @@ export default function App() {
       // an artist's loaded sheet still previews but does not export.
       const bytes = await exportGltf(doc, {
         merge: false,
+        textures: assetsRef.current.textures,
         sheet: generatedSheet,
         sprites,
         encodePng: encodePngWithCanvas,
@@ -535,7 +568,7 @@ export default function App() {
           <Overlay at="top-left">
             <Pill>
               <span className="ui-num">
-                {rootVoxel(doc).size.width} × {rootVoxel(doc).size.height}
+                {levelSize(doc)}
               </span>
             </Pill>
           </Overlay>

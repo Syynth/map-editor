@@ -9,7 +9,6 @@ import {
   topKey,
   type Patch,
   type SurfaceAddress,
-  rootVoxel,
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
@@ -21,7 +20,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { features } from './index'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
-const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 
 /**
@@ -117,7 +116,7 @@ describe('the terrain commands, dispatched through the host', () => {
     const index = cellIndex(ground(host.reader.doc).size, 2, 3)
     const before = ground(host.reader.doc).terrain.height[index]
 
-    expect(dispatch('terrain.raise', { cells: [[2, 3]], delta: 2 })).toEqual({ ok: true })
+    expect(dispatch('terrain.raise', { structure: 'ground', cells: [[2, 3]], delta: 2 })).toEqual({ ok: true })
 
     expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 2)
     // One labelled edit, on the undo stack the document actor owns — the
@@ -131,27 +130,27 @@ describe('the terrain commands, dispatched through the host', () => {
     const { host, dispatch } = live
     const size = ground(host.reader.doc).size
 
-    expect(dispatch('terrain.flatten', { cells: [[1, 1]], height: 4 })).toEqual({ ok: true })
+    expect(dispatch('terrain.flatten', { structure: 'ground', cells: [[1, 1]], height: 4 })).toEqual({ ok: true })
     expect(ground(host.reader.doc).terrain.height[cellIndex(size, 1, 1)]).toBe(4)
 
-    expect(dispatch('terrain.ramp', { cells: [[1, 1]], dir: 2 })).toEqual({ ok: true })
+    expect(dispatch('terrain.ramp', { structure: 'ground', cells: [[1, 1]], dir: 2 })).toEqual({ ok: true })
     expect(ground(host.reader.doc).terrain.ramp[cellIndex(size, 1, 1)]).toBe(2)
 
     // Water is a line above the ground, never level with it: 3 over a column
     // flattened to 4 is refused (ok, no patch), 5 lands.
-    expect(dispatch('terrain.water', { cells: [[1, 1]], level: 3 })).toEqual({ ok: true })
+    expect(dispatch('terrain.water', { structure: 'ground', cells: [[1, 1]], level: 3 })).toEqual({ ok: true })
     expect(ground(host.reader.doc).terrain.water[cellIndex(size, 1, 1)]).toBeLessThan(0)
-    expect(dispatch('terrain.water', { cells: [[1, 1]], level: 5 })).toEqual({ ok: true })
+    expect(dispatch('terrain.water', { structure: 'ground', cells: [[1, 1]], level: 5 })).toEqual({ ok: true })
     expect(ground(host.reader.doc).terrain.water[cellIndex(size, 1, 1)]).toBe(5)
 
-    expect(dispatch('terrain.material', { cells: [[1, 1]], material: 1 })).toEqual({ ok: true })
+    expect(dispatch('terrain.material', { structure: 'ground', cells: [[1, 1]], material: 1 })).toEqual({ ok: true })
     expect(ground(host.reader.doc).terrain.material[cellIndex(size, 1, 1)]).toBe(1)
 
-    expect(dispatch('terrain.paint.top', { cells: [[1, 1]], tile: 5 })).toEqual({ ok: true })
+    expect(dispatch('terrain.paint.top', { structure: 'ground', cells: [[1, 1]], tile: 5 })).toEqual({ ok: true })
     expect(ground(host.reader.doc).paint.top[topKey(1, 1)]).toBe(5)
 
-    expect(dispatch('terrain.paint.tint', { cells: [[1, 1]], tint: 0x00ff00 })).toEqual({ ok: true })
-    expect(dispatch('terrain.paint.cliff', { faces: [{ x: 1, y: 1, dir: 2, level: 0 }], tile: 7 })).toEqual({ ok: true })
+    expect(dispatch('terrain.paint.tint', { structure: 'ground', cells: [[1, 1]], tint: 0x00ff00 })).toEqual({ ok: true })
+    expect(dispatch('terrain.paint.cliff', { structure: 'ground', faces: [{ x: 1, y: 1, dir: 2, level: 0 }], tile: 7 })).toEqual({ ok: true })
     expect(host.reader.undoLabel()).toBe('Paint')
   })
 
@@ -161,9 +160,9 @@ describe('the terrain commands, dispatched through the host', () => {
 
     // A stray key, a missing one, and the shape that matters most: `undefined`
     // where a value belongs, which is not JSON and so cannot be an argument.
-    expect(dispatch('terrain.raise', { cells: [[2, 3]], delta: 1, verb: 'raise' })).toMatchObject({ ok: false, kind: 'invalid-args' })
-    expect(dispatch('terrain.raise', { cells: [[2, 3]] })).toMatchObject({ ok: false, kind: 'invalid-args' })
-    expect(dispatch('terrain.raise', { cells: [], delta: 1 })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('terrain.raise', { structure: 'ground', cells: [[2, 3]], delta: 1, verb: 'raise' })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('terrain.raise', { structure: 'ground', cells: [[2, 3]] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('terrain.raise', { structure: 'ground', cells: [], delta: 1 })).toMatchObject({ ok: false, kind: 'invalid-args' })
 
     expect(ground(host.reader.doc).terrain.height[cellIndex(ground(host.reader.doc).size, 2, 3)]).toBe(before)
     expect(host.reader.canUndo()).toBe(false)
@@ -467,7 +466,7 @@ describe('disposing the feature', () => {
     expect(commands.get('terrain.raise')).toBeUndefined()
     expect(panels.get('terrain.brush')).toBeUndefined()
     expect(tools.get('terrain')).toBeUndefined()
-    expect(dispatch('terrain.raise', { cells: [[2, 3]], delta: 1 })).toMatchObject({ ok: false, kind: 'unknown' })
+    expect(dispatch('terrain.raise', { structure: 'ground', cells: [[2, 3]], delta: 1 })).toMatchObject({ ok: false, kind: 'unknown' })
     expect(actor?.getSnapshot().status).toBe('stopped')
 
     // The key is revoked with everything else: `contextKeys` no longer carries

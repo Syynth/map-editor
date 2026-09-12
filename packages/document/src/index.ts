@@ -45,8 +45,11 @@ export type {
   ReadonlyMapDoc,
   TerrainData,
 } from './document'
-export { ancestorsOf, childrenOf, descendantsOf, outlineOf, pointInOutline, rootVoxel, structureOf } from './structure'
+export { DEFAULT_SURFACE_MATERIALS, ancestorsOf, childrenOf, defaultSurfaceMaterials, descendantsOf, outlineOf, pointInOutline, structureOf } from './structure'
 export type {
+  EdgeBand,
+  EdgeRepeat,
+  FillEdgeMaterial,
   LipStyle,
   Outline,
   Placement,
@@ -120,6 +123,8 @@ export { DOCUMENT_OWNER, documentKeys } from './commands'
 export { LoadError, deserialize, serialize } from './io'
 export {
   SURFACE_CLIFF,
+  SURFACE_SKETCH_CAP,
+  SURFACE_SKETCH_WALL,
   SURFACE_TOP,
   SURFACE_WATER,
   decodeExtra,
@@ -137,11 +142,13 @@ export {
   cornerHeights,
   frameOf,
   groundHeight,
+  levelBounds,
+  levelCentre,
   toLocal,
   toWorld,
   voxelTop,
 } from './terrain'
-export type { Frame } from './terrain'
+export type { Bounds, Frame } from './terrain'
 export { MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST, autotileMask } from './autotile'
-export { CHUNK_SIZE, allChunkKeys, chunkBounds, chunkKey, parseChunkKey } from './chunks'
+export { CHUNK_SIZE, allChunkKeys, chunkBounds, chunkKey, parseChunkKey, parseStructureChunkKey, structureChunkKey } from './chunks'
 export type { ChunkBounds } from './chunks'

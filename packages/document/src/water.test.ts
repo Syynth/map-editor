@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { NO_WATER, cellIndex, createMap, type MapDoc } from './document'
 import { flatten, raise, setWater } from './ops'
 import type { Patch } from './edits'
-import { rootVoxel } from './structure'
 import type { VoxelStructure } from './structure'
 
 /**
@@ -12,7 +11,7 @@ import type { VoxelStructure } from './structure'
  * line, and the water ops refuse to write a line the ground already meets.
  */
 
-const ground = (doc: MapDoc) => rootVoxel(doc) as VoxelStructure
+const ground = (doc: MapDoc) => doc.structures.ground as VoxelStructure
 
 const apply = (doc: MapDoc, patches: Patch[]) => {
   const voxel = ground(doc)

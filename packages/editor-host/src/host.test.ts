@@ -11,7 +11,6 @@ import {
   type MapObject,
   type Patch,
   type SurfaceAddress,
-  rootVoxel,
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
@@ -24,7 +23,7 @@ import { createHost, type Feature, type Host } from './host'
 import type { PointerPress } from './gesture'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
-const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 
 /**

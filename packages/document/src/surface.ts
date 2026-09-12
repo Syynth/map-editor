@@ -12,8 +12,12 @@
 export const SURFACE_TOP = 0
 export const SURFACE_CLIFF = 1
 export const SURFACE_WATER = 2
+/** A sketch's cap; `x` is the outline segment the triangle belongs to (−1 for the interior). */
+export const SURFACE_SKETCH_CAP = 3
+/** A sketch's wall or a band on it; `x` is the outline segment. */
+export const SURFACE_SKETCH_WALL = 4
 
-export type SurfaceKind = typeof SURFACE_TOP | typeof SURFACE_CLIFF | typeof SURFACE_WATER
+export type SurfaceKind = typeof SURFACE_TOP | typeof SURFACE_CLIFF | typeof SURFACE_WATER | typeof SURFACE_SKETCH_CAP | typeof SURFACE_SKETCH_WALL
 
 export interface SurfaceAddress {
   /** The structure the surface belongs to. */
@@ -59,6 +63,8 @@ export function describeSurface(address: SurfaceAddress | null): string {
   if (!address) return '—'
   if (address.kind === SURFACE_TOP) return `top (${address.x}, ${address.y})`
   if (address.kind === SURFACE_WATER) return `water (${address.x}, ${address.y})`
+  if (address.kind === SURFACE_SKETCH_CAP) return `sketch cap ${address.structure}`
+  if (address.kind === SURFACE_SKETCH_WALL) return `sketch wall ${address.structure} segment ${address.x}`
   const sides = ['E', 'S', 'W', 'N']
   return `cliff (${address.x}, ${address.y}) ${sides[address.dir]} level ${address.level}`
 }
