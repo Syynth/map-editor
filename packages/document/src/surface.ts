@@ -1,10 +1,12 @@
 /**
- * Surface addresses.
+ * Surface addressing: what a pick names.
  *
- * Picking resolves a ray to a *surface and a cell on it*, not a point in
- * space. The mesher emits an address alongside every triangle so a raycast
- * hit can be turned straight back into a document coordinate, which is what
- * lets a paint stroke write to the stable keys in paint.ts.
+ * A picked triangle resolves to a surface on a structure — a voxel cell's
+ * top, one band of one cliff face, a water quad — so every tool means the
+ * same thing by "what is under the cursor". The per-triangle encoding
+ * (`faceAddr`, four ints) is the mesher's; the structure the mesh belongs to
+ * is known to whoever built the mesh, so it rides alongside rather than
+ * inside the ints.
  */
 
 export const SURFACE_TOP = 0
@@ -14,12 +16,14 @@ export const SURFACE_WATER = 2
 export type SurfaceKind = typeof SURFACE_TOP | typeof SURFACE_CLIFF | typeof SURFACE_WATER
 
 export interface SurfaceAddress {
+  /** The structure the surface belongs to. */
+  structure: string
   kind: SurfaceKind
   x: number
   y: number
-  /** Cliff only. */
+  /** Cliff faces: which side (0 E, 1 S, 2 W, 3 N). */
   dir: number
-  /** Cliff only: absolute half-tile level of the band. */
+  /** Cliff faces: which half-tile band. */
   level: number
 }
 
@@ -33,11 +37,11 @@ export function decodeExtra(extra: number): { dir: number; level: number } {
   return { dir: extra >> 17, level: (extra & 0x1ffff) - LEVEL_BIAS }
 }
 
-/** Read the address of triangle `tri` out of a packed faceAddr array. */
-export function readAddress(faceAddr: Int32Array, tri: number): SurfaceAddress {
+export function readAddress(faceAddr: Int32Array, tri: number, structure: string): SurfaceAddress {
   const base = tri * 4
   const { dir, level } = decodeExtra(faceAddr[base + 3])
   return {
+    structure,
     kind: faceAddr[base] as SurfaceKind,
     x: faceAddr[base + 1],
     y: faceAddr[base + 2],
@@ -48,7 +52,7 @@ export function readAddress(faceAddr: Int32Array, tri: number): SurfaceAddress {
 
 export function sameSurface(a: SurfaceAddress | null, b: SurfaceAddress | null): boolean {
   if (!a || !b) return a === b
-  return a.kind === b.kind && a.x === b.x && a.y === b.y && a.dir === b.dir && a.level === b.level
+  return a.structure === b.structure && a.kind === b.kind && a.x === b.x && a.y === b.y && a.dir === b.dir && a.level === b.level
 }
 
 export function describeSurface(address: SurfaceAddress | null): string {

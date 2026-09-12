@@ -1,34 +1,26 @@
 /**
- * Native project format.
+ * Serialisation.
  *
- * Plain JSON, versioned from the first commit. glTF is strictly a build
- * output — nothing here ever tries to read one back in.
- *
- * The prototype keeps a map in a single file. Splitting into a folder of
- * files is cheap to do later precisely because everything goes through these
- * two functions.
+ * One format version, read strictly: no migrations until a level worth
+ * keeping exists (ruling of 2026-09-12). A file from another version is
+ * refused with a message that says so, never half-read.
  */
 
 import {
+  DEFAULT_MATERIALS,
   FORMAT_VERSION,
   createMap,
   defaultCameraRig,
   defaultFacing,
   makeAtmosphere,
-  DEFAULT_MATERIALS,
   type MapDoc,
-  type ReadonlyMapDoc,
   type MapObject,
+  type ReadonlyMapDoc,
 } from './document'
+import { DEFAULT_WALL_PROFILE } from './ops'
+import type { SketchStructure, Structure, VoxelStructure } from './structure'
 
 export class LoadError extends Error {}
-
-/** Migrations run in order, each taking the document one version forward. */
-const MIGRATIONS: Record<number, (doc: Record<string, unknown>) => Record<string, unknown>> = {
-  // 0 -> 1 exists as a worked example so the next one is a fill-in-the-blank
-  // rather than a design exercise.
-  0: (doc) => ({ ...doc, formatVersion: 1, materials: doc.materials ?? DEFAULT_MATERIALS }),
-}
 
 export function serialize(doc: ReadonlyMapDoc): string {
   return JSON.stringify(doc, null, 2)
@@ -56,6 +48,43 @@ function normaliseObject(raw: Partial<MapObject>, id: string): MapObject {
   }
 }
 
+function normaliseStructure(raw: Record<string, unknown>, id: string): Structure {
+  const base = {
+    id,
+    name: typeof raw.name === 'string' ? raw.name : 'Structure',
+    parent: typeof raw.parent === 'string' ? raw.parent : null,
+    placement: { x: 0, z: 0, yaw: 0 as const, ...((raw.placement as Record<string, number>) ?? {}) },
+  }
+  if (raw.kind === 'voxel') {
+    const size = must(raw.size as VoxelStructure['size'], `Structure ${id} has no size.`)
+    const count = size.width * size.height
+    const terrain = must(raw.terrain as VoxelStructure['terrain'], `Structure ${id} has no terrain.`)
+    for (const field of ['height', 'material', 'ramp', 'water'] as const) {
+      const arr = terrain[field]
+      if (!Array.isArray(arr) || arr.length !== count) {
+        throw new LoadError(`${id}.terrain.${field} should hold ${count} entries, found ${Array.isArray(arr) ? arr.length : 'none'}.`)
+      }
+    }
+    const paint = (raw.paint ?? {}) as Partial<VoxelStructure['paint']>
+    return { ...base, kind: 'voxel', size, terrain, paint: { top: paint.top ?? {}, cliff: paint.cliff ?? {}, tint: paint.tint ?? {} } }
+  }
+  if (raw.kind === 'sketch') {
+    const wall = (raw.wall ?? {}) as Partial<SketchStructure['wall']>
+    return {
+      ...base,
+      kind: 'sketch',
+      points: Array.isArray(raw.points) ? (raw.points as SketchStructure['points']) : [],
+      closed: raw.closed === true,
+      layers: typeof raw.layers === 'number' ? raw.layers : 3,
+      wall: { points: Array.isArray(wall.points) ? wall.points : DEFAULT_WALL_PROFILE.points.map((p) => ({ ...p })), smooth: wall.smooth ?? true },
+      lip: (raw.lip as SketchStructure['lip']) ?? 'skirt',
+      capMaterial: typeof raw.capMaterial === 'string' ? raw.capMaterial : 'grass',
+      wallMaterial: typeof raw.wallMaterial === 'string' ? raw.wallMaterial : 'earth',
+    }
+  }
+  throw new LoadError(`Structure ${id} has an unknown kind: ${String(raw.kind)}.`)
+}
+
 export function deserialize(text: string): MapDoc {
   let raw: Record<string, unknown>
   try {
@@ -63,59 +92,40 @@ export function deserialize(text: string): MapDoc {
   } catch (error) {
     throw new LoadError(`Not valid JSON: ${(error as Error).message}`)
   }
-
-  let version = typeof raw.formatVersion === 'number' ? raw.formatVersion : 0
-  if (version > FORMAT_VERSION) {
+  const version = typeof raw.formatVersion === 'number' ? raw.formatVersion : 0
+  if (version !== FORMAT_VERSION) {
     throw new LoadError(
-      `This map was written by a newer editor (format ${version}; this build reads ${FORMAT_VERSION}).`,
+      version > FORMAT_VERSION
+        ? `This map was written by a newer editor (format ${version}; this build reads ${FORMAT_VERSION}).`
+        : `This map is format ${version}; this build reads only ${FORMAT_VERSION} and carries no migration (none exists yet by ruling).`,
     )
   }
-  while (version < FORMAT_VERSION) {
-    const migrate = MIGRATIONS[version]
-    if (!migrate) throw new LoadError(`No migration from format version ${version}.`)
-    raw = migrate(raw)
-    version = raw.formatVersion as number
+
+  const structuresRaw = must(raw.structures as Record<string, Record<string, unknown>>, 'Map has no structures.')
+  const structures: Record<string, Structure> = {}
+  for (const [id, value] of Object.entries(structuresRaw)) structures[id] = normaliseStructure(value, id)
+  const structureOrder = Array.isArray(raw.structureOrder) ? (raw.structureOrder as string[]).filter((id) => id in structures) : Object.keys(structures)
+  for (const id of Object.keys(structures)) if (!structureOrder.includes(id)) structureOrder.push(id)
+  for (const s of Object.values(structures)) {
+    if (s.parent !== null && !structures[s.parent]) throw new LoadError(`Structure ${s.id} stands on ${s.parent}, which the map does not have.`)
   }
 
-  const size = must(raw.size as MapDoc['size'], 'Map has no size.')
-  const count = size.width * size.height
-  const terrain = must(raw.terrain as MapDoc['terrain'], 'Map has no terrain.')
-  for (const field of ['height', 'material', 'ramp', 'water'] as const) {
-    const arr = terrain[field]
-    if (!Array.isArray(arr) || arr.length !== count) {
-      throw new LoadError(
-        `terrain.${field} should hold ${count} entries, found ${Array.isArray(arr) ? arr.length : 'none'}.`,
-      )
-    }
-  }
-
-  const base = createMap(size.width, size.height)
+  const base = createMap(1, 1)
   const objectsRaw = (raw.objects ?? {}) as Record<string, Partial<MapObject>>
   const objects: Record<string, MapObject> = {}
   for (const [id, value] of Object.entries(objectsRaw)) objects[id] = normaliseObject(value, id)
-
-  const order = Array.isArray(raw.objectOrder)
-    ? (raw.objectOrder as string[]).filter((id) => id in objects)
-    : Object.keys(objects)
+  const order = Array.isArray(raw.objectOrder) ? (raw.objectOrder as string[]).filter((id) => id in objects) : Object.keys(objects)
   for (const id of Object.keys(objects)) if (!order.includes(id)) order.push(id)
 
-  const paint = (raw.paint ?? {}) as Partial<MapDoc['paint']>
-
   return {
-    ...base,
     formatVersion: FORMAT_VERSION,
     id: (raw.id as string) ?? base.id,
     name: (raw.name as string) ?? 'Untitled Map',
-    size,
     texelDensity: (raw.texelDensity as number) ?? 16,
     filtering: (raw.filtering as MapDoc['filtering']) ?? 'nearest',
-    materials: (raw.materials as MapDoc['materials']) ?? base.materials,
-    terrain,
-    paint: {
-      top: paint.top ?? {},
-      cliff: paint.cliff ?? {},
-      tint: paint.tint ?? {},
-    },
+    materials: (raw.materials as MapDoc['materials']) ?? DEFAULT_MATERIALS.map((m) => ({ ...m })),
+    structures,
+    structureOrder,
     objects,
     objectOrder: order,
     camera: { ...defaultCameraRig(), ...((raw.camera as MapDoc['camera']) ?? {}) },

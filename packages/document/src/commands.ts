@@ -182,6 +182,54 @@ commands.declare(DOCUMENT_OWNER, { id: 'atmosphere.set', title: 'Set Atmosphere'
 commands.declare(DOCUMENT_OWNER, { id: 'document.load', title: 'Open Map', category: 'File', args: documentLoad })
 commands.declare(DOCUMENT_OWNER, { id: 'document.new', title: 'New Map', category: 'File', args: documentNew })
 
+const profilePoint = z.object({ x: z.number(), z: z.number(), smooth: z.boolean() }).strict()
+const wallProfile = z
+  .object({ points: z.array(z.object({ out: z.number(), t: z.number().min(0).max(1) }).strict()).min(2), smooth: z.boolean() })
+  .strict()
+const placement = z.object({ x: z.number(), z: z.number(), yaw: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]) }).strict()
+const structureId = z.object({ id: z.string().min(1) }).strict()
+const sketchNew = z.object({ parent: z.string().min(1).nullable(), name: z.string().min(1).exactOptional(), placement: placement.exactOptional() }).strict()
+const sketchPointAdd = z.object({ id: z.string().min(1), point: profilePoint, at: z.int().min(0).exactOptional() }).strict()
+const sketchPointUpdate = z.object({ id: z.string().min(1), index: z.int().min(0), changes: profilePoint.partial() }).strict()
+const sketchPointDelete = z.object({ id: z.string().min(1), index: z.int().min(0) }).strict()
+const sketchSet = z
+  .object({
+    id: z.string().min(1),
+    changes: z
+      .object({
+        layers: z.int().min(1).max(64).exactOptional(),
+        wall: wallProfile.exactOptional(),
+        lip: z.enum(['flat', 'skirt', 'bevel']).exactOptional(),
+        capMaterial: z.string().min(1).exactOptional(),
+        wallMaterial: z.string().min(1).exactOptional(),
+      })
+      .strict(),
+  })
+  .strict()
+const structureRename = z.object({ id: z.string().min(1), name: z.string().min(1) }).strict()
+const structurePlace = z.object({ id: z.string().min(1), placement }).strict()
+const structureReparent = z.object({ id: z.string().min(1), parent: z.string().min(1).nullable() }).strict()
+
+commands.declare(DOCUMENT_OWNER, { id: 'sketch.new', title: 'New Sketch', category: 'Sketch', args: sketchNew })
+commands.declare(DOCUMENT_OWNER, { id: 'sketch.point.add', title: 'Add Sketch Point', category: 'Sketch', args: sketchPointAdd })
+commands.declare(DOCUMENT_OWNER, { id: 'sketch.point.update', title: 'Edit Sketch Point', category: 'Sketch', args: sketchPointUpdate })
+commands.declare(DOCUMENT_OWNER, { id: 'sketch.point.delete', title: 'Delete Sketch Point', category: 'Sketch', args: sketchPointDelete })
+commands.declare(DOCUMENT_OWNER, { id: 'sketch.close', title: 'Close Sketch', category: 'Sketch', args: structureId })
+commands.declare(DOCUMENT_OWNER, { id: 'sketch.set', title: 'Edit Sketch', category: 'Sketch', args: sketchSet })
+commands.declare(DOCUMENT_OWNER, { id: 'structure.delete', title: 'Delete Structure', category: 'Edit', args: structureId })
+commands.declare(DOCUMENT_OWNER, { id: 'structure.rename', title: 'Rename Structure', category: 'Edit', args: structureRename })
+commands.declare(DOCUMENT_OWNER, { id: 'structure.place', title: 'Place Structure', category: 'Edit', args: structurePlace })
+commands.declare(DOCUMENT_OWNER, { id: 'structure.reparent', title: 'Move Structure Onto', category: 'Edit', args: structureReparent })
+
+export type SketchNewArgs = z.infer<typeof sketchNew>
+export type SketchPointAddArgs = z.infer<typeof sketchPointAdd>
+export type SketchPointUpdateArgs = z.infer<typeof sketchPointUpdate>
+export type SketchPointDeleteArgs = z.infer<typeof sketchPointDelete>
+export type SketchSetArgs = z.infer<typeof sketchSet>
+export type StructureIdArgs = z.infer<typeof structureId>
+export type StructureRenameArgs = z.infer<typeof structureRename>
+export type StructurePlaceArgs = z.infer<typeof structurePlace>
+export type StructureReparentArgs = z.infer<typeof structureReparent>
 export type ObjectUpdateArgs = z.infer<typeof objectUpdate>
 export type CameraChanges = z.infer<typeof cameraChanges>
 export type AtmosphereChanges = z.infer<typeof atmosphereChanges>

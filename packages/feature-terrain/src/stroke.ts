@@ -23,7 +23,7 @@
  * the command form of a verb cannot drift from each other either.
  */
 
-import { SURFACE_TOP, cellIndex, inBounds, type Cell, type Patch, type SurfaceAddress } from '@map-editor/document'
+import { SURFACE_TOP, cellIndex, inBounds, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@map-editor/document'
 import type { FeatureDeps, StrokeHandler, ToolContract } from './deps'
 import { eyedrop, paintPatches, sculptPatches, strokeCells, terrainLabel, type TerrainModifiers } from './verbs'
 
@@ -66,15 +66,14 @@ export function cellPast(from: Cell, point: { readonly x: number; readonly z: nu
 }
 
 /** The top of `cell`, as the address a sculpt verb targets when it was steered there by the plane rather than by a pick. */
-const topOf = ([x, y]: Cell): SurfaceAddress => ({ x, y, kind: SURFACE_TOP, dir: 0, level: 0 })
+const topOf = (structure: string, [x, y]: Cell): SurfaceAddress => ({ structure, x, y, kind: SURFACE_TOP, dir: 0, level: 0 })
 
-function handlerFor(deps: FeatureDeps, press: TerrainSample): TerrainStrokeHandler {
-  const doc = deps.doc()
+function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxel): TerrainStrokeHandler {
   const address = press.pick.surface
   /** Anchor cell for rectangle strokes, and the corner a rectangle preview grows from. */
   const anchor: Cell | null = address ? [address.x, address.y] : null
   /** Height sampled when the stroke began, for flatten. */
-  const anchorHeight = address && inBounds(doc.size, address.x, address.y) ? doc.terrain.height[cellIndex(doc.size, address.x, address.y)] : 0
+  const anchorHeight = address && inBounds(voxel.size, address.x, address.y) ? voxel.terrain.height[cellIndex(voxel.size, address.x, address.y)] : 0
   /** Cell last edited, so a drag does not re-apply to the same cell. */
   let lastCell: string | null = null
   /** The cell a sculpt stroke is on, steered by the press plane; `null` until a tick lands one. */
@@ -96,14 +95,14 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample): TerrainStrokeHandl
     if (plane === undefined || plane === null) {
       // No plane — a press, or no camera: the pick decides, by cell only.
       if (surface) steered = [surface.x, surface.y]
-      return surface ? topOf([surface.x, surface.y]) : null
+      return surface ? topOf(voxel.id, [surface.x, surface.y]) : null
     }
     if (steered === null) steered = [Math.floor(plane.x), Math.floor(plane.z)]
     else {
       const next = cellPast(steered, plane, params.sculptDeadZone)
-      if (next !== null && inBounds(deps.doc().size, next[0], next[1])) steered = next
+      if (next !== null && inBounds(voxel.size, next[0], next[1])) steered = next
     }
-    return topOf(steered)
+    return topOf(voxel.id, steered)
   }
 
   function tick(sample: TerrainSample, phase: 'start' | 'move' | 'end'): Patch[] {
@@ -114,7 +113,7 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample): TerrainStrokeHandl
       // The eyedropper changes a tool parameter, not the document, so it
       // leaves through `setParams` — an event at the tools actor — and the
       // stroke produces no patches at all.
-      if (phase === 'start') deps.setParams(eyedrop(deps.doc(), deps.params(), address))
+      if (phase === 'start') deps.setParams(eyedrop(deps.doc(), voxel, deps.params(), address))
       return []
     }
 
@@ -130,10 +129,10 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample): TerrainStrokeHandl
     // Read per tick, not captured at the press: `]` mid-drag widens the brush,
     // as it always did.
     const doc = deps.doc()
-    const cells = strokeCells(doc, params, address, anchor)
+    const cells = strokeCells(voxel, params, address, anchor)
     return params.terrainMode === 'sculpt'
-      ? sculptPatches(doc, params, address, cells, sample.modifiers, anchorHeight)
-      : paintPatches(doc, params, address, cells, sample.modifiers)
+      ? sculptPatches(doc, voxel, params, address, cells, sample.modifiers, anchorHeight)
+      : paintPatches(voxel, params, address, cells, sample.modifiers)
   }
 
   return {
@@ -151,6 +150,11 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample): TerrainStrokeHandl
  */
 export function terrainContract(deps: FeatureDeps): ToolContract<TerrainSample, Patch> {
   return {
-    stroke: (sample) => (sample.pick.surface ? handlerFor(deps, sample) : undefined),
+    stroke: (sample) => {
+      // The tool addresses the voxel volume the press landed on; a press on any other kind of structure is not its stroke.
+      const surface = sample.pick.surface
+      const voxel = surface ? structureOf(deps.doc(), surface.structure, 'voxel') : undefined
+      return voxel ? handlerFor(deps, sample, voxel) : undefined
+    },
   }
 }

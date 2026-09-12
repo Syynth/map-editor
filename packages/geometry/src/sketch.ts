@@ -16,19 +16,12 @@
  * always face outward whichever way the points were clicked.
  */
 
+import { outlineOf, type LipStyle, type Outline, type Profile, type ProfilePoint, type WallProfile, type WallProfilePoint } from '@map-editor/document'
+
 import type { MeshBuffers } from './terrain'
 
-export interface ProfilePoint {
-  readonly x: number
-  readonly z: number
-  /** A rounded point, cut by the smoothing; a corner keeps its exact position and angle. */
-  readonly smooth: boolean
-}
-
-export interface Profile {
-  /** Closed: the last point joins the first. */
-  readonly points: readonly ProfilePoint[]
-}
+export { outlineOf }
+export type { LipStyle, Outline, Profile, ProfilePoint, WallProfile, WallProfilePoint }
 
 /** How an edge texture repeats along the outline: on a fixed length, or stretched so a whole number of copies meet at the seam. */
 export type EdgeRepeat = 'tile' | 'stretch'
@@ -53,39 +46,13 @@ export interface WallMaterialSpec {
   readonly bottom: EdgeSpec
 }
 
-/**
- * How the cap meets the wall at the lip. `flat`: rim on the cap, top band on
- * the wall, a hard edge between. `skirt`: the rim folds over the lip and hangs
- * down the wall in the top band's place. `bevel`: the lip is chamfered and the
- * top band is drawn on the chamfer.
- */
-export type LipStyle = 'flat' | 'skirt' | 'bevel'
-
-/** One point of a wall's side profile: how far outside the top outline the wall sits (`out`, world units; negative undercuts) at height fraction `t` (0 ground, 1 lip). */
-export interface WallProfilePoint {
-  readonly out: number
-  readonly t: number
-}
-
-/**
- * The wall's silhouette from the ground to the lip, as a polyline in the side
- * view swept around the outline: `points` ordered from the ground (`t` 0) to
- * the lip (`t` 1), where `out` is 0 by definition — the lip IS the outline.
- * A drawn thing, like the outline itself; `smooth` rounds the interior points
- * the way smooth outline points are rounded.
- */
-export interface WallProfile {
-  readonly points: readonly WallProfilePoint[]
-  readonly smooth?: boolean
-}
-
 /** A starting profile: a straight taper, or a concave curve that keeps most of the flare near the ground, the way a cut-earth cliff reads. */
 export function wallProfilePreset(shape: 'straight' | 'curve' | 'plumb', flare: number): WallProfile {
   switch (shape) {
     case 'plumb':
-      return { points: [{ out: 0, t: 0 }, { out: 0, t: 1 }] }
+      return { points: [{ out: 0, t: 0 }, { out: 0, t: 1 }], smooth: false }
     case 'straight':
-      return { points: [{ out: flare, t: 0 }, { out: 0, t: 1 }] }
+      return { points: [{ out: flare, t: 0 }, { out: 0, t: 1 }], smooth: false }
     case 'curve':
       return {
         points: [
@@ -110,15 +77,6 @@ export interface SketchMeshOptions {
   readonly rounds?: number
 }
 
-export interface Outline {
-  /** x, z pairs, counter-clockwise seen from above, no repeated closing point. */
-  readonly points: readonly (readonly [number, number])[]
-  /** Arc length at each point; the last edge closes to `perimeter`. */
-  readonly arc: readonly number[]
-  readonly perimeter: number
-  readonly area: number
-}
-
 export interface SketchMesh {
   readonly outline: Outline
   readonly cap: MeshBuffers
@@ -129,52 +87,6 @@ export interface SketchMesh {
 }
 
 type Vec2 = readonly [number, number]
-
-// --- outline -----------------------------------------------------------------
-
-/** Chaikin corner-cutting with corner points held fixed. */
-function round(points: readonly ProfilePoint[], rounds: number): ProfilePoint[] {
-  let current = [...points]
-  for (let r = 0; r < rounds; r++) {
-    const next: ProfilePoint[] = []
-    for (let i = 0; i < current.length; i++) {
-      const a = current[i]
-      const b = current[(i + 1) % current.length]
-      if (a.smooth) next.push({ x: a.x * 0.75 + b.x * 0.25, z: a.z * 0.75 + b.z * 0.25, smooth: true })
-      else next.push(a)
-      if (b.smooth) next.push({ x: a.x * 0.25 + b.x * 0.75, z: a.z * 0.25 + b.z * 0.75, smooth: true })
-    }
-    current = next
-  }
-  return current
-}
-
-function signedArea(points: readonly Vec2[]): number {
-  let sum = 0
-  for (let i = 0; i < points.length; i++) {
-    const [x0, z0] = points[i]
-    const [x1, z1] = points[(i + 1) % points.length]
-    sum += x0 * z1 - x1 * z0
-  }
-  return sum / 2
-}
-
-export function outlineOf(profile: Profile, rounds = 3): Outline {
-  let points: Vec2[] = round(profile.points, rounds).map((p) => [p.x, p.z] as const)
-  // Positive signed area in (x, z) is the orientation every normal below
-  // assumes; a profile clicked the other way round is just reversed.
-  const area = signedArea(points)
-  if (area < 0) points = points.reverse()
-  const arc: number[] = []
-  let s = 0
-  for (let i = 0; i < points.length; i++) {
-    arc.push(s)
-    const [x0, z0] = points[i]
-    const [x1, z1] = points[(i + 1) % points.length]
-    s += Math.hypot(x1 - x0, z1 - z0)
-  }
-  return { points, arc, perimeter: s, area: Math.abs(area) }
-}
 
 /** Outward unit normal of the edge leaving point `i`. */
 function edgeNormal(points: readonly Vec2[], i: number): Vec2 {
@@ -573,7 +485,7 @@ const EMPTY: MeshBuffers = {
 }
 
 export function meshSketch(profile: Profile, options: SketchMeshOptions): SketchMesh {
-  const outline = outlineOf(profile, options.rounds ?? 3)
+  const outline = outlineOf(profile.points, options.rounds ?? 3)
   const h = options.height
   const { cap, wall, lip } = options
   const wallProfile = wallProfilePolyline(options.profile ?? PLUMB)

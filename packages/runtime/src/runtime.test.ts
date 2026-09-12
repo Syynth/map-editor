@@ -6,6 +6,10 @@ import {
   defaultFacing,
   type CameraRig,
   type MapObject,
+  rootVoxel,
+  type MapDoc,
+  type ReadonlyMapDoc,
+  type VoxelStructure,
 } from '@map-editor/document'
 import { pickFacing, resolveDisplayMode } from './billboard'
 import {
@@ -16,6 +20,10 @@ import {
   yawWithinBounds,
 } from './camera'
 import { analyseCoverage } from './coverage'
+
+/** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
 
 function rig(overrides: Partial<CameraRig['bounds']> = {}, rest: Partial<CameraRig> = {}): CameraRig {
   const base = defaultCameraRig()
@@ -224,7 +232,7 @@ describe('coverage readout', () => {
   it('counts cliff faces no permitted angle can ever see', () => {
     const locked = rig({ yawMin: 0, yawMax: 0 })
     const doc = createMap(8, 8)
-    doc.terrain.height[27] = 8
+    ground(doc).terrain.height[27] = 8
     const report = analyseCoverage(doc, locked)
     expect(report.hiddenSurfaces.totalFaces).toBeGreaterThan(0)
     expect(report.hiddenSurfaces.hiddenFaces).toBeGreaterThan(0)

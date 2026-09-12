@@ -17,7 +17,13 @@
 import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
-import { allChunkKeys, type ReadonlyMapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
+import {
+  rootVoxel,
+  allChunkKeys,
+  type ReadonlyMapDoc,
+  type RgbaImage,
+  type SpriteAsset,
+} from '@map-editor/document'
 import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
 import { resolveDisplayMode, rgbaTexture } from './billboard'
 import { atlasFor, embedPngImages, type PngEncoder } from './images'
@@ -102,8 +108,10 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
 
   const mergedPositions: THREE.BufferGeometry[] = []
 
-  for (const key of allChunkKeys(doc.size.width, doc.size.height)) {
-    const mesh = meshTerrainChunk(doc, key)
+  // TRANSITIONAL: the export walks the root voxel volume's chunks.
+  const ground = rootVoxel(doc)
+  for (const key of allChunkKeys(ground.size.width, ground.size.height)) {
+    const mesh = meshTerrainChunk(doc, ground, key)
     if (mesh.solid.triangleCount > 0) {
       const geometry = geometryFrom(mesh.solid)
       if (options.merge) {
@@ -241,7 +249,7 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
       extrasVersion: EXTRAS_VERSION,
       formatVersion: doc.formatVersion,
       name: doc.name,
-      size: doc.size,
+      size: rootVoxel(doc).size,
       resolutionProfile: {
         texelDensity: doc.texelDensity,
         filtering: doc.filtering,
@@ -266,7 +274,7 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
         },
         backdrop: doc.atmosphere.backdrop,
       },
-      spawn: [doc.size.width / 2, 0, doc.size.height / 2],
+      spawn: [rootVoxel(doc).size.width / 2, 0, rootVoxel(doc).size.height / 2],
     },
   }
 

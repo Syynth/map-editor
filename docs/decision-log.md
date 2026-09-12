@@ -273,3 +273,11 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** The sketch lab (branch `lab/sketch`, apps/sketch-lab) proved the workflow: corner/smooth points with no handles, one height per sketch, tiers by nesting (a child's plane is its parent's cap), the two-material dressing, and click-to-select. Two things the lab added become part of the model: the wall's side profile is *drawn* — a polyline of (outward offset, height) points from ground to lip, smoothed like the outline, swept around it — not a parameter; and the lip style (flat / skirt / bevel) is a per-material choice to keep. Follow-up requirement, not for the lab: segments of a sketch that run along its parent's edge must be able to *link* so the two share one wall instead of stacking two. The mesher (`packages/geometry/src/sketch.ts`) is real code and lands on main; the lab app stays on its branch as the record.
 - **WHY:** Drawing an island and a tier on it took a handful of clicks and read as the reference art; the drawn profile gave the cut-earth silhouette a parameter could not; the doubled wall at a flush tier edge is the one visible flaw, and it is a data question (linked segments), not a workflow one.
+
+## No format migrations until real data exists
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** document
+- **SCOPE:** minor/local
+- **WHAT:** `formatVersion` bumps freely and old shapes are simply not read; `deserialize` rejects them. Migrations start when a level worth keeping exists.
+- **WHY:** Nothing has been authored outside prototypes; a migration now would be code protecting no data.

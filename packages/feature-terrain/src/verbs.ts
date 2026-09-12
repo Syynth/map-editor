@@ -34,6 +34,7 @@ import {
   type Cell,
   type Patch,
   type ReadonlyMapDoc,
+  type ReadonlyVoxel,
   type SurfaceAddress,
 } from '@map-editor/document'
 import { defaultTopTile, sheetLayoutFor } from '@map-editor/geometry'
@@ -78,15 +79,15 @@ export function activeVerb(params: TerrainParams): SculptVerb | PaintVerb {
 }
 
 /** Cells a stroke touches, given the shape the artist chose. */
-export function strokeCells(doc: ReadonlyMapDoc, params: Pick<TerrainParams, 'strokeShape' | 'brush'>, address: SurfaceAddress, anchor: Cell | null): Cell[] {
+export function strokeCells(voxel: ReadonlyVoxel, params: Pick<TerrainParams, 'strokeShape' | 'brush'>, address: SurfaceAddress, anchor: Cell | null): Cell[] {
   switch (params.strokeShape) {
     case 'rect':
       if (!anchor) return [[address.x, address.y]]
-      return rectCells(doc, anchor[0], anchor[1], address.x, address.y)
+      return rectCells(voxel, anchor[0], anchor[1], address.x, address.y)
     case 'fill':
-      return fillCells(doc, address.x, address.y)
+      return fillCells(voxel, address.x, address.y)
     case 'brush':
-      return brushCells(doc, address.x, address.y, params.brush)
+      return brushCells(voxel, address.x, address.y, params.brush)
   }
 }
 
@@ -120,10 +121,10 @@ export function terrainLabel(params: TerrainParams, modifiers: TerrainModifiers)
 }
 
 /** The tile the template would use at a cell with nothing painted over it. */
-export function templateTileAt(doc: ReadonlyMapDoc, x: number, y: number): number {
+export function templateTileAt(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, x: number, y: number): number {
   const layout = sheetLayoutFor(doc)
-  const material = doc.terrain.material[cellIndex(doc.size, x, y)]
-  return defaultTopTile(layout, material, autotileMask(doc, x, y))
+  const material = voxel.terrain.material[cellIndex(voxel.size, x, y)]
+  return defaultTopTile(layout, material, autotileMask(voxel, x, y))
 }
 
 /**
@@ -131,19 +132,19 @@ export function templateTileAt(doc: ReadonlyMapDoc, x: number, y: number): numbe
  * Answering with the change rather than making it keeps this pure: the caller
  * hands it to `deps.setParams`, which is an event at the tools actor.
  */
-export function eyedrop(doc: ReadonlyMapDoc, params: TerrainParams, address: SurfaceAddress): Partial<TerrainParams> {
+export function eyedrop(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, params: TerrainParams, address: SurfaceAddress): Partial<TerrainParams> {
   if (params.terrainMode === 'paint' && params.paintVerb === 'tint') {
-    const tint = tintPaint(doc.paint, address.x, address.y)
+    const tint = tintPaint(voxel.paint, address.x, address.y)
     return tint === undefined ? {} : { tint }
   }
   if (params.terrainMode === 'paint' && params.paintVerb === 'material') {
-    return { material: doc.terrain.material[cellIndex(doc.size, address.x, address.y)] }
+    return { material: voxel.terrain.material[cellIndex(voxel.size, address.x, address.y)] }
   }
   if (address.kind === SURFACE_CLIFF) {
-    const painted = cliffPaint(doc.paint, address.x, address.y, address.dir, address.level)
+    const painted = cliffPaint(voxel.paint, address.x, address.y, address.dir, address.level)
     return painted === undefined ? {} : { tile: painted }
   }
-  return { tile: topPaint(doc.paint, address.x, address.y) ?? templateTileAt(doc, address.x, address.y) }
+  return { tile: topPaint(voxel.paint, address.x, address.y) ?? templateTileAt(doc, voxel, address.x, address.y) }
 }
 
 /**
@@ -154,6 +155,7 @@ export function eyedrop(doc: ReadonlyMapDoc, params: TerrainParams, address: Sur
  */
 export function sculptPatches(
   doc: ReadonlyMapDoc,
+  voxel: ReadonlyVoxel,
   params: TerrainParams,
   address: SurfaceAddress,
   cells: Cell[],
@@ -162,34 +164,34 @@ export function sculptPatches(
 ): Patch[] {
   switch (params.sculptVerb) {
     case 'raise':
-      return raise(doc, cells, modifiers.shift ? -1 : 1)
+      return raise(doc, voxel, cells, modifiers.shift ? -1 : 1)
     case 'flatten':
-      return flatten(doc, cells, anchorHeight)
+      return flatten(doc, voxel, cells, anchorHeight)
     case 'ramp': {
       // Clicking a cliff face turns that edge into a ramp descending the way
       // the face points, which is the most direct reading of "toggle an edge
       // between cliff and ramp".
       const dir = address.kind === SURFACE_CLIFF ? address.dir : params.rampDir
-      return dir < 0 ? [] : setRamp(doc, cells, dir)
+      return dir < 0 ? [] : setRamp(doc, voxel, cells, dir)
     }
     case 'water':
-      if (modifiers.shift) return setWater(doc, cells, null)
+      if (modifiers.shift) return setWater(voxel, cells, null)
       // INTERIM (2026-09-12): pool one half-tile over the pressed cell, so
       // the verb does something visible on flat ground now that water is
       // never level with its ground. The verb is to be redesigned with the
       // layer view — water painted at the active layer — and this goes then.
-      return setWater(doc, cells, doc.terrain.height[cellIndex(doc.size, address.x, address.y)] + 1)
+      return setWater(voxel, cells, voxel.terrain.height[cellIndex(voxel.size, address.x, address.y)] + 1)
   }
 }
 
 /** One paint tick, by the same rule. */
-export function paintPatches(doc: ReadonlyMapDoc, params: TerrainParams, address: SurfaceAddress, cells: Cell[], modifiers: TerrainModifiers): Patch[] {
+export function paintPatches(voxel: ReadonlyVoxel, params: TerrainParams, address: SurfaceAddress, cells: Cell[], modifiers: TerrainModifiers): Patch[] {
   const erase = modifiers.shift
   switch (params.paintVerb) {
     case 'material':
-      return setMaterial(doc, cells, params.material)
+      return setMaterial(voxel, cells, params.material)
     case 'tint':
-      return paintTint(doc, cells, erase ? undefined : params.tint)
+      return paintTint(voxel, cells, erase ? undefined : params.tint)
     case 'tile':
       if (address.kind === SURFACE_CLIFF) {
         // Paint the band that was clicked. A brush wider than one cell walks
@@ -197,9 +199,9 @@ export function paintPatches(doc: ReadonlyMapDoc, params: TerrainParams, address
         const faces = cells
           .filter(([x, y]) => x === address.x || y === address.y)
           .map(([x, y]) => ({ x, y, dir: address.dir, level: address.level }))
-        return paintCliff(doc, faces, erase ? undefined : params.tile)
+        return paintCliff(voxel, faces, erase ? undefined : params.tile)
       }
-      if (address.kind === SURFACE_TOP) return paintTop(doc, cells, erase ? undefined : params.tile)
+      if (address.kind === SURFACE_TOP) return paintTop(voxel, cells, erase ? undefined : params.tile)
       return []
   }
 }

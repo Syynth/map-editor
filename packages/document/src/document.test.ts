@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { autotileMask, MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST } from './autotile'
 import { applyPatches, History, inversePatch, patchAddress, type Patch, type StrokeRecord } from './edits'
-import { cellIndex, createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject } from './document'
+import { cellIndex, createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
+import { childrenOf, descendantsOf, rootVoxel, type VoxelStructure } from './structure'
 import { deserialize, LoadError, serialize } from './io'
-import { addObject, brushCells, fillCells, flatten, paintTop, raise, removeObject, setRamp, updateObject } from './ops'
+import { addObject, addSketchPoint, addStructure, brushCells, closeSketch, createSketch, deleteSketchPoint, fillCells, flatten, paintTop, raise, removeObject, removeStructure, reparentStructure, setRamp, setSketch, updateObject } from './ops'
 import { cliffKey, countDormant, topKey } from './paint'
 import { EditorStore } from './store'
 import { groundHeight } from './terrain'
@@ -26,8 +27,12 @@ function objectAt(id: string, x: number, z: number): MapObject {
   }
 }
 
+/** The one voxel volume a fresh level has, as the mutable thing a test sets up. */
+const ground = (doc: MapDoc | ReadonlyMapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
 function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
-  doc.terrain.height[cellIndex(doc.size, x, y)] = h
+  const g = ground(doc)
+  g.terrain.height[cellIndex(g.size, x, y)] = h
 }
 
 // `JSON.parse` returns `any` here on purpose: the whole point of these tests
@@ -42,51 +47,51 @@ function parseOnDisk(doc: MapDoc) {
 describe('edits', () => {
   it('derives an exact inverse without the tool writing one', () => {
     const doc = createMap(4, 4)
-    const before = doc.terrain.height.slice()
+    const before = ground(doc).terrain.height.slice()
 
     const inverse = applyPatches(doc, [
-      { t: 'terrain', field: 'height', index: 5, value: 9 },
-      { t: 'terrain', field: 'height', index: 6, value: 7 },
+      { t: 'voxel', id: ground(doc).id, field: 'height', index: 5, value: 9 },
+      { t: 'voxel', id: ground(doc).id, field: 'height', index: 6, value: 7 },
     ])
-    expect(doc.terrain.height[5]).toBe(9)
+    expect(ground(doc).terrain.height[5]).toBe(9)
 
     applyPatches(doc, inverse)
-    expect(doc.terrain.height).toEqual(before)
+    expect(ground(doc).terrain.height).toEqual(before)
   })
 
   it('inverts repeated writes to one address in the right order', () => {
     const doc = createMap(4, 4)
-    doc.terrain.height[0] = 1
+    ground(doc).terrain.height[0] = 1
 
     const inverse = applyPatches(doc, [
-      { t: 'terrain', field: 'height', index: 0, value: 2 },
-      { t: 'terrain', field: 'height', index: 0, value: 3 },
+      { t: 'voxel', id: ground(doc).id, field: 'height', index: 0, value: 2 },
+      { t: 'voxel', id: ground(doc).id, field: 'height', index: 0, value: 3 },
     ])
-    expect(doc.terrain.height[0]).toBe(3)
+    expect(ground(doc).terrain.height[0]).toBe(3)
 
     applyPatches(doc, inverse)
-    expect(doc.terrain.height[0]).toBe(1)
+    expect(ground(doc).terrain.height[0]).toBe(1)
   })
 
   it('undoes and redoes through the history', () => {
     const doc = createMap(4, 4)
     const history = new History()
-    const patches = [{ t: 'terrain' as const, field: 'height' as const, index: 3, value: 11 }]
+    const patches = [{ t: 'voxel' as const, id: ground(doc).id, field: 'height' as const, index: 3, value: 11 }]
     history.push({ label: 'Raise', patches, inverse: applyPatches(doc, patches) })
 
-    expect(doc.terrain.height[3]).toBe(11)
+    expect(ground(doc).terrain.height[3]).toBe(11)
     history.undo(doc)
-    expect(doc.terrain.height[3]).toBe(2)
+    expect(ground(doc).terrain.height[3]).toBe(2)
     history.redo(doc)
-    expect(doc.terrain.height[3]).toBe(11)
+    expect(ground(doc).terrain.height[3]).toBe(11)
   })
 })
 
 describe('patch addresses and inverses', () => {
   it('keys a patch by the slot it writes, and nothing else', () => {
-    expect(patchAddress({ t: 'terrain', field: 'height', index: 7, value: 1 })).toBe(patchAddress({ t: 'terrain', field: 'height', index: 7, value: 9 }))
-    expect(patchAddress({ t: 'terrain', field: 'height', index: 7, value: 1 })).not.toBe(patchAddress({ t: 'terrain', field: 'water', index: 7, value: 1 }))
-    expect(patchAddress({ t: 'paint', layer: 'top', key: '1,2', value: 3 })).not.toBe(patchAddress({ t: 'paint', layer: 'cliff', key: '1,2', value: 3 }))
+    expect(patchAddress({ t: 'voxel', id: 'g', field: 'height', index: 7, value: 1 })).toBe(patchAddress({ t: 'voxel', id: 'g', field: 'height', index: 7, value: 9 }))
+    expect(patchAddress({ t: 'voxel', id: 'g', field: 'height', index: 7, value: 1 })).not.toBe(patchAddress({ t: 'voxel', id: 'g', field: 'water', index: 7, value: 1 }))
+    expect(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'top', key: '1,2', value: 3 })).not.toBe(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'cliff', key: '1,2', value: 3 }))
     expect(patchAddress({ t: 'object', id: 'a', value: undefined })).toBe('object:a')
     expect(patchAddress({ t: 'doc', field: 'camera', value: null })).toBe('doc:camera')
   })
@@ -94,13 +99,13 @@ describe('patch addresses and inverses', () => {
   it('reads the before-value the applier would have returned, without writing', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 6)
-    const patch: Patch = { t: 'terrain', field: 'height', index: cellIndex(doc.size, 1, 1), value: 9 }
+    const patch: Patch = { t: 'voxel', id: ground(doc).id, field: 'height', index: cellIndex(ground(doc).size, 1, 1), value: 9 }
     const before = inversePatch(doc, patch)
     expect(before).toEqual({ ...patch, value: 6 })
-    expect(doc.terrain.height[patch.index]).toBe(6)
+    expect(ground(doc).terrain.height[patch.index]).toBe(6)
     // Same answer as the applier, which is what makes the two paths agree.
     expect(applyPatches(doc, [patch])).toEqual([before])
-    expect(inversePatch(doc, { t: 'paint', layer: 'top', key: '0,0', value: 1 })).toEqual({ t: 'paint', layer: 'top', key: '0,0', value: undefined })
+    expect(inversePatch(doc, { t: 'voxelPaint', id: ground(doc).id, layer: 'top', key: '0,0', value: 1 })).toEqual({ t: 'voxelPaint', id: ground(doc).id, layer: 'top', key: '0,0', value: undefined })
   })
 })
 
@@ -137,29 +142,29 @@ describe('store', () => {
   it('records a stroke as the one entry its record describes', () => {
     const store = new EditorStore(createMap(8, 8))
     const stroke = compactingStroke(store, 'Raise')
-    for (let i = 0; i < 5; i++) stroke.apply(raise(store.reader.doc, [[i, 0]], 1))
+    for (let i = 0; i < 5; i++) stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[i, 0]], 1))
     stroke.end()
 
-    expect(store.reader.doc.terrain.height[0]).toBe(3)
+    expect(ground(store.reader.doc).terrain.height[0]).toBe(3)
     expect(store.reader.undoLabel()).toBe('Raise')
     store.undo()
-    for (let i = 0; i < 5; i++) expect(store.reader.doc.terrain.height[i]).toBe(2)
+    for (let i = 0; i < 5; i++) expect(ground(store.reader.doc).terrain.height[i]).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
   })
 
   it('applies every tick immediately but keeps no history until the record arrives', () => {
     const store = new EditorStore(createMap(8, 8))
     const stroke = compactingStroke(store, 'Raise')
-    stroke.apply(raise(store.reader.doc, [[0, 0]], 1))
+    stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
     // The terrain moved mid-drag, and the drag is not an undo entry yet.
-    expect(store.reader.doc.terrain.height[0]).toBe(3)
+    expect(ground(store.reader.doc).terrain.height[0]).toBe(3)
     expect(store.reader.canUndo()).toBe(false)
     expect(store.inStroke).toBe(true)
 
     // Undo mid-stroke is refused rather than closing the stroke early: the
     // old close-and-undo left the rest of the drag with no record at all.
     store.undo()
-    expect(store.reader.doc.terrain.height[0]).toBe(3)
+    expect(ground(store.reader.doc).terrain.height[0]).toBe(3)
 
     stroke.end()
     expect(store.reader.canUndo()).toBe(true)
@@ -172,19 +177,19 @@ describe('store', () => {
     // open stroke; for one commit it was recorded by nothing at all.
     const store = new EditorStore(createMap(8, 8))
     const stroke = compactingStroke(store, 'Raise')
-    stroke.apply(raise(store.reader.doc, [[0, 0]], 1))
-    store.apply('Elsewhere', raise(store.reader.doc, [[7, 7]], 1))
-    expect(store.reader.doc.terrain.height[cellIndex(store.reader.doc.size, 7, 7)]).toBe(3)
+    stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
+    store.apply('Elsewhere', raise(store.reader.doc, ground(store.reader.doc), [[7, 7]], 1))
+    expect(ground(store.reader.doc).terrain.height[cellIndex(ground(store.reader.doc).size, 7, 7)]).toBe(3)
 
     stroke.end()
     // Two entries, innermost last: the mid-stroke edit unwinds on its own undo
     // and the drag unwinds on the next.
     expect(store.reader.undoLabel()).toBe('Raise')
     store.undo()
-    expect(store.reader.doc.terrain.height[0]).toBe(2)
+    expect(ground(store.reader.doc).terrain.height[0]).toBe(2)
     expect(store.reader.undoLabel()).toBe('Elsewhere')
     store.undo()
-    expect(store.reader.doc.terrain.height[cellIndex(store.reader.doc.size, 7, 7)]).toBe(2)
+    expect(ground(store.reader.doc).terrain.height[cellIndex(ground(store.reader.doc).size, 7, 7)]).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
   })
 
@@ -196,16 +201,16 @@ describe('store', () => {
     // restores the state before the drag began, out of order.
     const store = new EditorStore(createMap(8, 8))
     const stroke = compactingStroke(store, 'Raise')
-    stroke.apply(raise(store.reader.doc, [[0, 0]], 1))
+    stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
 
-    store.apply('Collides', raise(store.reader.doc, [[0, 0]], 5))
+    store.apply('Collides', raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 5))
     // Refused whole: not applied, and not an entry.
-    expect(store.reader.doc.terrain.height[0]).toBe(3)
+    expect(ground(store.reader.doc).terrain.height[0]).toBe(3)
 
     stroke.end()
     expect(store.reader.undoLabel()).toBe('Raise')
     store.undo()
-    expect(store.reader.doc.terrain.height[0]).toBe(2)
+    expect(ground(store.reader.doc).terrain.height[0]).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
   })
 
@@ -232,15 +237,15 @@ describe('store', () => {
 
   it('refuses a stroke tick with no stroke open, since it addresses a replaced document', () => {
     const store = new EditorStore(createMap(8, 8))
-    store.applyStrokeTick(raise(store.reader.doc, [[0, 0]], 1))
-    expect(store.reader.doc.terrain.height[0]).toBe(2)
+    store.applyStrokeTick(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
+    expect(ground(store.reader.doc).terrain.height[0]).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
   })
 
   it('drops a record that arrives after the document was replaced', () => {
     const store = new EditorStore(createMap(8, 8, 'First'))
     const stroke = compactingStroke(store, 'Raise')
-    stroke.apply(raise(store.reader.doc, [[0, 0]], 1))
+    stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
     store.replace(createMap(4, 4, 'Second'))
     stroke.end()
     expect(store.reader.canUndo()).toBe(false)
@@ -257,14 +262,14 @@ describe('store', () => {
 
   it('drops no-op patches so idle brushing does not fill the undo stack', () => {
     const store = new EditorStore(createMap(8, 8))
-    store.apply('Flatten', flatten(store.reader.doc, [[0, 0]], 2))
+    store.apply('Flatten', flatten(store.reader.doc, ground(store.reader.doc), [[0, 0]], 2))
     expect(store.reader.canUndo()).toBe(false)
   })
 
   it('marks the neighbouring chunks dirty at a chunk border', () => {
     const store = new EditorStore(createMap(48, 48))
     store.takeDirtyChunks()
-    store.apply('Raise', raise(store.reader.doc, [[16, 16]], 1))
+    store.apply('Raise', raise(store.reader.doc, ground(store.reader.doc), [[16, 16]], 1))
     const dirty = store.takeDirtyChunks()
     expect(dirty).toContain('1,1')
     expect(dirty).toContain('0,0')
@@ -275,20 +280,20 @@ describe('paint survives sculpt', () => {
   it('never emits a paint patch from a sculpt op', () => {
     const doc = createMap(8, 8)
     const ops = [
-      raise(doc, [[1, 1]], 2),
-      flatten(doc, [[1, 1]], 5),
-      setRamp(doc, [[1, 1]], 0),
+      raise(doc, ground(doc), [[1, 1]], 2),
+      flatten(doc, ground(doc), [[1, 1]], 5),
+      setRamp(doc, ground(doc), [[1, 1]], 0),
     ]
     for (const patches of ops) {
-      expect(patches.some((patch) => patch.t === 'paint')).toBe(false)
+      expect(patches.some((patch) => patch.t === 'voxelPaint')).toBe(false)
     }
   })
 
   it('reports dormant paint as a diagnostic', () => {
     const doc = createMap(4, 4)
-    doc.paint.top[topKey(1, 1)] = 3
-    doc.paint.cliff[cliffKey(9, 9, 0, 0)] = 4
-    const counts = countDormant(doc.paint, (kind) => kind === 'top')
+    ground(doc).paint.top[topKey(1, 1)] = 3
+    ground(doc).paint.cliff[cliffKey(9, 9, 0, 0)] = 4
+    const counts = countDormant(ground(doc).paint, (kind) => kind === 'top')
     expect(counts.top).toBe(0)
     expect(counts.cliff).toBe(1)
   })
@@ -297,20 +302,20 @@ describe('paint survives sculpt', () => {
 describe('autotile', () => {
   it('connects to matching neighbours at the same height', () => {
     const doc = createMap(5, 5)
-    expect(autotileMask(doc, 2, 2)).toBe(MASK_NORTH | MASK_EAST | MASK_SOUTH | MASK_WEST)
+    expect(autotileMask(ground(doc), 2, 2)).toBe(MASK_NORTH | MASK_EAST | MASK_SOUTH | MASK_WEST)
   })
 
   it('breaks the connection across a height change', () => {
     const doc = createMap(5, 5)
     setHeight(doc, 3, 2, 6)
-    const mask = autotileMask(doc, 2, 2)
+    const mask = autotileMask(ground(doc), 2, 2)
     expect(mask & MASK_EAST).toBe(0)
     expect(mask & MASK_WEST).toBe(MASK_WEST)
   })
 
   it('treats the map border as connected so it does not ring the level in edge tiles', () => {
     const doc = createMap(5, 5)
-    expect(autotileMask(doc, 0, 0)).toBe(15)
+    expect(autotileMask(ground(doc), 0, 0)).toBe(15)
   })
 })
 
@@ -318,7 +323,7 @@ describe('terrain queries', () => {
   it('interpolates a ramp instead of stepping it', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 4)
-    doc.terrain.ramp[cellIndex(doc.size, 1, 1)] = 0 // descends east
+    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 1, 1)] = 0 // descends east
 
     const high = groundHeight(doc, 1.01, 1.5)
     const low = groundHeight(doc, 1.99, 1.5)
@@ -369,7 +374,7 @@ describe('object grounding', () => {
       { t: 'objectOrder', value: [id] },
     ])
 
-    store.apply('Raise', raise(store.reader.doc, [[2, 2]], 4))
+    store.apply('Raise', raise(store.reader.doc, ground(store.reader.doc), [[2, 2]], 4))
     expect(store.reader.doc.objects[id].position[1]).toBeCloseTo(3, 6)
 
     store.undo()
@@ -378,7 +383,7 @@ describe('object grounding', () => {
 
   it('leaves unanchored objects where they are', () => {
     const doc = createMap(8, 8)
-    const patches = raise(doc, [[2, 2]], 4)
+    const patches = raise(doc, ground(doc), [[2, 2]], 4)
     expect(patches.some((patch) => patch.t === 'object')).toBe(false)
   })
 })
@@ -386,15 +391,15 @@ describe('object grounding', () => {
 describe('brushes', () => {
   it('sizes a square brush correctly and clips at the map edge', () => {
     const doc = createMap(8, 8)
-    expect(brushCells(doc, 4, 4, { size: 3, shape: 'square' })).toHaveLength(9)
-    expect(brushCells(doc, 0, 0, { size: 3, shape: 'square' })).toHaveLength(4)
+    expect(brushCells(ground(doc), 4, 4, { size: 3, shape: 'square' })).toHaveLength(9)
+    expect(brushCells(ground(doc), 0, 0, { size: 3, shape: 'square' })).toHaveLength(4)
   })
 
   it('fills a region of matching cells', () => {
     const doc = createMap(8, 8)
     setHeight(doc, 4, 0, 9)
     for (let y = 0; y < 8; y++) setHeight(doc, 4, y, 9)
-    const region = fillCells(doc, 0, 0)
+    const region = fillCells(ground(doc), 0, 0)
     expect(region.length).toBe(32)
   })
 })
@@ -402,22 +407,42 @@ describe('brushes', () => {
 describe('io', () => {
   it('round-trips a document', () => {
     const store = new EditorStore(createMap(6, 6, 'Test Map'))
-    store.apply('Raise', raise(store.reader.doc, [[1, 1]], 3))
-    store.apply('Paint', paintTop(store.reader.doc, [[1, 1]], 7))
+    store.apply('Raise', raise(store.reader.doc, ground(store.reader.doc), [[1, 1]], 3))
+    store.apply('Paint', paintTop(ground(store.reader.doc), [[1, 1]], 7))
 
     const restored = deserialize(serialize(store.reader.doc))
     expect(restored.name).toBe('Test Map')
-    expect(restored.terrain.height).toEqual(store.reader.doc.terrain.height)
-    expect(restored.paint.top).toEqual(store.reader.doc.paint.top)
-    expect(restored.formatVersion).toBe(1)
+    expect(ground(restored).terrain.height).toEqual(ground(store.reader.doc).terrain.height)
+    expect(ground(restored).paint.top).toEqual(ground(store.reader.doc).paint.top)
+    expect(restored.formatVersion).toBe(2)
   })
 
-  it('migrates an unversioned document forward', () => {
+  it('refuses an older format outright: no migrations until data exists', () => {
     const doc = createMap(4, 4)
     const raw = parseOnDisk(doc)
+    raw.formatVersion = 1
+    expect(() => deserialize(JSON.stringify(raw))).toThrow(/no migration/)
     delete raw.formatVersion
-    const restored = deserialize(JSON.stringify(raw))
-    expect(restored.formatVersion).toBe(1)
+    expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
+  })
+
+  it('round-trips a sketch standing on the ground, and refuses a parent the map lacks', () => {
+    const doc = createMap(4, 4)
+    const sketch = createSketch(ground(doc).id, 'Island')
+    sketch.points = [
+      { x: 1, z: 1, smooth: true },
+      { x: 3, z: 1, smooth: false },
+      { x: 2, z: 3, smooth: true },
+    ]
+    sketch.closed = true
+    applyPatches(doc, addStructure(doc, sketch))
+    const restored = deserialize(serialize(doc))
+    expect(restored.structureOrder).toEqual(doc.structureOrder)
+    expect(restored.structures[sketch.id]).toEqual(sketch)
+
+    const raw = parseOnDisk(doc)
+    raw.structures[sketch.id].parent = 'nowhere'
+    expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
   })
 
   it('refuses a document from a newer editor', () => {
@@ -430,15 +455,130 @@ describe('io', () => {
   it('rejects a terrain array of the wrong length', () => {
     const doc = createMap(4, 4)
     const raw = parseOnDisk(doc)
-    raw.terrain.height = [1, 2, 3]
+    raw.structures[ground(doc).id].terrain.height = [1, 2, 3]
     expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
   })
 
   it('preserves dormant paint across a save and load', () => {
     const doc = createMap(4, 4)
-    doc.paint.cliff[cliffKey(1, 1, 0, 30)] = 5
-    doc.terrain.ramp[0] = NO_RAMP
+    ground(doc).paint.cliff[cliffKey(1, 1, 0, 30)] = 5
+    ground(doc).terrain.ramp[0] = NO_RAMP
     const restored = deserialize(serialize(doc))
-    expect(restored.paint.cliff[cliffKey(1, 1, 0, 30)]).toBe(5)
+    expect(ground(restored).paint.cliff[cliffKey(1, 1, 0, 30)]).toBe(5)
+  })
+})
+
+describe('structures', () => {
+  const island = (): MapDoc => {
+    const doc = createMap(6, 6)
+    const sketch = createSketch(ground(doc).id, 'Island', { x: 0, z: 0, yaw: 0 })
+    applyPatches(doc, addStructure(doc, sketch))
+    for (const p of [
+      { x: 1, z: 1, smooth: false },
+      { x: 5, z: 1, smooth: false },
+      { x: 5, z: 5, smooth: false },
+      { x: 1, z: 5, smooth: false },
+    ])
+      applyPatches(doc, addSketchPoint(doc, sketch.id, p))
+    applyPatches(doc, closeSketch(doc, sketch.id))
+    return doc
+  }
+  const sketchId = (doc: MapDoc) => doc.structureOrder[1]
+
+  it('a closed sketch on the ground raises the height under it by its layers', () => {
+    const doc = island()
+    // Ground is 2 half-tiles (1 unit); the sketch adds 3 layers (1.5 units) on top of the cap it stands on.
+    expect(groundHeight(doc, 3, 3)).toBeCloseTo(1 + 1.5, 6)
+    expect(groundHeight(doc, 0.5, 0.5)).toBeCloseTo(1, 6)
+  })
+
+  it('an open sketch has no height, and closing needs three points', () => {
+    const doc = createMap(6, 6)
+    const sketch = createSketch(ground(doc).id)
+    applyPatches(doc, addStructure(doc, sketch))
+    applyPatches(doc, addSketchPoint(doc, sketch.id, { x: 1, z: 1, smooth: true }))
+    applyPatches(doc, addSketchPoint(doc, sketch.id, { x: 4, z: 1, smooth: true }))
+    expect(closeSketch(doc, sketch.id)).toEqual([])
+    expect(groundHeight(doc, 2, 1)).toBeCloseTo(1, 6)
+  })
+
+  it("a tier stands on its parent: its base is the parent's cap, its placement relative to it", () => {
+    const doc = island()
+    const tier = createSketch(sketchId(doc), 'Tier', { x: 2, z: 2, yaw: 0 })
+    tier.points = [
+      { x: 0, z: 0, smooth: false },
+      { x: 2, z: 0, smooth: false },
+      { x: 2, z: 2, smooth: false },
+      { x: 0, z: 2, smooth: false },
+    ]
+    tier.closed = true
+    tier.layers = 2
+    applyPatches(doc, addStructure(doc, tier))
+    // World (3, 3) is inside the tier (local 1, 1): ground 1 + island 1.5 + tier 1.
+    expect(groundHeight(doc, 3, 3)).toBeCloseTo(3.5, 6)
+    // World (1.5, 1.5) is on the island but outside the tier.
+    expect(groundHeight(doc, 1.5, 1.5)).toBeCloseTo(2.5, 6)
+  })
+
+  it('a quarter turn turns the child with it', () => {
+    const doc = island()
+    const tier = createSketch(sketchId(doc), 'Tier', { x: 3, z: 3, yaw: 1 })
+    // A 2×1 bar along local +x; turned a quarter it lies along world +z.
+    tier.points = [
+      { x: 0, z: -0.5, smooth: false },
+      { x: 2, z: -0.5, smooth: false },
+      { x: 2, z: 0.5, smooth: false },
+      { x: 0, z: 0.5, smooth: false },
+    ]
+    tier.closed = true
+    tier.layers = 2
+    applyPatches(doc, addStructure(doc, tier))
+    expect(groundHeight(doc, 3, 4.5)).toBeCloseTo(3.5, 6)
+    expect(groundHeight(doc, 4.5, 3)).toBeCloseTo(2.5, 6)
+  })
+
+  it('deleting a structure takes everything standing on it, and undo brings all of it back', () => {
+    const doc = island()
+    const islandId = sketchId(doc)
+    const tier = createSketch(islandId, 'Tier')
+    applyPatches(doc, addStructure(doc, tier))
+    expect(descendantsOf(doc, islandId)).toEqual([tier.id])
+    const inverse = applyPatches(doc, removeStructure(doc, islandId))
+    expect(doc.structures[islandId]).toBeUndefined()
+    expect(doc.structures[tier.id]).toBeUndefined()
+    expect(doc.structureOrder).toEqual([ground(doc).id])
+    applyPatches(doc, inverse)
+    expect(doc.structures[tier.id]?.parent).toBe(islandId)
+    expect(childrenOf(doc, islandId).map((s) => s.id)).toEqual([tier.id])
+  })
+
+  it('refuses to make a structure its own ancestor', () => {
+    const doc = island()
+    const islandId = sketchId(doc)
+    const tier = createSketch(islandId, 'Tier')
+    applyPatches(doc, addStructure(doc, tier))
+    expect(reparentStructure(doc, islandId, tier.id)).toEqual([])
+    expect(reparentStructure(doc, islandId, islandId)).toEqual([])
+    expect(reparentStructure(doc, tier.id, null)).toHaveLength(1)
+  })
+
+  it("a sketch edit's inverse is a copy, not the live points", () => {
+    const doc = island()
+    const id = sketchId(doc)
+    const inverse = applyPatches(doc, setSketch(doc, id, { layers: 7 }))
+    expect(inverse).toEqual([{ t: 'sketch', id, field: 'layers', value: 3 }])
+    const beforePoints = applyPatches(doc, deleteSketchPoint(doc, id, 0))
+    // Mutating the document after the fact must not reach into the recorded inverse.
+    applyPatches(doc, addSketchPoint(doc, id, { x: 9, z: 9, smooth: true }))
+    const kept = beforePoints[0]
+    expect(kept.t === 'sketch' && kept.field === 'points' ? kept.value.length : -1).toBe(4)
+  })
+
+  it('a closed sketch that loses a point below three opens again', () => {
+    const doc = island()
+    const id = sketchId(doc)
+    applyPatches(doc, deleteSketchPoint(doc, id, 0))
+    applyPatches(doc, deleteSketchPoint(doc, id, 0))
+    expect((doc.structures[id] as { closed: boolean }).closed).toBe(false)
   })
 })

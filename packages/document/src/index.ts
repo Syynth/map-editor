@@ -1,29 +1,7 @@
 /**
- * The document package's public surface.
- *
- * Narrowed with the document actor (#13, #34). The cut is still *above* the
- * verbs (#3) — an op like `raise` returns patches this package applies — but
- * the applying is now the actor's job, so the machinery it hides has left the
- * barrel: `History`, `applyPatches`, `pruneNoops`, `Edit` and the `Patch`
- * family's members (`DocField`, `TerrainField`, `PaintLayer`) are internal.
- * `Patch` itself is exported as a type, with `patchAddress` and
- * `inversePatch`, because it now has an outside consumer (#34): the stroke
- * actor in `editor-host` compacts a stroke per address and needs to key a
- * patch and read its before-value without ever seeing a writer (#11). A
- * consumer still never constructs one; it sends the actor what an op returned.
- *
- * `createDocumentStore`, `DocumentWriter` and `EditorStore` are not here
- * either, and that is the whole point: the write handle's only consumer is
- * `actor.ts`, so the package exposes `createDocument` — a reader and the
- * actor's logic — and never a writer or the store behind it. The class was
- * exported until #66 step 7 because `main.tsx` constructed it and `App.tsx`
- * wrote through it; both go through the host now, so the second write path
- * closed and the class left with it.
- *
- * The list is written out rather than `export *` (#34) so that a narrowing
- * is a visible edit in one file rather than implied by a wildcard.
+ * The document package's public surface. Everything here is either data, a
+ * pure function over data, or the actor that owns the one write path.
  */
-
 export {
   ATMOSPHERE_PRESETS,
   DEFAULT_MATERIALS,
@@ -37,6 +15,7 @@ export {
   PRESET_REFERENCE_SPAN,
   cellIndex,
   createMap,
+  createVoxel,
   defaultCameraRig,
   defaultFacing,
   heightAt,
@@ -66,14 +45,39 @@ export type {
   ReadonlyMapDoc,
   TerrainData,
 } from './document'
-
+export { ancestorsOf, childrenOf, descendantsOf, outlineOf, pointInOutline, rootVoxel, structureOf } from './structure'
+export type {
+  LipStyle,
+  Outline,
+  Placement,
+  Profile,
+  ProfilePoint,
+  QuarterTurn,
+  ReadonlySketch,
+  ReadonlyStructure,
+  ReadonlyStructureTree,
+  ReadonlyVoxel,
+  SketchStructure,
+  Structure,
+  StructureBase,
+  StructureKind,
+  StructureTree,
+  VoxelStructure,
+  WallProfile,
+  WallProfilePoint,
+} from './structure'
 export type { RgbaImage, SpriteAsset } from './image'
-
 export {
+  DEFAULT_WALL_PROFILE,
   MAX_HEIGHT,
   MIN_HEIGHT,
   addObject,
+  addSketchPoint,
+  addStructure,
   brushCells,
+  closeSketch,
+  createSketch,
+  deleteSketchPoint,
   fillCells,
   flatten,
   groundedPosition,
@@ -81,17 +85,22 @@ export {
   paintCliff,
   paintTint,
   paintTop,
+  placeStructure,
   raise,
   rectCells,
   regroundObjects,
   removeObject,
+  removeStructure,
+  renameStructure,
+  reparentStructure,
   setMaterial,
   setRamp,
+  setSketch,
   setWater,
   updateObject,
+  updateSketchPoint,
 } from './ops'
-export type { Brush, BrushShape, Cell } from './ops'
-
+export type { Brush, BrushShape, Cell, SketchChanges } from './ops'
 export {
   cliffKey,
   cliffPaint,
@@ -102,19 +111,13 @@ export {
   topKey,
   topPaint,
 } from './paint'
-
 export type { DocumentReader } from './store'
-
 export { inversePatch, patchAddress } from './edits'
-export type { Patch, StrokeRecord } from './edits'
-
+export type { Patch, SketchField, SketchPatch, StrokeRecord, StructureMetaPatch } from './edits'
 export { createDocument } from './actor'
 export type { DocumentActorLogic, DocumentEvent, DocumentSource } from './actor'
-
 export { DOCUMENT_OWNER, documentKeys } from './commands'
-
 export { LoadError, deserialize, serialize } from './io'
-
 export {
   SURFACE_CLIFF,
   SURFACE_TOP,
@@ -126,17 +129,19 @@ export {
   sameSurface,
 } from './surface'
 export type { SurfaceAddress, SurfaceKind } from './surface'
-
 export {
   CORNER_OFFSETS,
   RAMP_DROP,
   RAMP_LOW_CORNERS,
   cellCentreWorld,
   cornerHeights,
+  frameOf,
   groundHeight,
+  toLocal,
+  toWorld,
+  voxelTop,
 } from './terrain'
-
+export type { Frame } from './terrain'
 export { MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST, autotileMask } from './autotile'
-
 export { CHUNK_SIZE, allChunkKeys, chunkBounds, chunkKey, parseChunkKey } from './chunks'
 export type { ChunkBounds } from './chunks'

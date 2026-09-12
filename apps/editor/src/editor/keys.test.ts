@@ -1,8 +1,25 @@
-import { createDocument, addObject, cellIndex, createMap, defaultFacing, raise, type MapObject, type Patch } from '@map-editor/document'
+import {
+  createDocument,
+  addObject,
+  cellIndex,
+  createMap,
+  defaultFacing,
+  raise,
+  type MapObject,
+  type Patch,
+  rootVoxel,
+  type MapDoc,
+  type ReadonlyMapDoc,
+  type VoxelStructure,
+} from '@map-editor/document'
 import { createHost, type Host } from '@map-editor/editor-host'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { installKeyDispatcher, type KeyTarget } from './keys'
+
+/** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
 
 /**
  * The keyboard, end to end: a synthetic `keydown` on a target the test owns,
@@ -88,22 +105,22 @@ const OBJECT: MapObject = {
 describe('the one keyboard dispatcher', () => {
   it('turns the undo chord into a dispatch the reader reflects', () => {
     const { host, keys } = editor()
-    const index = cellIndex(host.reader.doc.size, 2, 2)
-    const before = host.reader.doc.terrain.height[index]
-    apply(host, 'Raise', raise(host.reader.doc, [[2, 2]], 3))
-    expect(host.reader.doc.terrain.height[index]).toBe(before + 3)
+    const index = cellIndex(ground(host.reader.doc).size, 2, 2)
+    const before = ground(host.reader.doc).terrain.height[index]
+    apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[2, 2]], 3))
+    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 3)
 
     keys.send('keydown', 'z', { ctrlKey: true })
 
-    expect(host.reader.doc.terrain.height[index]).toBe(before)
+    expect(ground(host.reader.doc).terrain.height[index]).toBe(before)
     // Consumed, so the browser's own undo does not also fire.
     expect(keys.prevented).toEqual(['z'])
   })
 
   it('undoes once per keypress, not twice', () => {
     const { host, keys } = editor()
-    apply(host, 'Raise', raise(host.reader.doc, [[1, 1]], 1))
-    apply(host, 'Raise', raise(host.reader.doc, [[2, 2]], 1))
+    apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[1, 1]], 1))
+    apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[2, 2]], 1))
 
     keys.send('keydown', 'z', { ctrlKey: true })
 
@@ -190,7 +207,7 @@ describe('the one keyboard dispatcher', () => {
     // ignored everything over an input, `viewport.ts` tracked held keys
     // regardless. WASD in play mode reads that set every frame.
     const { host, keys } = editor()
-    apply(host, 'Raise', raise(host.reader.doc, [[2, 2]], 1))
+    apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[2, 2]], 1))
     const input = { tagName: 'INPUT' }
 
     keys.send('keydown', 'w', { target: input as unknown as EventTarget })

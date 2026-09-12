@@ -25,8 +25,10 @@ import {
   groundHeight,
   inBounds,
   type DocumentReader,
-  type ReadonlyMapDoc,
   type SurfaceAddress,
+  rootVoxel,
+  structureOf,
+  type ReadonlyVoxel,
 } from '@map-editor/document'
 import {
   Character,
@@ -483,7 +485,7 @@ export class Viewport {
    * thing to open on. Zooming out from there is one scroll away.
    */
   frameMap(): void {
-    const { width, height } = this.reader.doc.size
+    const { width, height } = rootVoxel(this.reader.doc).size
     const rig = this.reader.doc.camera
     this.orbit.target.set(width / 2, 1, height / 2)
     this.orbit.distance = Math.min(rig.bounds.distMax, Math.max(rig.bounds.distMin, rig.distance))
@@ -508,13 +510,13 @@ export class Viewport {
     }
     // The grid hugs the terrain rather than lying on the ground plane, where
     // any raised cell would bury it.
-    const doc = this.reader.doc
-    const { width, height } = doc.size
+    const voxel = rootVoxel(this.reader.doc)
+    const { width, height } = voxel.size
     const points: number[] = []
     const lift = 0.025
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => h * 0.5 + lift)
+        const [c00, c01, c11, c10] = cornerHeights(voxel, x, y).map((h) => h * 0.5 + lift)
         points.push(
           x, c00, y, x, c01, y + 1,
           x, c01, y + 1, x + 1, c11, y + 1,
@@ -533,14 +535,14 @@ export class Viewport {
   }
 
   /** A flat overlay quad hugging a cell's top surface. */
-  private cellQuad(doc: ReadonlyMapDoc, x: number, y: number, out: number[], lift = 0.03): void {
-    if (!inBounds(doc.size, x, y)) return
+  private cellQuad(voxel: ReadonlyVoxel, x: number, y: number, out: number[], lift = 0.03): void {
+    if (!inBounds(voxel.size, x, y)) return
     // On the ground, under any water: the water surface neither writes depth
     // nor draws before the overlays (see the scene's water material), so a
     // preview on a lake bed shows through the water rather than under it.
     // Under the layer view, the preview sits on the cap the column was cut to.
     const layers = this.options.layers
-    const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => (layers === null ? h : Math.min(h, layers.hi)) * 0.5 + lift)
+    const [c00, c01, c11, c10] = cornerHeights(voxel, x, y).map((h) => (layers === null ? h : Math.min(h, layers.hi)) * 0.5 + lift)
     out.push(
       x, c00, y, x, c01, y + 1, x + 1, c11, y + 1,
       x, c00, y, x + 1, c11, y + 1, x + 1, c10, y,
@@ -550,7 +552,7 @@ export class Viewport {
   private updateBrushPreview(): void {
     const doc = this.reader.doc
     const points: number[] = []
-    for (const [x, y] of this.options.brushPreview) this.cellQuad(doc, x, y, points)
+    for (const [x, y] of this.options.brushPreview) this.cellQuad(rootVoxel(doc), x, y, points)
     const geometry = this.brushMesh.geometry
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
     geometry.computeBoundingSphere()
@@ -563,7 +565,7 @@ export class Viewport {
     const points: number[] = []
 
     if (address && address.kind === SURFACE_TOP) {
-      this.cellQuad(doc, address.x, address.y, points, 0.04)
+      this.cellQuad(rootVoxel(doc), address.x, address.y, points, 0.04)
     } else if (address && address.kind === SURFACE_CLIFF) {
       // Highlight exactly the band that was picked, so the artist can see the
       // level their paint would land on.
@@ -863,8 +865,8 @@ export class Viewport {
 
   cellUnder(address: SurfaceAddress | null): number | null {
     if (!address) return null
-    const doc = this.reader.doc
-    if (!inBounds(doc.size, address.x, address.y)) return null
-    return doc.terrain.height[cellIndex(doc.size, address.x, address.y)]
+    const voxel = structureOf(this.reader.doc, address.structure, 'voxel')
+    if (!voxel || !inBounds(voxel.size, address.x, address.y)) return null
+    return voxel.terrain.height[cellIndex(voxel.size, address.x, address.y)]
   }
 }

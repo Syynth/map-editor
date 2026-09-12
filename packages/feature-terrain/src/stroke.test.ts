@@ -1,9 +1,25 @@
-import { SURFACE_CLIFF, SURFACE_TOP, cellIndex, createMap, topKey, type Patch, type ReadonlyMapDoc, type SurfaceAddress } from '@map-editor/document'
+import {
+  SURFACE_CLIFF,
+  SURFACE_TOP,
+  cellIndex,
+  createMap,
+  topKey,
+  type Patch,
+  type ReadonlyMapDoc,
+  type SurfaceAddress,
+  rootVoxel,
+  type MapDoc,
+  type VoxelStructure,
+} from '@map-editor/document'
 import { describe, expect, it } from 'vitest'
 
 import { terrainContract } from './stroke'
 import type { FeatureDeps } from './deps'
 import type { TerrainParams } from './verbs'
+
+/** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
 
 /**
  * The contract on its own, with a stub for the deps the host supplies. That
@@ -36,7 +52,7 @@ function stub(doc: ReadonlyMapDoc, overrides: Partial<TerrainParams> = {}) {
   return { deps, applied, current: () => params }
 }
 
-const top = (x: number, y: number): SurfaceAddress => ({ x, y, kind: SURFACE_TOP, dir: 0, level: 0 })
+const top = (x: number, y: number): SurfaceAddress => ({ structure: 'ground', x, y, kind: SURFACE_TOP, dir: 0, level: 0 })
 const sample = (address: SurfaceAddress | null, modifiers: Partial<{ shift: boolean; alt: boolean; ctrl: boolean }> = {}) => ({
   pick: { surface: address },
   modifiers: { shift: false, alt: false, ctrl: false, ...modifiers },
@@ -54,7 +70,7 @@ describe('a sculpt stroke steers by the press plane, with a dead zone', () => {
     const handler = terrainContract(deps).stroke(sample(top(1, 1)))
     expect(handler?.begin(sample(top(1, 1)))).toHaveLength(1)
     // The pointer has barely moved; the pick now says "cliff face of (1,1)".
-    const face: SurfaceAddress = { x: 1, y: 1, kind: SURFACE_CLIFF, dir: 2, level: 1 }
+    const face: SurfaceAddress = { structure: 'ground', x: 1, y: 1, kind: SURFACE_CLIFF, dir: 2, level: 1 }
     expect(handler?.move(planeSample(1.5, 1.6, face))).toEqual([])
     expect(handler?.move(planeSample(1.9, 1.9, face))).toEqual([])
   })
@@ -92,7 +108,7 @@ describe('a sculpt stroke steers by the press plane, with a dead zone', () => {
     // The plane says (1,1) still; the pick says (3,3). Paint follows the pick.
     const patches = handler?.move(planeSample(1.5, 1.5, top(3, 3)))
     expect(patches).toHaveLength(1)
-    expect(patches?.[0]).toMatchObject({ t: 'terrain', field: 'material', index: cellIndex(doc.size, 3, 3), value: 1 })
+    expect(patches?.[0]).toMatchObject({ t: 'voxel', id: 'ground', field: 'material', index: cellIndex(ground(doc).size, 3, 3), value: 1 })
   })
 })
 
@@ -104,7 +120,7 @@ describe('the terrain tool contract', () => {
 
     expect(handler?.begin(sample(top(1, 1)))).toHaveLength(1)
     expect(applied).toEqual([])
-    expect(doc.terrain.height[cellIndex(doc.size, 1, 1)]).toBe(2)
+    expect(ground(doc).terrain.height[cellIndex(ground(doc).size, 1, 1)]).toBe(2)
   })
 
   it('skips a move that stays on the cell the last tick edited', () => {
@@ -139,7 +155,7 @@ describe('the terrain tool contract', () => {
 
   it('alt picks a tile up instead of editing, and only on the press', () => {
     const doc = createMap(8, 8)
-    doc.paint.top[topKey(2, 2)] = 9
+    ground(doc).paint.top[topKey(2, 2)] = 9
     const { deps, current } = stub(doc, { terrainMode: 'paint', paintVerb: 'tile' })
     const handler = terrainContract(deps).stroke(sample(top(2, 2), { alt: true }))
 
@@ -148,19 +164,19 @@ describe('the terrain tool contract', () => {
 
     // A move with alt still held changes nothing further: the eyedropper is a
     // click, not a drag.
-    doc.paint.top[topKey(3, 3)] = 4
+    ground(doc).paint.top[topKey(3, 3)] = 4
     expect(handler?.move(sample(top(3, 3), { alt: true }))).toEqual([])
     expect(current().tile).toBe(9)
   })
 
   it('turns a clicked cliff face into a ramp descending the way it points', () => {
-    const cliff: SurfaceAddress = { x: 2, y: 2, kind: SURFACE_CLIFF, dir: 3, level: 1 }
+    const cliff: SurfaceAddress = { structure: 'ground', x: 2, y: 2, kind: SURFACE_CLIFF, dir: 3, level: 1 }
     const doc = createMap(8, 8)
     const { deps } = stub(doc, { sculptVerb: 'ramp' })
     const handler = terrainContract(deps).stroke(sample(cliff))
 
     // `rampDir` is -1 — "click a cliff" — so the direction comes from the face.
-    expect(handler?.begin(sample(cliff))).toEqual([{ t: 'terrain', field: 'ramp', index: cellIndex(doc.size, 2, 2), value: 3 }])
+    expect(handler?.begin(sample(cliff))).toEqual([{ t: 'voxel', id: 'ground', field: 'ramp', index: cellIndex(ground(doc).size, 2, 2), value: 3 }])
   })
 
   it('declines a press that missed the terrain', () => {

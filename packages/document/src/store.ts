@@ -68,6 +68,7 @@ import {
 } from './edits'
 import type { MapDoc, ReadonlyMapDoc } from './document'
 import { CHUNK_SIZE, chunkKey } from './chunks'
+import { descendantsOf, rootVoxel, type ReadonlyVoxel } from './structure'
 
 type Listener = () => void
 
@@ -114,6 +115,7 @@ export interface DocumentReader {
    */
   hasDirtyChunks(): boolean
   takeDirtyChunks(): string[]
+  takeDirtyStructures(): string[]
   canUndo(): boolean
   canRedo(): boolean
   undoLabel(): string | null
@@ -156,6 +158,7 @@ export class EditorStore implements DocumentWriter {
 
   private listeners = new Set<Listener>()
   private dirtyChunks = new Set<string>()
+  private dirtyStructures = new Set<string>()
   private stroke: OpenStroke | null = null
 
   /**
@@ -188,6 +191,7 @@ export class EditorStore implements DocumentWriter {
       getSnapshot: this.getSnapshot,
       hasDirtyChunks: () => this.hasDirtyChunks(),
       takeDirtyChunks: () => this.takeDirtyChunks(),
+      takeDirtyStructures: () => this.takeDirtyStructures(),
       // False while a stroke is open: the entry it will produce does not exist
       // yet, so an undo now would skip past the drag in progress and leave its
       // applied patches with no record to unwind them.
@@ -229,12 +233,30 @@ export class EditorStore implements DocumentWriter {
   }
 
   markAllDirty(): void {
-    const { width, height } = this.doc.size
-    for (let cy = 0; cy < Math.ceil(height / CHUNK_SIZE); cy++) {
-      for (let cx = 0; cx < Math.ceil(width / CHUNK_SIZE); cx++) {
-        this.dirtyChunks.add(chunkKey(cx, cy))
+    // TRANSITIONAL: chunk keys are the root voxel's; every other structure is
+    // marked whole. The per-structure runtime step keys chunks by structure.
+    let root: ReadonlyVoxel | null
+    try {
+      root = rootVoxel(this.doc)
+    } catch {
+      root = null
+    }
+    if (root) {
+      const { width, height } = root.size
+      for (let cy = 0; cy < Math.ceil(height / CHUNK_SIZE); cy++) {
+        for (let cx = 0; cx < Math.ceil(width / CHUNK_SIZE); cx++) {
+          this.dirtyChunks.add(chunkKey(cx, cy))
+        }
       }
     }
+    for (const id of this.doc.structureOrder) this.dirtyStructures.add(id)
+  }
+
+  /** Structures whose own data changed since last taken — a sketch's points, a placement, an add or a remove. */
+  takeDirtyStructures(): string[] {
+    const out = [...this.dirtyStructures]
+    this.dirtyStructures.clear()
+    return out
   }
 
   takeDirtyChunks(): string[] {
@@ -282,52 +304,32 @@ export class EditorStore implements DocumentWriter {
   }
 
   private dirtyFromPatch(patch: Patch): void {
-    if (patch.t === 'terrain') {
-      const width = this.doc.size.width
-      this.dirtyCell(patch.index % width, Math.floor(patch.index / width))
-    } else if (patch.t === 'paint') {
-      const [x, y] = patch.key.split(',').map(Number)
-      this.dirtyCell(x, y)
+    if (patch.t === 'voxel' || patch.t === 'voxelPaint') {
+      const voxel = this.doc.structures[patch.id]
+      if (!voxel || voxel.kind !== 'voxel') return
+      // TRANSITIONAL: only the root voxel has chunks the runtime draws.
+      if (voxel.parent !== null) {
+        this.dirtyStructures.add(patch.id)
+        return
+      }
+      if (patch.t === 'voxel') {
+        const width = voxel.size.width
+        this.dirtyCell(patch.index % width, Math.floor(patch.index / width))
+      } else {
+        const [x, y] = patch.key.split(',').map(Number)
+        this.dirtyCell(x, y)
+      }
+    } else if (patch.t === 'sketch' || patch.t === 'structure' || patch.t === 'structure.meta') {
+      this.dirtyStructures.add(patch.id)
+      // A moved or removed structure moves everything standing on it.
+      for (const id of descendantsOf(this.doc, patch.id)) this.dirtyStructures.add(id)
+    } else if (patch.t === 'structureOrder') {
+      for (const id of patch.value) this.dirtyStructures.add(id)
     } else if (patch.t === 'doc' && (patch.field === 'materials' || patch.field === 'texelDensity')) {
       this.markAllDirty()
     }
   }
 
-  /**
-   * Apply an edit as its own undo entry — ALWAYS, stroke open or not. An app
-   * write that lands mid-drag (the Delete keybinding fires during a pointer
-   * drag: `keydown` is on `window`, and pointer capture does not stop it) is
-   * an ordinary edit that happens to be concurrent with a stroke, and it gets
-   * an ordinary entry. A stroke's own ticks come through `applyStrokeTick`.
-   *
-   * The one thing a concurrent `apply` may NOT do is address what the open
-   * stroke addresses, and that is refused here rather than trusted to the
-   * caller. Two entries over one address are two INDEPENDENT records whose
-   * order on the stack does not match the order the writes happened in, and
-   * unwinding them puts the document in a state neither entry describes:
-   * delete the object being dragged and `apply` records "object A gone,
-   * objectOrder without A" while `endStroke` records "object A at the drag's
-   * end"; the first undo pops the stroke, writes `doc.objects[A]` and leaves
-   * `objectOrder` — owned only by the other entry — without it. An orphan.
-   *
-   * Folding the concurrent write into the open stroke is what the store used
-   * to do, and it was order-correct, but compaction moved the stroke's record
-   * out to the actor (#11) and there is nothing here to fold into any more.
-   * So the collision is refused instead: the stroke claimed the address
-   * first and keeps it until it closes. The host publishes the same fact as
-   * the `host.stroking` context key, which is how a keybinding sees the
-   * refusal coming: `selection.delete` is unavailable mid-drag rather than
-   * firing into a write this would refuse.
-   *
-   * Only that direction. An `apply` at an address the stroke has NOT touched
-   * yet is fine even if the drag later crosses it, because the stroke records
-   * its before-value lazily, at the tick that first writes the address: the
-   * value it would restore is the one this `apply` left, and the two entries
-   * unwind newest-first in exactly the order they were written. It is the
-   * address the stroke got to FIRST that makes the stack disagree with time,
-   * because the stroke's before-value for it predates an entry sitting under
-   * the stroke's own on the stack.
-   */
   apply(label: string, patches: Patch[]): void {
     const pruned = pruneNoops(this.doc, patches)
     if (pruned.length === 0) return

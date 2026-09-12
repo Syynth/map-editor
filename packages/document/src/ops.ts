@@ -1,29 +1,16 @@
 /**
- * Editing operations.
+ * Edit operations: functions from the document to patches. Nothing here
+ * mutates; the store applies what these return and keeps the inverse.
  *
- * Every op is a pure function from the document plus some arguments to a list
- * of patches. Nothing here mutates; the store applies the patches and derives
- * the inverse. That means a new tool gets undo, redo, stroke coalescing and
- * dirty-chunk tracking by writing one of these and nothing else.
- *
- * NOTE ON THE PAINT INVARIANT. Sculpt ops in this file write to `terrain.*`
- * and never to `paint.*`. That is not an oversight — it is the mechanism by
- * which painted work survives geometry edits (see paint.ts). Do not "tidy up"
- * paint here.
+ * Terrain ops take the voxel structure they edit — patches carry its id —
+ * so two volumes in one level never share an index. Object grounding asks
+ * the whole level, since an object can stand on any structure.
  */
 
 import type { Patch } from './edits'
-import {
-  NO_RAMP,
-  NO_WATER,
-  cellIndex,
-  inBounds,
-  worldHeight,
-  type DeepReadonly,
-  type MapObject,
-  type ReadonlyMapDoc,
-} from './document'
+import { NO_RAMP, NO_WATER, cellIndex, inBounds, newId, worldHeight, type DeepReadonly, type MapObject, type ReadonlyMapDoc } from './document'
 import { cliffKey, tintKey, topKey } from './paint'
+import { descendantsOf, type Placement, type ProfilePoint, type ReadonlySketch, type ReadonlyVoxel, type SketchStructure, type Structure } from './structure'
 import { groundHeight } from './terrain'
 
 export type BrushShape = 'square' | 'circle'
@@ -35,14 +22,15 @@ export interface Brush {
 
 export type Cell = [number, number]
 
-/** Cells covered by a brush centred on a cell. */
-export function brushCells(doc: ReadonlyMapDoc, cx: number, cy: number, brush: Brush): Cell[] {
+// --- cell selection ----------------------------------------------------------
+
+export function brushCells(voxel: ReadonlyVoxel, cx: number, cy: number, brush: Brush): Cell[] {
   const cells: Cell[] = []
   const radius = Math.floor((brush.size - 1) / 2)
   const extra = (brush.size - 1) % 2
   for (let y = cy - radius; y <= cy + radius + extra; y++) {
     for (let x = cx - radius; x <= cx + radius + extra; x++) {
-      if (!inBounds(doc.size, x, y)) continue
+      if (!inBounds(voxel.size, x, y)) continue
       if (brush.shape === 'circle') {
         const dx = x - cx
         const dy = y - cy
@@ -54,28 +42,25 @@ export function brushCells(doc: ReadonlyMapDoc, cx: number, cy: number, brush: B
   return cells
 }
 
-/** Cells in the rectangle spanned by two corners, clipped to the map. */
-export function rectCells(doc: ReadonlyMapDoc, ax: number, ay: number, bx: number, by: number): Cell[] {
+export function rectCells(voxel: ReadonlyVoxel, ax: number, ay: number, bx: number, by: number): Cell[] {
   const cells: Cell[] = []
   const x0 = Math.max(0, Math.min(ax, bx))
-  const x1 = Math.min(doc.size.width - 1, Math.max(ax, bx))
+  const x1 = Math.min(voxel.size.width - 1, Math.max(ax, bx))
   const y0 = Math.max(0, Math.min(ay, by))
-  const y1 = Math.min(doc.size.height - 1, Math.max(ay, by))
+  const y1 = Math.min(voxel.size.height - 1, Math.max(ay, by))
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) cells.push([x, y])
   return cells
 }
 
-/** Flood fill across cells matching the seed's material and height. */
-export function fillCells(doc: ReadonlyMapDoc, sx: number, sy: number, limit = 4096): Cell[] {
-  if (!inBounds(doc.size, sx, sy)) return []
-  const seed = cellIndex(doc.size, sx, sy)
-  const material = doc.terrain.material[seed]
-  const height = doc.terrain.height[seed]
-
+/** Flood fill over cells of the same material and height, capped so a runaway fill stays interactive. */
+export function fillCells(voxel: ReadonlyVoxel, sx: number, sy: number, limit = 4096): Cell[] {
+  if (!inBounds(voxel.size, sx, sy)) return []
+  const seed = cellIndex(voxel.size, sx, sy)
+  const material = voxel.terrain.material[seed]
+  const height = voxel.terrain.height[seed]
   const seen = new Set<number>([seed])
   const out: Cell[] = []
   const queue: Cell[] = [[sx, sy]]
-
   while (queue.length > 0 && out.length < limit) {
     const [x, y] = queue.shift() as Cell
     out.push([x, y])
@@ -87,11 +72,11 @@ export function fillCells(doc: ReadonlyMapDoc, sx: number, sy: number, limit = 4
     ]) {
       const nx = x + dx
       const ny = y + dy
-      if (!inBounds(doc.size, nx, ny)) continue
-      const index = cellIndex(doc.size, nx, ny)
+      if (!inBounds(voxel.size, nx, ny)) continue
+      const index = cellIndex(voxel.size, nx, ny)
       if (seen.has(index)) continue
-      if (doc.terrain.material[index] !== material) continue
-      if (doc.terrain.height[index] !== height) continue
+      if (voxel.terrain.material[index] !== material) continue
+      if (voxel.terrain.height[index] !== height) continue
       seen.add(index)
       queue.push([nx, ny])
     }
@@ -99,105 +84,90 @@ export function fillCells(doc: ReadonlyMapDoc, sx: number, sy: number, limit = 4
   return out
 }
 
+// --- sculpt ------------------------------------------------------------------
+
 export const MIN_HEIGHT = 0
 export const MAX_HEIGHT = 40
 
-// --- sculpt ------------------------------------------------------------------
-
-export function raise(doc: ReadonlyMapDoc, cells: Cell[], delta: number): Patch[] {
+export function raise(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], delta: number): Patch[] {
   const patches: Patch[] = []
   for (const [x, y] of cells) {
-    const index = cellIndex(doc.size, x, y)
-    const next = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, doc.terrain.height[index] + delta))
-    patches.push({ t: 'terrain', field: 'height', index, value: next }, ...drainedBy(doc, index, next))
+    const index = cellIndex(voxel.size, x, y)
+    const next = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, voxel.terrain.height[index] + delta))
+    patches.push({ t: 'voxel', id: voxel.id, field: 'height', index, value: next }, ...drainedBy(voxel, index, next))
   }
-  return [...patches, ...regroundObjects(doc, cells, patches)]
+  return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
 }
 
-/**
- * Water is a surface over the terrain, never level with it (ruling of
- * 2026-09-12): a column whose ground reaches its water line has no water.
- * Every height write goes through here so the invariant holds in the same
- * edit rather than depending on whoever sculpted to remember it.
- */
-function drainedBy(doc: ReadonlyMapDoc, index: number, height: number): Patch[] {
-  const water = doc.terrain.water[index]
-  return water !== NO_WATER && height >= water ? [{ t: 'terrain', field: 'water', index, value: NO_WATER }] : []
+/** Water cannot sit at or below the terrain under it (ruling of 2026-09-12): a column raised to its water line drains. */
+function drainedBy(voxel: ReadonlyVoxel, index: number, height: number): Patch[] {
+  const water = voxel.terrain.water[index]
+  return water !== NO_WATER && height >= water ? [{ t: 'voxel', id: voxel.id, field: 'water', index, value: NO_WATER }] : []
 }
 
-export function flatten(doc: ReadonlyMapDoc, cells: Cell[], height: number): Patch[] {
+export function flatten(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], height: number): Patch[] {
   const clamped = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, height))
   const patches: Patch[] = cells.flatMap(([x, y]) => {
-    const index = cellIndex(doc.size, x, y)
-    return [{ t: 'terrain', field: 'height', index, value: clamped }, ...drainedBy(doc, index, clamped)]
+    const index = cellIndex(voxel.size, x, y)
+    return [{ t: 'voxel', id: voxel.id, field: 'height', index, value: clamped }, ...drainedBy(voxel, index, clamped)]
   })
-  return [...patches, ...regroundObjects(doc, cells, patches)]
+  return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
 }
 
-export function setMaterial(doc: ReadonlyMapDoc, cells: Cell[], material: number): Patch[] {
+export function setMaterial(voxel: ReadonlyVoxel, cells: Cell[], material: number): Patch[] {
   return cells.map(([x, y]) => ({
-    t: 'terrain',
+    t: 'voxel',
+    id: voxel.id,
     field: 'material',
-    index: cellIndex(doc.size, x, y),
+    index: cellIndex(voxel.size, x, y),
     value: material,
   }))
 }
 
-/** Toggle a cell between a cliff edge and a ramp descending toward `dir`. */
-export function setRamp(doc: ReadonlyMapDoc, cells: Cell[], dir: number): Patch[] {
+export function setRamp(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], dir: number): Patch[] {
   const patches: Patch[] = cells.map(([x, y]) => {
-    const index = cellIndex(doc.size, x, y)
-    const current = doc.terrain.ramp[index]
+    const index = cellIndex(voxel.size, x, y)
+    const current = voxel.terrain.ramp[index]
     return {
-      t: 'terrain',
+      t: 'voxel',
+      id: voxel.id,
       field: 'ramp',
       index,
       value: current === dir ? NO_RAMP : dir,
     }
   })
-  return [...patches, ...regroundObjects(doc, cells, patches)]
+  return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
 }
 
-/**
- * Set the water line, or clear it with `null`. A line at or below a column's
- * ground is not water (see `drainedBy`), so such a cell is left alone rather
- * than given an invisible, invalid value.
- */
-export function setWater(doc: ReadonlyMapDoc, cells: Cell[], level: number | null): Patch[] {
+/** Water at or below the terrain is not a state (ruling of 2026-09-12): such cells are left alone. */
+export function setWater(voxel: ReadonlyVoxel, cells: Cell[], level: number | null): Patch[] {
   const patches: Patch[] = []
   for (const [x, y] of cells) {
-    const index = cellIndex(doc.size, x, y)
-    if (level !== null && level <= doc.terrain.height[index]) continue
-    patches.push({ t: 'terrain', field: 'water', index, value: level === null ? NO_WATER : level })
+    const index = cellIndex(voxel.size, x, y)
+    if (level !== null && level <= voxel.terrain.height[index]) continue
+    patches.push({ t: 'voxel', id: voxel.id, field: 'water', index, value: level === null ? NO_WATER : level })
   }
   return patches
 }
 
-
 // --- paint -------------------------------------------------------------------
 
-export function paintTop(doc: ReadonlyMapDoc, cells: Cell[], tile: number | undefined): Patch[] {
-  void doc
-  return cells.map(([x, y]) => ({ t: 'paint', layer: 'top', key: topKey(x, y), value: tile }))
+export function paintTop(voxel: ReadonlyVoxel, cells: Cell[], tile: number | undefined): Patch[] {
+  return cells.map(([x, y]) => ({ t: 'voxelPaint', id: voxel.id, layer: 'top', key: topKey(x, y), value: tile }))
 }
 
-export function paintCliff(
-  doc: ReadonlyMapDoc,
-  faces: Array<{ x: number; y: number; dir: number; level: number }>,
-  tile: number | undefined,
-): Patch[] {
-  void doc
+export function paintCliff(voxel: ReadonlyVoxel, faces: Array<{ x: number; y: number; dir: number; level: number }>, tile: number | undefined): Patch[] {
   return faces.map((face) => ({
-    t: 'paint',
+    t: 'voxelPaint',
+    id: voxel.id,
     layer: 'cliff',
     key: cliffKey(face.x, face.y, face.dir, face.level),
     value: tile,
   }))
 }
 
-export function paintTint(doc: ReadonlyMapDoc, cells: Cell[], color: number | undefined): Patch[] {
-  void doc
-  return cells.map(([x, y]) => ({ t: 'paint', layer: 'tint', key: tintKey(x, y), value: color }))
+export function paintTint(voxel: ReadonlyVoxel, cells: Cell[], color: number | undefined): Patch[] {
+  return cells.map(([x, y]) => ({ t: 'voxelPaint', id: voxel.id, layer: 'tint', key: tintKey(x, y), value: color }))
 }
 
 // --- objects -----------------------------------------------------------------
@@ -216,13 +186,6 @@ export function removeObject(doc: ReadonlyMapDoc, id: string): Patch[] {
   ]
 }
 
-/**
- * The plural form, for `objects.delete`. Not `ids.flatMap(removeObject)`:
- * every call rebuilds the WHOLE order from the document as it stands now, and
- * the document has not been written yet, so the second list would still
- * contain the first id and the last patch to land would put it back. The
- * order is filtered once, against the whole doomed set.
- */
 export function removeObjects(doc: ReadonlyMapDoc, ids: readonly string[]): Patch[] {
   const doomed = new Set(ids.filter((id) => doc.objects[id]))
   if (doomed.size === 0) return []
@@ -238,13 +201,6 @@ export function updateObject(doc: ReadonlyMapDoc, id: string, changes: Partial<M
   return [{ t: 'object', id, value: { ...cloneObject(existing), ...changes, id } }]
 }
 
-/**
- * A patch carries a value the applier will install as-is, so an object read
- * through the readonly view is copied before it goes into one: the copy is
- * what the type asks for (`MapObject`, with mutable tuples), and it is also
- * what keeps the undo inverse — which captures the value being replaced —
- * from aliasing the value replacing it.
- */
 function cloneObject(object: DeepReadonly<MapObject>): MapObject {
   return {
     ...object,
@@ -255,39 +211,36 @@ function cloneObject(object: DeepReadonly<MapObject>): MapObject {
 }
 
 /**
- * Grounding. An object anchored to a cell rides the terrain, so sculpting
- * moves it instead of burying it. Called by the sculpt ops above with the
- * heights they are about to write, since the document has not changed yet.
+ * Objects anchored to cells a sculpt is about to change follow the ground:
+ * the pending height/ramp patches are applied to a scratch copy of the
+ * voxel and every anchored object on a touched cell is re-grounded against
+ * the level as it will be.
  */
-export function regroundObjects(doc: ReadonlyMapDoc, cells: Cell[], pending: Patch[]): Patch[] {
+export function regroundObjects(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], pending: Patch[]): Patch[] {
   if (doc.objectOrder.length === 0) return []
-
   const touched = new Set(cells.map(([x, y]) => `${x},${y}`))
   const heightOverride = new Map<number, number>()
   const rampOverride = new Map<number, number>()
   for (const patch of pending) {
-    if (patch.t !== 'terrain') continue
+    if (patch.t !== 'voxel' || patch.id !== voxel.id) continue
     if (patch.field === 'height') heightOverride.set(patch.index, patch.value)
     if (patch.field === 'ramp') rampOverride.set(patch.index, patch.value)
   }
   if (heightOverride.size === 0 && rampOverride.size === 0) return []
-
-  // Evaluate the ground against a shallow view of the post-edit document,
-  // rather than applying and rolling back. The two copied arrays are the only
-  // thing written, and they are written before the view is typed readonly.
-  const height = doc.terrain.height.slice()
-  const ramp = doc.terrain.ramp.slice()
+  const height = voxel.terrain.height.slice()
+  const ramp = voxel.terrain.ramp.slice()
   for (const [index, value] of heightOverride) height[index] = value
   for (const [index, value] of rampOverride) ramp[index] = value
-  const after: ReadonlyMapDoc = { ...doc, terrain: { ...doc.terrain, height, ramp } }
-
+  const after: ReadonlyMapDoc = {
+    ...doc,
+    structures: { ...doc.structures, [voxel.id]: { ...voxel, terrain: { ...voxel.terrain, height, ramp } } },
+  }
   const patches: Patch[] = []
   for (const id of doc.objectOrder) {
     const object = doc.objects[id]
     if (!object?.anchorCell) continue
     const [ax, ay] = object.anchorCell
     if (!touched.has(`${ax},${ay}`)) continue
-
     const y = groundHeight(after, object.position[0], object.position[2])
     if (Math.abs(y - object.position[1]) < 1e-6) continue
     patches.push({
@@ -299,15 +252,135 @@ export function regroundObjects(doc: ReadonlyMapDoc, cells: Cell[], pending: Pat
   return patches
 }
 
-/** Drop an object onto whatever surface is under it. */
-export function groundedPosition(
-  doc: ReadonlyMapDoc,
-  worldX: number,
-  worldZ: number,
-): [number, number, number] {
+/** Drop an object onto whatever is under it. */
+export function groundedPosition(doc: ReadonlyMapDoc, worldX: number, worldZ: number): [number, number, number] {
   return [worldX, groundHeight(doc, worldX, worldZ), worldZ]
 }
 
 export function heightToWorld(halfTiles: number): number {
   return worldHeight(halfTiles)
+}
+
+// --- structures --------------------------------------------------------------
+
+export function addStructure(doc: ReadonlyMapDoc, structure: Structure): Patch[] {
+  return [
+    { t: 'structure', id: structure.id, value: structure },
+    { t: 'structureOrder', value: [...doc.structureOrder, structure.id] },
+  ]
+}
+
+/** A structure and everything standing on it. */
+export function removeStructure(doc: ReadonlyMapDoc, id: string): Patch[] {
+  if (!doc.structures[id]) return []
+  const doomed = new Set([id, ...descendantsOf(doc, id)])
+  return [
+    ...[...doomed].map((each): Patch => ({ t: 'structure', id: each, value: undefined })),
+    { t: 'structureOrder', value: doc.structureOrder.filter((each) => !doomed.has(each)) },
+  ]
+}
+
+export function renameStructure(doc: ReadonlyMapDoc, id: string, name: string): Patch[] {
+  return doc.structures[id] ? [{ t: 'structure.meta', id, field: 'name', value: name }] : []
+}
+
+export function placeStructure(doc: ReadonlyMapDoc, id: string, placement: Placement): Patch[] {
+  return doc.structures[id] ? [{ t: 'structure.meta', id, field: 'placement', value: { ...placement } }] : []
+}
+
+/** Move a structure under another (or to the root); refused when that would make a cycle. */
+export function reparentStructure(doc: ReadonlyMapDoc, id: string, parent: string | null): Patch[] {
+  if (!doc.structures[id]) return []
+  if (parent !== null && (parent === id || !doc.structures[parent] || descendantsOf(doc, id).includes(parent))) return []
+  return [{ t: 'structure.meta', id, field: 'parent', value: parent }]
+}
+
+// --- sketches ----------------------------------------------------------------
+
+export const DEFAULT_WALL_PROFILE: SketchStructure['wall'] = {
+  points: [
+    { out: 0.8, t: 0 },
+    { out: 0.44, t: 0.2 },
+    { out: 0.18, t: 0.45 },
+    { out: 0.04, t: 0.75 },
+    { out: 0, t: 1 },
+  ],
+  smooth: true,
+}
+
+/** A fresh, open sketch on `parent` (or the ground), ready for its first point. */
+export function createSketch(parent: string | null, name = 'Sketch', placement: Placement = { x: 0, z: 0, yaw: 0 }): SketchStructure {
+  return {
+    id: newId('sk'),
+    kind: 'sketch',
+    name,
+    parent,
+    placement,
+    points: [],
+    closed: false,
+    layers: 3,
+    wall: { points: DEFAULT_WALL_PROFILE.points.map((p) => ({ ...p })), smooth: DEFAULT_WALL_PROFILE.smooth },
+    lip: 'skirt',
+    capMaterial: 'grass',
+    wallMaterial: 'earth',
+  }
+}
+
+export type SketchChanges = Partial<Pick<SketchStructure, 'points' | 'closed' | 'layers' | 'wall' | 'lip' | 'capMaterial' | 'wallMaterial'>>
+
+function sketchAt(doc: ReadonlyMapDoc, id: string): ReadonlySketch | undefined {
+  const s = doc.structures[id]
+  return s && s.kind === 'sketch' ? s : undefined
+}
+
+export function setSketch(doc: ReadonlyMapDoc, id: string, changes: SketchChanges): Patch[] {
+  if (!sketchAt(doc, id)) return []
+  const patches: Patch[] = []
+  if (changes.points !== undefined) patches.push({ t: 'sketch', id, field: 'points', value: changes.points.map((p) => ({ ...p })) })
+  if (changes.closed !== undefined) patches.push({ t: 'sketch', id, field: 'closed', value: changes.closed })
+  if (changes.layers !== undefined) patches.push({ t: 'sketch', id, field: 'layers', value: changes.layers })
+  if (changes.wall !== undefined) patches.push({ t: 'sketch', id, field: 'wall', value: { points: changes.wall.points.map((p) => ({ ...p })), smooth: changes.wall.smooth } })
+  if (changes.lip !== undefined) patches.push({ t: 'sketch', id, field: 'lip', value: changes.lip })
+  if (changes.capMaterial !== undefined) patches.push({ t: 'sketch', id, field: 'capMaterial', value: changes.capMaterial })
+  if (changes.wallMaterial !== undefined) patches.push({ t: 'sketch', id, field: 'wallMaterial', value: changes.wallMaterial })
+  return patches
+}
+
+function points(sketch: ReadonlySketch): ProfilePoint[] {
+  return sketch.points.map((p) => ({ ...p }))
+}
+
+/** Append a point, or insert it before `at`. */
+export function addSketchPoint(doc: ReadonlyMapDoc, id: string, point: ProfilePoint, at?: number): Patch[] {
+  const sketch = sketchAt(doc, id)
+  if (!sketch) return []
+  const next = points(sketch)
+  next.splice(at === undefined ? next.length : Math.max(0, Math.min(next.length, at)), 0, { ...point })
+  return [{ t: 'sketch', id, field: 'points', value: next }]
+}
+
+export function updateSketchPoint(doc: ReadonlyMapDoc, id: string, index: number, changes: Partial<ProfilePoint>): Patch[] {
+  const sketch = sketchAt(doc, id)
+  if (!sketch || !sketch.points[index]) return []
+  const next = points(sketch)
+  next[index] = { ...next[index], ...changes }
+  return [{ t: 'sketch', id, field: 'points', value: next }]
+}
+
+/** Remove a point; a closed sketch left with fewer than three opens again. */
+export function deleteSketchPoint(doc: ReadonlyMapDoc, id: string, index: number): Patch[] {
+  const sketch = sketchAt(doc, id)
+  if (!sketch || !sketch.points[index]) return []
+  const next = points(sketch)
+  next.splice(index, 1)
+  const patches: Patch[] = [{ t: 'sketch', id, field: 'points', value: next }]
+  if (sketch.closed && next.length < 3) patches.push({ t: 'sketch', id, field: 'closed', value: false })
+  return patches
+}
+
+/** Close an open sketch: three points make an outline. */
+export function closeSketch(doc: ReadonlyMapDoc, id: string): Patch[] {
+  const sketch = sketchAt(doc, id)
+  if (!sketch || sketch.closed || sketch.points.length < 3) return []
+  return [{ t: 'sketch', id, field: 'closed', value: true }]
 }

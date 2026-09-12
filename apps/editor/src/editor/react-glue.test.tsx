@@ -23,12 +23,24 @@
  * way the app does.
  */
 
-import { createDocument, createMap, raise } from '@map-editor/document'
+import {
+  createDocument,
+  createMap,
+  raise,
+  rootVoxel,
+  type MapDoc,
+  type ReadonlyMapDoc,
+  type VoxelStructure,
+} from '@map-editor/document'
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { HostProvider, createHost, useDocument, useHost, useToolsSelector, type Host } from '@map-editor/editor-host'
+
+/** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
 
 // React's own flag for "these renders are inside `act`" — without it every
 // `act` call warns that the environment is not configured for one, and the
@@ -51,8 +63,8 @@ afterEach(() => {
  * dependencies, and the memo would then recompute every render no matter what
  * the revision did — which would make the memoisation these assert untestable.
  */
-const heightAtOrigin = (doc: { terrain: { height: readonly number[] } }): number => doc.terrain.height[0]
-const heightAtOne = (doc: { terrain: { height: readonly number[] } }): number => doc.terrain.height[1]
+const heightAtOrigin = (doc: ReadonlyMapDoc): number => ground(doc).terrain.height[0]
+const heightAtOne = (doc: ReadonlyMapDoc): number => ground(doc).terrain.height[1]
 const brushSize = (snapshot: { context: { brush: { size: number } } }): number => snapshot.context.brush.size
 
 function mount(ui: (host: Host) => ReactNode): Host {
@@ -89,10 +101,10 @@ describe('the React glue', () => {
     ))
     const before = { ...renders }
     // A fresh map's ground is not at zero, so the delta is what is asserted.
-    const wasHigh = host.reader.doc.terrain.height[0]
+    const wasHigh = ground(host.reader.doc).terrain.height[0]
 
     act(() => {
-      host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, [[0, 0]], 3) })
+      host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, ground(host.reader.doc), [[0, 0]], 3) })
     })
     expect(window.document.querySelector('[data-testid="height"]')?.textContent).toBe(String(wasHigh + 3))
     expect(renders.doc).toBe(before.doc + 1)
@@ -131,10 +143,10 @@ describe('the React glue', () => {
     }
 
     const host = mount(() => <Height />)
-    const before = host.reader.doc.terrain.height[1]
+    const before = ground(host.reader.doc).terrain.height[1]
 
     act(() => {
-      host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, [[1, 0]], 2) })
+      host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, ground(host.reader.doc), [[1, 0]], 2) })
     })
     expect(window.document.querySelector('[data-testid="live"]')?.textContent).toBe(String(before + 2))
 

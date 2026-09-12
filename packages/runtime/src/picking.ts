@@ -74,7 +74,7 @@ export class Picker {
       const faceAddr = scene.faceAddressFor(terrainHit.object)
       if (faceAddr) {
         terrainResult = {
-          surface: readAddress(faceAddr, terrainHit.faceIndex),
+          surface: readAddress(faceAddr, terrainHit.faceIndex, scene.structureIdFor(terrainHit.object)),
           point: terrainHit.point.clone(),
           objectId: null,
           distance: terrainHit.distance,

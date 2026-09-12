@@ -51,11 +51,34 @@ import type {
   DocumentLoadArgs,
   DocumentNewArgs,
   ObjectUpdateArgs,
+  SketchNewArgs,
+  SketchPointAddArgs,
+  SketchPointDeleteArgs,
+  SketchPointUpdateArgs,
+  SketchSetArgs,
+  StructureIdArgs,
+  StructurePlaceArgs,
+  StructureRenameArgs,
+  StructureReparentArgs,
 } from './commands'
 import { createMap, type MapDoc } from './document'
 import type { Patch } from './edits'
 import { deserialize } from './io'
-import { removeObjects, updateObject } from './ops'
+import {
+  addSketchPoint,
+  addStructure,
+  closeSketch,
+  createSketch,
+  deleteSketchPoint,
+  placeStructure,
+  removeObjects,
+  removeStructure,
+  renameStructure,
+  reparentStructure,
+  setSketch,
+  updateObject,
+  updateSketchPoint,
+} from './ops'
 import { createDocumentStore, writerOf, type DocumentReader, type DocumentWriter, type EditorStore } from './store'
 
 /**
@@ -207,6 +230,53 @@ export function documentLogic(writer: DocumentWriter, reader: DocumentReader) {
               const { width, height, name } = event.args as DocumentNewArgs
               const doc = createMap(width, height, name)
               enq(() => writer.replace(doc))
+            } else if (event.id === 'sketch.new') {
+              const { parent, name, placement } = event.args as SketchNewArgs
+              const sketch = createSketch(parent, name, placement)
+              enq(() => writer.apply('New sketch', addStructure(reader.doc, sketch)))
+            } else if (event.id === 'sketch.point.add') {
+              const { id, point, at } = event.args as SketchPointAddArgs
+              const patches = addSketchPoint(reader.doc, id, point, at)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Add point', patches))
+            } else if (event.id === 'sketch.point.update') {
+              const { id, index, changes } = event.args as SketchPointUpdateArgs
+              const patches = updateSketchPoint(reader.doc, id, index, changes)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Edit point', patches))
+            } else if (event.id === 'sketch.point.delete') {
+              const { id, index } = event.args as SketchPointDeleteArgs
+              const patches = deleteSketchPoint(reader.doc, id, index)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Delete point', patches))
+            } else if (event.id === 'sketch.close') {
+              const patches = closeSketch(reader.doc, (event.args as StructureIdArgs).id)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Close sketch', patches))
+            } else if (event.id === 'sketch.set') {
+              const { id, changes } = event.args as SketchSetArgs
+              const patches = setSketch(reader.doc, id, changes)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Edit sketch', patches))
+            } else if (event.id === 'structure.delete') {
+              const patches = removeStructure(reader.doc, (event.args as StructureIdArgs).id)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Delete structure', patches))
+            } else if (event.id === 'structure.rename') {
+              const { id, name } = event.args as StructureRenameArgs
+              const patches = renameStructure(reader.doc, id, name)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Rename structure', patches))
+            } else if (event.id === 'structure.place') {
+              const { id, placement } = event.args as StructurePlaceArgs
+              const patches = placeStructure(reader.doc, id, placement)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Place structure', patches))
+            } else if (event.id === 'structure.reparent') {
+              const { id, parent } = event.args as StructureReparentArgs
+              const patches = reparentStructure(reader.doc, id, parent)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Move structure', patches))
             } else return undefined
             return {}
           },

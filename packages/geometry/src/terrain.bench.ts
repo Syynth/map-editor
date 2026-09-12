@@ -10,19 +10,31 @@
  */
 import { describe, test } from 'vitest'
 
-import { allChunkKeys, cellIndex, createMap, type MapDoc } from '@map-editor/document'
+import {
+  allChunkKeys,
+  cellIndex,
+  createMap,
+  type MapDoc,
+  rootVoxel,
+  type ReadonlyMapDoc,
+  type VoxelStructure,
+} from '@map-editor/document'
 import { meshTerrainChunk } from './terrain'
+
+/** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
 
 function hilly(width: number, height: number): MapDoc {
   const doc = createMap(width, height)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const index = cellIndex(doc.size, x, y)
+      const index = cellIndex(ground(doc).size, x, y)
       const h =
         4 +
         Math.round(3 * Math.sin(x * 0.22) + 3 * Math.cos(y * 0.19) + 2 * Math.sin((x + y) * 0.11))
-      doc.terrain.height[index] = Math.max(0, h)
-      doc.terrain.material[index] = (x + y) % 4
+      ground(doc).terrain.height[index] = Math.max(0, h)
+      ground(doc).terrain.material[index] = (x + y) % 4
     }
   }
   return doc
@@ -52,19 +64,19 @@ const brushChunks = ['3,3', '4,3', '5,3', '3,4', '4,4', '5,4', '3,5', '4,5', '5,
 describe('terrain mesher', () => {
   test('one chunk (16x16 cells), hilly', async ({ bench }) => {
     await bench('one chunk (16x16 cells), hilly', () => {
-      meshTerrainChunk(map128, middle)
+      meshTerrainChunk(map128, ground(map128), middle)
     }).run()
   })
 
   test('one brush tick (9 chunks)', async ({ bench }) => {
     await bench('one brush tick (9 chunks)', () => {
-      for (const key of brushChunks) meshTerrainChunk(map128, key)
+      for (const key of brushChunks) meshTerrainChunk(map128, ground(map128), key)
     }).run()
   })
 
   test('whole 128x128 map (64 chunks)', async ({ bench }) => {
     await bench('whole 128x128 map (64 chunks)', () => {
-      for (const key of keys128) meshTerrainChunk(map128, key)
+      for (const key of keys128) meshTerrainChunk(map128, ground(map128), key)
     }).run()
   })
 })

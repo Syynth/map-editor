@@ -20,7 +20,9 @@
  *     rule in this file.
  */
 
-export const FORMAT_VERSION = 1
+import type { ReadonlyVoxel, Structure, VoxelStructure } from './structure'
+
+export const FORMAT_VERSION = 2
 
 export type Direction = 0 | 1 | 2 | 3
 /** +X east, +Z south, -X west, -Z north. Index order used everywhere. */
@@ -211,13 +213,18 @@ export interface MapDoc {
   formatVersion: number
   id: string
   name: string
-  size: MapSize
   /** Pixels per tile. Texture detail only — never world scale. */
   texelDensity: number
   filtering: 'nearest' | 'linear'
   materials: MaterialDef[]
-  terrain: TerrainData
-  paint: PaintLayers
+  /**
+   * What the level is made of: a scene graph of structures (see
+   * `structure.ts`). The terrain, its size and its paint live on a voxel
+   * structure, not here; the level has no size of its own — its extent is
+   * whatever its structures cover.
+   */
+  structures: Record<string, Structure>
+  structureOrder: string[]
   objects: Record<string, MapObject>
   objectOrder: string[]
   camera: CameraRig
@@ -263,16 +270,16 @@ export function inBounds(size: MapSize, x: number, y: number): boolean {
 }
 
 /** Height in half-tiles, or the edge value clamped, for out-of-bounds reads. */
-export function heightAt(doc: ReadonlyMapDoc, x: number, y: number): number {
-  const cx = Math.min(Math.max(x, 0), doc.size.width - 1)
-  const cy = Math.min(Math.max(y, 0), doc.size.height - 1)
-  return doc.terrain.height[cellIndex(doc.size, cx, cy)]
+export function heightAt(voxel: ReadonlyVoxel, x: number, y: number): number {
+  const cx = Math.min(Math.max(x, 0), voxel.size.width - 1)
+  const cy = Math.min(Math.max(y, 0), voxel.size.height - 1)
+  return voxel.terrain.height[cellIndex(voxel.size, cx, cy)]
 }
 
-export function materialAt(doc: ReadonlyMapDoc, x: number, y: number): number {
-  const cx = Math.min(Math.max(x, 0), doc.size.width - 1)
-  const cy = Math.min(Math.max(y, 0), doc.size.height - 1)
-  return doc.terrain.material[cellIndex(doc.size, cx, cy)]
+export function materialAt(voxel: ReadonlyVoxel, x: number, y: number): number {
+  const cx = Math.min(Math.max(x, 0), voxel.size.width - 1)
+  const cy = Math.min(Math.max(y, 0), voxel.size.height - 1)
+  return voxel.terrain.material[cellIndex(voxel.size, cx, cy)]
 }
 
 /** Half-tile units to world units. */
@@ -402,16 +409,16 @@ export function newId(prefix = 'obj'): string {
   return `${prefix}_${rand}${idCounter.toString(36)}`
 }
 
-export function createMap(width = 32, height = 32, name = 'Untitled Map'): MapDoc {
+/** A flat voxel volume of `width` × `height` cells at height 2, standing on `parent` (or the ground). */
+export function createVoxel(width: number, height: number, name = 'Ground', parent: string | null = null, id = newId('vox')): VoxelStructure {
   const count = width * height
   return {
-    formatVersion: FORMAT_VERSION,
-    id: newId('map'),
+    id,
+    kind: 'voxel',
     name,
+    parent,
+    placement: { x: 0, z: 0, yaw: 0 },
     size: { width, height },
-    texelDensity: 16,
-    filtering: 'nearest',
-    materials: DEFAULT_MATERIALS.map((m) => ({ ...m })),
     terrain: {
       height: new Array<number>(count).fill(2),
       material: new Array<number>(count).fill(0),
@@ -419,6 +426,21 @@ export function createMap(width = 32, height = 32, name = 'Untitled Map'): MapDo
       water: new Array<number>(count).fill(NO_WATER),
     },
     paint: { top: {}, cliff: {}, tint: {} },
+  }
+}
+
+/** A new level: one root voxel volume of the given size, and nothing else. Its id is always `ground`, so a test or a tour can name it without looking it up. */
+export function createMap(width = 32, height = 32, name = 'Untitled Map'): MapDoc {
+  const ground = createVoxel(width, height, 'Ground', null, 'ground')
+  return {
+    formatVersion: FORMAT_VERSION,
+    id: newId('map'),
+    name,
+    texelDensity: 16,
+    filtering: 'nearest',
+    materials: DEFAULT_MATERIALS.map((m) => ({ ...m })),
+    structures: { [ground.id]: ground },
+    structureOrder: [ground.id],
     objects: {},
     objectOrder: [],
     camera: defaultCameraRig(),
