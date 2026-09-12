@@ -1,0 +1,77 @@
+name: Gate
+
+# Every PR and every push to main gets a fresh GitHub-hosted runner: no
+# leftover node_modules, dist, or turbo cache from a prior run unless we put
+# it there ourselves below. That freshness is the point of this workflow —
+# `eslint .` once passed locally only because the machine running it had a
+# stale `dist/` on disk to lint against garbage that `**/dist/**` didn't yet
+# ignore (see docs/decision-log.md), and a fresh clone is the only thing that
+# reliably catches that class of bug.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: '.nvmrc'
+
+      # Node has been dropping corepack from the default install (deprecated
+      # since v22, no longer guaranteed bundled by the Node version pinned in
+      # .nvmrc), so `corepack enable` alone is not reliable across runner
+      # images. Installing it explicitly makes the step work the same whether
+      # or not this Node build ships it, and corepack then reads
+      # package.json's `packageManager` to fetch the exact pinned pnpm.
+      - name: Enable corepack
+        run: |
+          npm install -g corepack@latest
+          corepack enable
+
+      # Cache only turbo's own local cache. Do NOT cache pnpm's store or its
+      # `lockfile-verified.jsonl` (under the pnpm home/cache dir): that file
+      # records lockfile entries pnpm has already re-verified against the
+      # minimumReleaseAge supply-chain guard, and a warm copy lets
+      # `--frozen-lockfile` skip that re-verification — passing on a runner
+      # what a genuinely cold one would reject. Turbo's cache carries no such
+      # trust decision, only task outputs keyed by content hash, so caching it
+      # is free of that risk. The key mixes the lockfile (dependency graph)
+      # and tracked sources (what turbo actually hashes tasks against) so a
+      # restore only ever serves hits for content turbo would have hashed the
+      # same way; restore-keys fall back to the closest lockfile match rather
+      # than nothing.
+      - name: Cache turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('packages/**/src/**', 'apps/**/src/**') }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
+        env:
+          TURBO_CACHE_DIR: .turbo/cache
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        env:
+          TURBO_CACHE_DIR: .turbo/cache
+
+      - name: Test, typecheck, lint
+        run: pnpm turbo run test typecheck lint
+        env:
+          TURBO_CACHE_DIR: .turbo/cache
+
+      # Not covered by the turbo tasks above: `test`/`typecheck`/`lint` only
+      # depend on `^build` (packages/*, so the editor typechecks against real
+      # emit), never on the editor's own `build` script. Running the editor's
+      # actual `tsc --noEmit && vite build` here is what catches a bundling
+      # failure the package-level tasks can't see.
+      - name: Build editor
+        run: pnpm --filter @map-editor/editor build
+        env:
+          TURBO_CACHE_DIR: .turbo/cache
