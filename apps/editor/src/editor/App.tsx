@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import {
+  MAX_HEIGHT,
+  MIN_HEIGHT,
   SURFACE_CLIFF,
   cellIndex,
   countDormant,
@@ -40,6 +42,7 @@ import {
   Frame,
   Hint,
   Kbd,
+  LayerRange,
   Overlay,
   Pill,
   StatusHints,
@@ -312,8 +315,9 @@ export default function App() {
       play,
       hover: params.tool === 'terrain' ? hover : null,
       selectedObjectId: view.selectedObjectId,
+      layers: view.layers,
     })
-  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selectedObjectId, hover, hoverCells])
+  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selectedObjectId, view.layers, hover, hoverCells])
 
   useEffect(() => {
     viewportRef.current?.refreshAtmosphere()
@@ -436,6 +440,10 @@ export default function App() {
   const selected = view.selectedObjectId ? doc.objects[view.selectedObjectId] ?? null : null
   const deleteKbd = chordFor('selection.delete', undefined, platform)
   const hints = hintsFor(params)
+  // The layer view: `null` on the actor is the whole range; the control always shows a pair.
+  const layers = view.layers ?? { lo: MIN_HEIGHT, hi: MAX_HEIGHT }
+  const setLayers = (range: { lo: number; hi: number }) =>
+    report('view.set', host.dispatch('view.set', { layers: range.lo === MIN_HEIGHT && range.hi === MAX_HEIGHT ? null : range }))
 
   return (
     <Frame
@@ -517,6 +525,11 @@ export default function App() {
               </Pill>
             </Overlay>
           ) : null}
+          {!playing ? (
+            <Overlay at="right">
+              <LayerRange max={MAX_HEIGHT} lo={layers.lo} hi={layers.hi} onChange={setLayers} />
+            </Overlay>
+          ) : null}
           {playing ? (
             <Overlay at="bottom-center">
               <Pill>
@@ -578,6 +591,11 @@ export default function App() {
               <span>{hover && hover.kind === SURFACE_CLIFF ? 'paints by absolute level' : `${hoverCells.length} cells`}</span>
             ) : null}
             <span title="Painted work that is currently hidden by geometry, and would come back">dormant paint {dormant.top + dormant.cliff}</span>
+            {view.layers ? (
+              <span className="ui-num" title="The layer view is narrowed; double-click the slider to see everything">
+                layers {view.layers.lo}–{view.layers.hi}
+              </span>
+            ) : null}
             <span className={`ui-num ${camera.inBounds ? '' : 'is-warn'}`}>
               yaw {Math.round(camera.yaw)}° · pitch {Math.round(camera.pitch)}° · {camera.distance.toFixed(1)}u
             </span>

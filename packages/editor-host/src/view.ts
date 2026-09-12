@@ -23,6 +23,7 @@
  * path — no id, no registry, and no ref outside this package to send it (#8).
  */
 
+import { MAX_HEIGHT, MIN_HEIGHT } from '@map-editor/document'
 import { commands, defineContextKey, reserveOwner } from '@map-editor/registry'
 import { setup, types } from 'xstate'
 import { z } from 'zod'
@@ -48,11 +49,23 @@ export const viewKeys = {
  * write `undefined` over a boolean. `undefined` is not JSON, so the schema
  * refuses it the same way it refuses a stray key (#23).
  */
+/**
+ * The layer view's range, in half-tiles (the document's height unit), or
+ * `null` for the whole map. Both ends are validated against the document's
+ * own bounds, and a range whose floor is above its ceiling is refused here
+ * rather than clamped somewhere downstream.
+ */
+const layerRange = z
+  .object({ lo: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT), hi: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT) })
+  .strict()
+  .refine((range) => range.lo <= range.hi, { message: 'lo must not exceed hi' })
+
 const viewSettings = z
   .object({
     showGrid: z.boolean().exactOptional(),
     gameCamera: z.boolean().exactOptional(),
     inspector: z.enum(['properties', 'coverage', 'atmosphere', 'outliner']).exactOptional(),
+    layers: layerRange.nullable().exactOptional(),
   })
   .strict()
 
@@ -78,7 +91,7 @@ export const viewLogic = setup({
   },
 }).createMachine({
   id: 'view',
-  context: { showGrid: true, gameCamera: false, inspector: 'properties', selectedObjectId: null },
+  context: { showGrid: true, gameCamera: false, inspector: 'properties', layers: null, selectedObjectId: null },
   initial: 'ready',
   states: {
     ready: {
