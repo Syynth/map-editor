@@ -476,7 +476,7 @@ export default function App() {
           </nav>
 
           {view.inspector === 'properties' ? (
-            params.tool === 'camera' ? (
+            params.tool === 'select' ? (
               <CameraPanel
                 rig={doc.camera}
                 onChange={setRig}

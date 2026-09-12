@@ -123,9 +123,9 @@ describe('the one keyboard dispatcher', () => {
     const { host, keys } = editor()
     const tools = () => host.children.tools.getSnapshot()
 
-    keys.send('keydown', '2')
+    keys.send('keydown', 'o')
     expect(tools().context.tool).toBe('object')
-    keys.send('keydown', '1')
+    keys.send('keydown', 't')
     expect(tools().context.tool).toBe('terrain')
 
     keys.send('keydown', ']')
@@ -143,11 +143,21 @@ describe('the one keyboard dispatcher', () => {
     expect(keys.prevented.filter((key) => key === 'Tab')).toHaveLength(2)
   })
 
-  it('runs the composite behind `3`: the camera tool AND the coverage panel', () => {
+  it('Escape returns to Select from any tool, and falls through when Select is already active', () => {
     const { host, keys } = editor()
-    keys.send('keydown', '3')
-    expect(host.children.tools.getSnapshot().context.tool).toBe('camera')
-    expect(host.children.view.getSnapshot().context.inspector).toBe('coverage')
+    const tool = () => host.children.tools.getSnapshot().context.tool
+    expect(tool()).toBe('select')
+    // Nothing to return to: the binding's `when` fails, so the key is not
+    // consumed and the page sees it — a dialog's own Escape still works.
+    keys.send('keydown', 'Escape')
+    expect(keys.prevented).toEqual([])
+    keys.send('keydown', 't')
+    expect(tool()).toBe('terrain')
+    keys.send('keydown', 'Escape')
+    expect(tool()).toBe('select')
+    expect(keys.prevented).toEqual(['t', 'Escape'])
+    keys.send('keydown', 'v')
+    expect(tool()).toBe('select')
   })
 
   it('toggles the game camera and play mode from one chord each', () => {

@@ -43,7 +43,7 @@ export { tools } from './tools'
 export type { CommandEvent, CommandTarget, StrokeHandler, ToolContract, ToolDecl } from './tools'
 
 export { panels } from './panels'
-export type { PanelDecl } from './panels'
+export type { PanelDecl, PanelSlot } from './panels'
 
 export { canonicalSpec, chordFromEvent, chordsEqual, formatChord, parseChords } from './chords'
 export type { Chord, KeyEventLike, Platform } from './chords'

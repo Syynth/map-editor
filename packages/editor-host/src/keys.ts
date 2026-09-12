@@ -45,20 +45,15 @@ const CORE_BINDINGS: readonly KeyBinding[] = [
   { chord: 'ctrl+shift+z', command: 'redo' },
   { chord: 'meta+shift+z', command: 'redo' },
 
-  { chord: '1', command: 'tools.set', args: { tool: 'terrain' } },
-  { chord: '2', command: 'tools.set', args: { tool: 'object' } },
-  // The one composite: the old handler's `set({ tool: 'camera', inspector:
-  // 'coverage' })` is two owners' commands, and a binding carries one id.
-  {
-    chord: '3',
-    command: 'commands.run',
-    args: {
-      commands: [
-        { id: 'tools.set', args: { tool: 'camera' } },
-        { id: 'view.set', args: { inspector: 'coverage' } },
-      ],
-    },
-  },
+  // The rail's subjects, on the letters the reference art apps use for them
+  // (2026-09-12 ruling): `V` for Select as Figma, Photoshop and Blender have
+  // it, and Escape returns to Select from anywhere, which is the convention
+  // every one of them shares. These are a DEFAULT preset — a user binding
+  // list that prefers `1`/`2`/`3` shadows them without touching the tools.
+  { chord: 'v', command: 'tools.set', args: { tool: 'select' } },
+  { chord: 'escape', command: 'tools.set', args: { tool: 'select' }, when: toolKeys.tool.is('select').not() },
+  { chord: 't', command: 'tools.set', args: { tool: 'terrain' } },
+  { chord: 'o', command: 'tools.set', args: { tool: 'object' } },
 
   { chord: 'tab', command: 'tools.set', args: { terrainMode: 'paint' }, when: toolKeys.terrainMode.is('sculpt') },
   { chord: 'tab', command: 'tools.set', args: { terrainMode: 'sculpt' }, when: toolKeys.terrainMode.is('paint') },

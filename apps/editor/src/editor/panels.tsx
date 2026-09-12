@@ -168,9 +168,9 @@ export function ToolPanel({
           value={params.tool}
           onChange={(tool) => set({ tool })}
           options={[
-            { value: 'terrain', label: 'Terrain', title: '1' },
-            { value: 'object', label: 'Objects', title: '2' },
-            { value: 'camera', label: 'Camera', title: '3' },
+            { value: 'select', label: 'Select', title: 'V' },
+            { value: 'terrain', label: 'Terrain', title: 'T' },
+            { value: 'object', label: 'Objects', title: 'O' },
           ]}
         />
 

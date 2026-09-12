@@ -39,6 +39,8 @@ function makeHost(): { host: Host; dispatch: Host['dispatch'] } {
     dispatched.add(id)
     return host.dispatch(id, args)
   }
+  // Every stroke below is a terrain stroke; the editor opens on Select.
+  host.dispatch('tools.set', { tool: 'terrain' })
   return { host, dispatch }
 }
 

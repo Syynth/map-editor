@@ -52,7 +52,7 @@ export const TERRAIN = defineFeature('terrain', hot)
 defineTerrainKeys(TERRAIN)
 declareTerrainCommands(TERRAIN)
 declareTerrainPanels(TERRAIN)
-tools.declare(TERRAIN, { id: 'terrain', title: 'Terrain' })
+tools.declare(TERRAIN, { id: 'terrain', title: 'Terrain', icon: 'terrain' })
 
 export const terrainFeature = provideFeature({
   owner: TERRAIN,

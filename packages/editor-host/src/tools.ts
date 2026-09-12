@@ -40,13 +40,20 @@
  */
 
 import { NO_RAMP } from '@map-editor/document'
-import { commands, defineContextKey, reserveOwner } from '@map-editor/registry'
+import { commands, defineContextKey, reserveOwner, tools } from '@map-editor/registry'
 import { setup, types } from 'xstate'
 import { z } from 'zod'
 
 export const TOOLS_OWNER = reserveOwner('editor-host.tools')
 
-export type ToolId = 'terrain' | 'object' | 'camera'
+/**
+ * The rail's SUBJECTS (design ruling of 2026-09-12: a rail item is a thing
+ * the artist works on, never a verb). `select` addresses what already exists,
+ * whatever made it; `object` places; `terrain` is the feature's. There is no
+ * camera tool: orbit, pan and zoom are gestures in every tool (the gesture
+ * actor's business), so a rail item for them was a mode with nothing to do.
+ */
+export type ToolId = 'select' | 'terrain' | 'object'
 export type TerrainMode = 'sculpt' | 'paint'
 
 /**
@@ -55,7 +62,7 @@ export type TerrainMode = 'sculpt' | 'paint'
  * numeric parameters are not, since no command is gated on a brush size.
  */
 export const toolKeys = {
-  tool: defineContextKey<ToolId>(TOOLS_OWNER, 'tools.tool', 'terrain'),
+  tool: defineContextKey<ToolId>(TOOLS_OWNER, 'tools.tool', 'select'),
   terrainMode: defineContextKey<TerrainMode>(TOOLS_OWNER, 'tools.terrainMode', 'sculpt'),
 }
 
@@ -76,7 +83,7 @@ export const toolKeys = {
  */
 const toolSettings = z
   .object({
-    tool: z.enum(['terrain', 'object', 'camera']).exactOptional(),
+    tool: z.enum(['select', 'terrain', 'object']).exactOptional(),
     terrainMode: z.enum(['sculpt', 'paint']).exactOptional(),
     sculptVerb: z.enum(['raise', 'flatten', 'ramp', 'water']).exactOptional(),
     paintVerb: z.enum(['tile', 'material', 'tint']).exactOptional(),
@@ -108,8 +115,18 @@ const brushResize = z.object({ by: z.int().min(-12).max(12) }).strict()
 commands.declare(TOOLS_OWNER, { id: 'tools.set', title: 'Set Tool Parameters', category: 'Tools', args: toolSettings })
 commands.declare(TOOLS_OWNER, { id: 'brush.resize', title: 'Resize Brush', category: 'Tools', args: brushResize })
 
+/**
+ * The two tools whose strokes are the host's own (`strokes.ts`), declared
+ * here so the rail enumerates them the same way it enumerates a feature's:
+ * `tools.all()`, in declaration order, and this module is imported before
+ * any feature is. Select is first on purpose — the rail reads top to bottom
+ * and Select is the tool every other one returns to.
+ */
+tools.declare(TOOLS_OWNER, { id: 'select', title: 'Select', icon: 'select' })
+tools.declare(TOOLS_OWNER, { id: 'object', title: 'Objects', icon: 'objects' })
+
 const initialTools: ToolsContext = {
-  tool: 'terrain',
+  tool: 'select',
   sculptVerb: 'raise',
   paintVerb: 'tile',
   strokeShape: 'brush',
