@@ -118,6 +118,20 @@ export interface PointerMotion {
   modifiers: PointerModifiers
 }
 
+/**
+ * A stroke tick's pick, plus where the pointer's ray meets the horizontal
+ * plane through the PRESS's hit. A drag that moves something wants the
+ * second and not the first: what is under the cursor mid-drag is whatever
+ * the drag put there — the dragged sprite itself, a cliff face the ray
+ * crossed — and following it makes the motion lurch along that surface. The
+ * plane is fixed at the press, so the pointer's travel maps to ground travel
+ * the same way for the whole gesture. `null` when the ray misses the plane
+ * (a near-horizontal camera) or the press hit nothing.
+ */
+export interface StrokePick extends PickResult {
+  plane: { x: number; z: number } | null
+}
+
 export interface ViewportHandlers {
   /** A press on the canvas. What gesture it became is not answered here: a press moves nothing, and the next move asks. */
   onPointerDown(press: PointerPress): void
@@ -125,7 +139,7 @@ export interface ViewportHandlers {
   onPointerMove(motion: PointerMotion): Gesture
   onPointerUp(release: { x: number; y: number }): void
   /** One tick of an open stroke: only sent while `onPointerMove` answers `'stroke'`. */
-  onStrokeMove(pick: PickResult, modifiers: PointerModifiers): void
+  onStrokeMove(pick: StrokePick, modifiers: PointerModifiers): void
   /**
    * Keys held right now, lower-cased. Read every frame for WASD; the set
    * itself lives in the gesture actor and is fed by the app's one keydown
@@ -209,6 +223,8 @@ export class Viewport {
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera
   private scene: RuntimeScene
   private picker = new Picker()
+  /** World height of the current left press's hit — the plane `StrokePick.plane` is measured on. */
+  private strokePlaneY: number | null = null
   private reader: DocumentReader
 
   private orbit = { yaw: 45, pitch: 35, distance: 26, target: new THREE.Vector3() }
@@ -634,12 +650,14 @@ export class Viewport {
     // to be an eyedropper click rather than an orbit — because the pick has to
     // be taken at the press to be the press's, and one raycast per click is
     // not worth arbitrating over.
+    const pick = event.button === 0 ? this.pickAt(event) : null
+    this.strokePlaneY = pick?.point?.y ?? null
     this.handlers.onPointerDown({
       x: event.clientX,
       y: event.clientY,
       button: event.button,
       modifiers: this.modifiers(event),
-      pick: event.button === 0 ? this.pickAt(event) : null,
+      pick,
     })
   }
 
@@ -670,7 +688,11 @@ export class Viewport {
 
     const pick = this.pickAt(event)
     this.handlers.onHover(pick)
-    if (gesture === 'stroke') this.handlers.onStrokeMove(pick, this.modifiers(event))
+    if (gesture === 'stroke') {
+      const [ndcX, ndcY] = this.ndc(event)
+      const onPlane = this.strokePlaneY === null ? null : this.picker.pickPlane(this.camera, ndcX, ndcY, this.strokePlaneY)
+      this.handlers.onStrokeMove({ ...pick, plane: onPlane ? { x: onPlane.x, z: onPlane.z } : null }, this.modifiers(event))
+    }
   }
 
   private onPointerUp = (event: PointerEvent): void => {
