@@ -15,8 +15,16 @@
  * got here — a workspace symlink today. `./package.json` is on the `exports`
  * map for exactly this: it is the one path guaranteed to sit next to `baked/`
  * no matter how the rest of the package is laid out.
+ *
+ * Returns the `URL` itself rather than `.pathname`: a checkout path with a
+ * space, `%`, `#`, or non-ASCII byte round-trips through `URL`'s own
+ * percent-encoding cleanly (`new URL('manifest.json', dir)`, or `readFile`
+ * given the `URL` directly, both decode it correctly), but `.pathname` hands
+ * back the still-encoded string — a caller that treats that as a filesystem
+ * path is handed `%20` instead of a space and gets `ENOENT`. Reproduced by
+ * cloning into a path containing a space before this fix landed.
  */
-export function bakedDir(): string {
+export function bakedDir(): URL {
   const packageJsonUrl = import.meta.resolve('@map-editor/fixtures/package.json')
-  return new URL('baked/', packageJsonUrl).pathname
+  return new URL('baked/', packageJsonUrl)
 }

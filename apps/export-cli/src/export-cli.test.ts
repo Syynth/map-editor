@@ -19,7 +19,7 @@ import { expect, it } from 'vitest'
 import { serialize } from '@map-editor/document'
 import { createSampleMap } from '@map-editor/fixtures'
 
-import { exportMapFile } from './export-map'
+import { exportMapFile } from './index'
 
 async function exportSampleMap(): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), 'map-editor-export-'))
