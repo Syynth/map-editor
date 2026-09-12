@@ -89,7 +89,9 @@ const PLACEMENT: Record<string, Placement> = {
   '@map-editor/eslint-rules': { kind: 'tooling' },
 
   '@map-editor/editor': { kind: 'app' },
-  '@map-editor/export-cli': { kind: 'app' },
+  // '@map-editor/export-cli' was cut 2026-09-11: producing a .glb headlessly needed a
+  // native canvas (@napi-rs/canvas), and the owner ruled no native binaries over a dev
+  // CLI. It returns as { kind: 'app' } once export has a canvas-free texture path.
 }
 
 interface PackageJson {

@@ -25,7 +25,8 @@ packages/editor-host       root actor, dispatch wiring, tool/stroke framework, f
 packages/feature-terrain   the one extracted feature, proving the import surface is sufficient.
 packages/fixtures          procedural texture generation + the sample map. Dev-only, but NOT lint-exempt.
 apps/editor                index.html, Vite config, mount, composition root, features/index.ts.
-apps/export-cli            headless glTF exporter.
+apps/export-cli            headless glTF exporter. CUT 2026-09-11 — needed a native canvas;
+                           returns once export has a canvas-free texture path.
 ```
 
 Direction: `registry <- document <- geometry <- runtime <- viewport <- editor-host`, with
@@ -87,7 +88,9 @@ move rather than to the whole restructure. Order follows the dependency directio
       be `composite` and `composite` forbids `noEmit`. Taking the references means
       deciding build emit first — the next box.
 - [ ] Build emit (tsup or unbuild) where a package needs to be consumable.
-- [x] `apps/export-cli` must produce a `.glb` with **no WebGL context** — the forcing
+- [ ] `apps/export-cli` must produce a `.glb` with **no WebGL context** — *built, then cut:
+      it needed `@napi-rs/canvas`, a native binary, because both `textures.ts` and three's
+      GLTFExporter draw through a 2D canvas. Revive after the canvas-free texture path.* — the forcing
       function the boundary script always named.
 - [x] A test enforcing dependency direction, since pnpm does not.
       `tests/dependency-direction.test.ts`: it reads every workspace `package.json`,

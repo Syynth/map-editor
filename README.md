@@ -42,8 +42,7 @@ pnpm probe         # measure whether post-processing survives on this GPU
 - **Save and load** — versioned JSON, with migrations and validation.
 - **glTF export** — `.glb` with everything glTF cannot express in `extras`,
   documented in [`docs/extras-spec.md`](docs/extras-spec.md). Also available
-  headlessly: `pnpm --filter @map-editor/export-cli build` then
-  `node apps/export-cli/dist/cli.js <map.json> <out.glb>`, under plain node.
+  headlessly: not yet — the CLI was cut (it needed a native canvas). Export runs in the editor.
 
 ## Keys
 
@@ -75,7 +74,6 @@ packages/viewport/  the imperative GL shell the editor drives
 packages/ui/        the editor's design vocabulary (Mantine primitives)
 packages/fixtures/  generated sample documents
 apps/editor/        React panels, tools and the app shell
-apps/export-cli/    headless `.glb` exporter: plain node, no browser
 ```
 
 The import direction `document <- geometry <- runtime <- viewport <- editor` is
