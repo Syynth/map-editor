@@ -157,13 +157,21 @@ export class LabScene {
   }
 
   /** Every sketch's parts, each group lifted to the sketch's base height (its parent's cap). */
-  setMeshes(list: readonly { mesh: SketchMesh; base: number }[]): void {
+  /** The sketch whose mesh is under the pointer, nearest first. */
+  pickSketch(clientX: number, clientY: number): string | null {
+    this.raycaster.setFromCamera(this.ndc(clientX, clientY), this.camera)
+    const hit = this.raycaster.intersectObjects(this.parts.children, true)[0]
+    return hit ? (hit.object.parent?.userData.sketchId as string) : null
+  }
+
+  setMeshes(list: readonly { id: string; mesh: SketchMesh; base: number }[]): void {
     for (const group of [...this.parts.children]) {
       this.parts.remove(group)
       for (const child of group.children) (child as THREE.Mesh).geometry.dispose()
     }
-    for (const { mesh, base } of list) {
+    for (const { id, mesh, base } of list) {
       const group = new THREE.Group()
+      group.userData.sketchId = id
       group.position.y = base
       for (const key of ['cap', 'rim', 'wallBody', 'wallTop', 'wallBottom'] as const) {
         const buffers = mesh[key]

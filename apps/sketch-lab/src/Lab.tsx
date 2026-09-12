@@ -298,13 +298,18 @@ export function Lab() {
       drag.current = { index: handle }
       return
     }
-    const hit = scene.pickPlane(e.clientX, e.clientY, activeBase)
-    if (!hit) return
     if (!active.closed) {
+      const hit = scene.pickPlane(e.clientX, e.clientY, activeBase)
+      if (!hit) return
       const p = snapPick(hit.x, hit.z)
       patch(active.id, (s) => ({ points: [...s.points, { ...p, smooth: !e.shiftKey }] }))
       setSelected(null)
-    } else setSelected(null)
+      return
+    }
+    // Not drawing: a click on a sketch makes it the active one.
+    const sketch = scene.pickSketch(e.clientX, e.clientY)
+    if (sketch && sketch !== active.id) setActiveId(sketch)
+    setSelected(null)
   }
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
