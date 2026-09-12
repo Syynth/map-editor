@@ -28,6 +28,21 @@ export function oversizedChunks(sizes, limit = DEFAULT_LIMIT_BYTES) {
   return sizes.filter(({ bytes }) => bytes > limit)
 }
 
+/**
+ * A malformed CLI limit (e.g. `500kB` instead of `500000`) must fail loud,
+ * not disappear: `Number('500kB')` is `NaN`, and `bytes > NaN` is always
+ * false in `oversizedChunks`, so an unchecked `Number(argv[3])` would make
+ * this gate script silently exit 0 on every build regardless of chunk size.
+ */
+export function parseLimit(raw, fallback = DEFAULT_LIMIT_BYTES) {
+  if (raw === undefined) return fallback
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`invalid limit-bytes argument: ${JSON.stringify(raw)}`)
+  }
+  return value
+}
+
 function jsChunkSizes(distDir) {
   const assetsDir = join(distDir, 'assets')
   return readdirSync(assetsDir)
@@ -37,7 +52,14 @@ function jsChunkSizes(distDir) {
 
 function main() {
   const distDir = process.argv[2] ?? join('apps', 'editor', 'dist')
-  const limit = process.argv[3] ? Number(process.argv[3]) : DEFAULT_LIMIT_BYTES
+  let limit
+  try {
+    limit = parseLimit(process.argv[3])
+  } catch (error) {
+    console.error(error.message)
+    process.exitCode = 1
+    return
+  }
   const offenders = oversizedChunks(jsChunkSizes(distDir), limit)
   if (offenders.length === 0) return
   for (const { file, bytes } of offenders) {

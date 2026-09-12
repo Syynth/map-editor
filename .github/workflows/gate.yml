@@ -95,11 +95,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Requested as its own step rather than folded into `pnpm gate` (or
-      # `gate:full`, which runs `turbo run build test typecheck lint` in one
-      # invocation): `test`/`typecheck`/`lint` only depend on `^build` — a
-      # package's OWN dependencies — never on that same package's own `build`
-      # task, so nothing in turbo's graph forces apps/editor's `build` to
-      # finish before its `lint` when both are requested in one `turbo run`.
+      # `gate:full`, which runs `turbo run build test typecheck lint
+      # check-bundle-size` in one invocation): `test`/`typecheck`/`lint` only
+      # depend on `^build` — a package's OWN dependencies — never on that
+      # same package's own `build` task, so nothing in turbo's graph forces
+      # apps/editor's `build` to finish before its `lint` when both are
+      # requested in one `turbo run`.
       # Two separate CI steps make the runner's own shell sequencing do what
       # turbo's task graph does not: `dist/` is fully written before the next
       # step can start.

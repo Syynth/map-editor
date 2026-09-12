@@ -22,7 +22,7 @@ Numbers in brackets are item ids in the raw extract. Per the wayfinder-feed rule
 
 | # | Work | Sources |
 |---|---|---|
-| B1 | **CI**: GitHub Actions running `pnpm gate:full` on a fresh clone; branch protection; `engines` field. The dist/lint interaction would have been caught on the second task, not the fourth | 3, 22, 75, 2.1 |
+| B1 | **CI**: GitHub Actions running `pnpm gate:full` on a fresh clone; branch protection; `engines` field. The dist/lint interaction would have been caught on the second task, not the fourth — CI, branch protection, and the wrong-Node-version guard are all **done** (#25, #55): the guard landed as `devEngines.runtime` in root `package.json`, not the `engines` field alone — `engineStrict` on `engines` only gates a dependency's own declared engines, never this workspace's | 3, 22, 75, 2.1 |
 | B2 | **Make `tour`/`probe`/`screenshot` portable** — all three hardcode `/opt/pw-browsers/chromium-1194/...` and force SwiftShader; Playwright 1.63 wants chromium-1243. Prerequisite for the pump's drive-it gate. Note `window.__viewport` is an unlinted, untypechecked consumer of `Viewport`'s `*ForProbe` surface | 2.5, 64, 71, 81 |
 | B3 | **Sixth direction-test assertion**: the root declares no runtime library — otherwise re-adding `three` to the root re-hoists it and silently reopens the defect wave 2b closed | 90 |
 | B4 | **`exports` integrity assertion**: nothing asserts a package's `exports` map stays narrow (a `./src/*` wildcard would let `writer` leak) — #20's second pnpm gap | 89.2 |

@@ -5,7 +5,19 @@
   // run under, and a Node bump can change tsc/vitest output. Declaring it
   // globally means a version change busts every cached task rather than
   // silently serving results produced on the old runtime.
-  "globalDependencies": [".nvmrc"],
+  //
+  // `scripts/check-bundle-size.mjs` is here for the same reason, but a
+  // different mechanism: turbo's default `inputs` for a task is that
+  // package's own tracked files, and this script lives at the repo root,
+  // outside `apps/editor`. Without listing it globally, editing the script
+  // (a new ceiling, a different glob, a different dist dir) changes what
+  // `check-bundle-size` does without changing any hash it is keyed on, so
+  // turbo replays a cache hit from before the edit — verified: with the
+  // script untracked here, dropping `DEFAULT_LIMIT_BYTES` to 1 still replayed
+  // the prior green result (`cache hit, replaying logs …`); only `--force`
+  // (which bypasses the cache entirely, same as this PR's own reachability
+  // proof did) surfaced the failure.
+  "globalDependencies": [".nvmrc", "scripts/check-bundle-size.mjs"],
 
   "tasks": {
     // Per-package tasks, implemented by `packages/*` and `apps/editor`.
@@ -29,10 +41,12 @@
 
     // Root tasks. Turbo only runs a root-package script when it is declared
     // with the `//#` prefix. The root no longer holds any application code, so
-    // what is left here is repo-wide: the whole vitest run (every test lives in
-    // a `packages/*` package and one root invocation collects them), the
-    // typecheck of the tooling configs, and one `eslint .` over everything.
-    // There is no `//#build` any more — building is `apps/editor`'s own task.
+    // what is left here is repo-wide: the whole vitest run (one root
+    // invocation collects every test — `packages/*` and, since #57,
+    // `scripts/check-bundle-size.test.mjs`, the first test under `scripts/`),
+    // the typecheck of the tooling configs, and one `eslint .` over
+    // everything. There is no `//#build` any more — building is
+    // `apps/editor`'s own task.
     //
     // `package.json`'s `test`/`typecheck` stay the real commands instead of
     // becoming `turbo run …` aliases: turbo invokes the same-named root script,
