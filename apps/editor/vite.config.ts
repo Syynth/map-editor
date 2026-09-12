@@ -1,6 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// Resolution across the workspace boundary is not configured here either, and
+// the split is the point (#46). `dev` matches the `development` condition in
+// each package's `exports` map and serves `packages/*/src` — no build needed to
+// iterate. `build` matches `production`, which no package declares, so it falls
+// through to `default` and assembles this bundle out of `packages/*/dist/*.js`:
+// the built output really is what ships. Both halves come from Vite's default
+// `resolve.conditions`, so there is nothing here to drift.
 export default defineConfig({
   plugins: [react()],
   server: { port: 5173, strictPort: true },

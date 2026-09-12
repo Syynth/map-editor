@@ -13,6 +13,16 @@ import { defineConfig, configDefaults } from 'vitest/config'
 // None of them needs the Vite config: esbuild transforms the app's `.tsx`
 // against that package's own tsconfig, so reaching across for the app's config
 // would pull a bundler plugin back into repo-root tooling for nothing.
+// #46 put every package's `exports` map on built output, with a `development`
+// condition pointing back at source. Nothing is configured here to select it:
+// Vite's default `resolve.conditions` already carries the `development|production`
+// token, and vitest runs with `NODE_ENV=test`, so `development` is what matches
+// and the suite keeps running against `packages/*/src`. That is deliberate —
+// `//#test` has no `^build` edge, and a test run that needed one would make
+// every red test a build away from being readable. Verified by probe: with
+// every `packages/*/dist` deleted the whole suite is still green, and renaming
+// one package's `development` key to something Vite does not know fails eight
+// test files with "Failed to resolve entry for package".
 export default defineConfig({
   test: {
     // Agent worktrees under .claude/ are full checkouts, so vitest's defaults

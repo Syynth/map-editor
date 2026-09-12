@@ -41,5 +41,32 @@
   // deferral reasoned from `allowJs` being off entirely, which is no longer
   // true; #38's ESLint exemption for `scripts/**` is untouched — this issue
   // was scoped to typechecking only.
-  "include": ["tests", "vitest.config.ts"]
+  "include": ["tests", "vitest.config.ts", "tsup.config.ts"],
+
+  // The solution half (#46). Every `packages/*` project is `composite` now, so
+  // `tsc -b` from the repo root builds the whole graph in dependency order in
+  // one command — the thing project references buy that a pile of independent
+  // `tsc -p` invocations does not. `pnpm typecheck` deliberately does NOT run
+  // it: that would have one root task writing into every package's `dist/`,
+  // which is `build`'s output and `build`'s turbo cache entry. `tsc -b` is for
+  // a human at a terminal; turbo owns the ordering in the gate.
+  //
+  // `apps/*` are absent on purpose. Being referenced requires `composite`,
+  // which requires emitting declarations into a `dist/` that each app's own
+  // bundler empties on every build — and nothing imports an app, so there is
+  // no declaration surface to publish. Their `tsconfig.json`s still carry
+  // `references` (that direction is free and gives an editor source
+  // navigation across the boundary); they are just not referenced back.
+  "references": [
+    { "path": "packages/document" },
+    { "path": "packages/editor-host" },
+    { "path": "packages/eslint-rules" },
+    { "path": "packages/feature-terrain" },
+    { "path": "packages/fixtures" },
+    { "path": "packages/geometry" },
+    { "path": "packages/registry" },
+    { "path": "packages/runtime" },
+    { "path": "packages/ui" },
+    { "path": "packages/viewport" }
+  ]
 }

@@ -42,12 +42,19 @@ import type { EditorStrokeHandler, StrokeSample } from './strokes'
 
 export type DocumentRef = ActorRefFrom<DocumentActorLogic>
 
-interface Compacted {
+/**
+ * Exported for declaration emit only (#46). The actor logic below infers a
+ * return type that names this interface, and a `.d.ts` cannot refer to a type
+ * its own module does not export (TS4058). It stays off `index.ts`, so the
+ * package's public surface is unchanged.
+ */
+export interface Compacted {
   readonly first: Patch
   last: Patch
 }
 
-interface StrokeContext {
+/** Exported for declaration emit only, same as `Compacted` above (#46). */
+export interface StrokeContext {
   readonly compaction: Map<string, Compacted>
   /** The cell the stroke began on — what a rectangle preview grows from — or `null` off the map. */
   readonly origin: Cell | null

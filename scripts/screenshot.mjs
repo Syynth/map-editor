@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url'
 import { mkdirSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromiumArgs, stripGpuFlag, wantsGpu } from './chromium-launch.mjs'
+import { buildWorkspacePackages } from './build-workspace.mjs'
 
 // Vite's config, `index.html` and `dist/` all live with the app now, so both
 // spawns below run from there rather than from the repo root.
@@ -22,6 +23,11 @@ const GPU = wantsGpu()
 const OUT = stripGpuFlag()[0] ?? 'shots'
 const PORT = 4300 + Math.floor(Math.random() * 400)
 mkdirSync(OUT, { recursive: true })
+
+// The packages' `dist/` has to exist before the bundle below can be assembled;
+// see scripts/build-workspace.mjs for why, and why it lives there rather than
+// in each of the three scripts that need it.
+buildWorkspacePackages()
 
 // Preview serves dist/, so building here is the difference between capturing
 // the current code and capturing whatever happened to be built last.

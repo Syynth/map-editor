@@ -87,7 +87,13 @@ export interface GestureDeps {
   strokeFor(sample: StrokeSample): EditorStrokeHandler | undefined
 }
 
-interface GestureContext {
+/**
+ * Exported for declaration emit only (#46). The actor logic below infers a
+ * return type that names this interface, and a `.d.ts` cannot refer to a type
+ * its own module does not export (TS4058). It stays off `index.ts`, so the
+ * package's public surface is unchanged.
+ */
+export interface GestureContext {
   /** Keys currently down, lower-cased, as the viewport's play loop reads them. */
   readonly held: ReadonlySet<string>
   /** The alt+left press being held: replayed as a click on release, discarded once it orbits. */

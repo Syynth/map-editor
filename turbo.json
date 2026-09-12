@@ -17,7 +17,17 @@
   // the prior green result (`cache hit, replaying logs …`); only `--force`
   // (which bypasses the cache entirely, same as this PR's own reachability
   // proof did) surfaced the failure.
-  "globalDependencies": [".nvmrc", "scripts/check-bundle-size.mjs"],
+  // `tsup.config.ts` joins them for the `check-bundle-size.mjs` reason
+  // exactly: every package's `build` script runs `tsup --config
+  // ../../tsup.config.ts`, so that file is an input to ten tasks and lives in
+  // none of their packages. Turbo's default `inputs` is the package's own
+  // tracked files, so without this entry a change to the shared emitter
+  // config — the entry derivation, the output format, the target — changes
+  // what every `build` produces without changing any hash it is keyed on, and
+  // turbo replays the pre-edit output. Verified the same way #57 verified the
+  // bundle-size script: with the file untracked here, editing it still
+  // replayed a cache hit; listed, the same edit misses on every package.
+  "globalDependencies": [".nvmrc", "scripts/check-bundle-size.mjs", "tsup.config.ts"],
 
   "tasks": {
     // Per-package tasks, implemented by `packages/*` and every `apps/*` package
@@ -25,6 +35,11 @@
     // `^build` is the whole point: a consumer's test/typecheck/lint must not run
     // until its dependencies have been built, or it typechecks against stale
     // (or absent) emit.
+    // #46: `build` is now implemented by every `packages/*` package as well —
+    // `tsup` for `dist/*.js`, `tsc -p tsconfig.json` for `dist/*.d.ts` — so
+    // `^build` is load-bearing rather than an inert edge over a graph with one
+    // builder in it. `dist/**` already covers both halves and tsc's
+    // `.tsbuildinfo`, which is written into `dist/` for exactly that reason.
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "test": { "dependsOn": ["^build"] },
     "typecheck": { "dependsOn": ["^build"] },
@@ -61,10 +76,28 @@
     // cannot change a tsc or vitest result. Subtracting rather than listing
     // keeps a new source directory cache-correct by default; a missed entry in
     // a hand-written allowlist would serve a stale hit instead.
+    // No `^build` here, unlike `//#typecheck` below, and that is deliberate
+    // (#46). vitest resolves each package's `exports` map through the
+    // `development` condition and reads `packages/*/src`, so the suite never
+    // needs a build — including `apps/export-cli/src/cli.build.test.ts`, which
+    // runs a real `vite build` of its own inside the test process (that build
+    // runs with `NODE_ENV=test`, so it resolves `development` too). Verified
+    // by deleting every `packages/*/dist` and running the suite: 35 files,
+    // 359 tests, green. Adding the edge would make every red test a build
+    // away from being readable, for nothing.
     "//#test": {
       "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
     },
+    // `^build` here is not decoration (#46): `scripts/global.ts` types the
+    // debug hooks the tour drives as `@map-editor/editor-host`'s `Host`, and
+    // after #46 that name resolves through the package's `exports` map to
+    // `dist/index.d.ts`. Verified by moving that one file aside: `tsc --noEmit
+    // -p scripts` reports `TS2307: Cannot find module
+    // '@map-editor/editor-host'`. `^build` from the ROOT package means the
+    // root's own workspace dependencies (`document`, `editor-host`,
+    // `eslint-rules`, `viewport`) and everything beneath them.
     "//#typecheck": {
+      "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
     },
     "//#lint": {
