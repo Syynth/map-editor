@@ -89,6 +89,10 @@ new one cannot be added unchecked. The runtime is the package a game would
 consume; the editor renders through it, so the preview and the game cannot drift
 apart.
 
+`packages/ui` sits off the ladder — it can import from anywhere, but is visible
+only to apps (presently `editor`, and the future `editor-host`). This property
+is asserted by the dependency direction test with a `visibleTo` allowlist.
+
 ## Two things worth knowing before reading the code
 
 **Paint is addressed in stable grid coordinates.** Cliff faces are keyed by

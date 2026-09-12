@@ -42,7 +42,7 @@ const brushChunks = ['3,3', '4,3', '5,3', '3,4', '4,4', '5,4', '3,5', '4,5', '5,
 // Read the numbers as an upper bound, not a clean measurement. Vitest 5 prints a
 // "accessed module export getters too many times" warning for all three cases
 // here (tracking `cellIndex`, `inBounds`, `HALF`, `DIR_VECTORS` and friends from
-// src/core/document.ts): under the module runner every cross-module import is a
+// packages/document/src/document.ts): under the module runner every cross-module import is a
 // getter call, and the mesher reads those in its innermost loops. The overhead is
 // the harness's, not the mesher's, so real runtime work is somewhat faster than
 // what prints. We do not suppress the warning — see
