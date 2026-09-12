@@ -3,8 +3,9 @@ import { createActor, initialTransition, transition } from 'xstate'
 
 import { createDocumentActorLogic, documentLogic } from './actor'
 import { cellIndex, createMap, type ReadonlyMapDoc } from './document'
+import { inversePatch, type Patch } from './edits'
 import { raise } from './ops'
-import { createDocumentStore, EditorStore, type DocumentWriter } from './store'
+import { createDocumentStore, EditorStore, type DocumentReader, type DocumentWriter } from './store'
 
 /**
  * A writer that only counts. The guard tests below are about how many times
@@ -13,17 +14,22 @@ import { createDocumentStore, EditorStore, type DocumentWriter } from './store'
  * Counting the calls is the direct measurement; the real-store tests further
  * down are the same claim seen through `reader`.
  */
-function countingWriter(): { writer: DocumentWriter; calls: Record<keyof DocumentWriter, number> } {
-  const calls = { apply: 0, beginStroke: 0, endStroke: 0, undo: 0, redo: 0, replace: 0 }
+function countingWriter(): { writer: DocumentWriter; reader: DocumentReader; calls: Record<keyof DocumentWriter, number> } {
+  const calls = { apply: 0, applyStrokeTick: 0, beginStroke: 0, endStroke: 0, undo: 0, redo: 0, replace: 0 }
   const writer: DocumentWriter = {
     apply: () => void (calls.apply += 1),
+    applyStrokeTick: () => void (calls.applyStrokeTick += 1),
     beginStroke: () => void (calls.beginStroke += 1),
     endStroke: () => void (calls.endStroke += 1),
     undo: () => void (calls.undo += 1),
     redo: () => void (calls.redo += 1),
     replace: () => void (calls.replace += 1),
   }
-  return { writer, calls }
+  // The actor takes a reader too, for the commands that carry a request
+  // rather than patches. These tests only send the raw verbs, so an empty
+  // document is enough.
+  const { reader } = createDocumentStore(createMap(4, 4))
+  return { writer, reader, calls }
 }
 
 const onePatch = (index: number) => [{ t: 'terrain' as const, field: 'height' as const, index, value: 5 }]
@@ -40,8 +46,8 @@ const onePatch = (index: number) => [{ t: 'terrain' as const, field: 'height' as
  */
 describe('document actor: every write goes through enq (#22)', () => {
   it('applies N patch events exactly N times, not 2N', () => {
-    const { writer, calls } = countingWriter()
-    const actor = createActor(documentLogic(writer)).start()
+    const { writer, reader, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer, reader)).start()
 
     const N = 7
     for (let i = 0; i < N; i++) actor.send({ type: 'patch', label: 'Raise', patches: onePatch(i) })
@@ -49,9 +55,22 @@ describe('document actor: every write goes through enq (#22)', () => {
     expect(calls.apply).toBe(N)
   })
 
+  it('applies N strokePatch events exactly N times, not 2N, and refuses the empty one', () => {
+    const { writer, reader, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer, reader)).start()
+
+    const N = 7
+    for (let i = 0; i < N; i++) actor.send({ type: 'strokePatch', patches: onePatch(i) })
+    actor.send({ type: 'strokePatch', patches: [] })
+
+    expect(calls.applyStrokeTick).toBe(N)
+    // A stroke tick never reaches the always-recording verb.
+    expect(calls.apply).toBe(0)
+  })
+
   it('applies nothing on the path the transition refuses', () => {
-    const { writer, calls } = countingWriter()
-    const actor = createActor(documentLogic(writer)).start()
+    const { writer, reader, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer, reader)).start()
 
     // An empty patch list is the "not enabled" branch: the body returns
     // `undefined` before it touches `enq`. An inline write above that return
@@ -69,8 +88,8 @@ describe('document actor: every write goes through enq (#22)', () => {
     // runs the body to compute the next snapshot and RETURNS the effects
     // instead of executing them — an `enq`'d write appears in that list and
     // does not happen; an inline one happens here, with nothing executed.
-    const { writer, calls } = countingWriter()
-    const logic = documentLogic(writer)
+    const { writer, reader, calls } = countingWriter()
+    const logic = documentLogic(writer, reader)
     const [initial] = initialTransition(logic)
 
     const [, actions] = transition(logic, initial, { type: 'patch', label: 'Raise', patches: onePatch(0) })
@@ -80,15 +99,15 @@ describe('document actor: every write goes through enq (#22)', () => {
   })
 
   it('routes each verb to exactly one call on the writer, and only that one', () => {
-    const { writer, calls } = countingWriter()
-    const actor = createActor(documentLogic(writer)).start()
+    const { writer, reader, calls } = countingWriter()
+    const actor = createActor(documentLogic(writer, reader)).start()
 
     actor.send({ type: 'beginStroke', label: 'Stroke' })
-    actor.send({ type: 'endStroke' })
+    actor.send({ type: 'endStroke', patches: [], inverse: [] })
     actor.send({ type: 'undo' })
     actor.send({ type: 'redo' })
 
-    expect(calls).toEqual({ apply: 0, beginStroke: 1, endStroke: 1, undo: 1, redo: 1, replace: 0 })
+    expect(calls).toEqual({ apply: 0, applyStrokeTick: 0, beginStroke: 1, endStroke: 1, undo: 1, redo: 1, replace: 0 })
   })
 })
 
@@ -107,17 +126,27 @@ describe('document actor over a real store', () => {
     expect(store.reader.doc.terrain.height[index]).toBe(before + 3)
   })
 
-  it('closes one Edit per stroke, so one undo unwinds every tick', () => {
+  it('closes one Edit per stroke — the record it is handed — so one undo unwinds every tick', () => {
     const store = new EditorStore(createMap(8, 8))
     const actor = createActor(createDocumentActorLogic(store)).start()
     const doc = store.reader.doc
     const before = doc.terrain.height.slice()
 
+    // The record is the sender's: inverses read before each patch lands, as
+    // the stroke actor in `editor-host` does per tick (#11).
+    const patches: Patch[] = []
+    const inverse: Patch[] = []
     actor.send({ type: 'beginStroke', label: 'Raise' })
     for (let i = 0; i < 5; i++) {
-      actor.send({ type: 'patch', label: 'Raise', patches: raise(doc, [[i, 0]], 1) })
+      const tick = raise(doc, [[i, 0]], 1)
+      patches.push(...tick)
+      inverse.push(...tick.map((patch) => inversePatch(doc, patch)))
+      actor.send({ type: 'strokePatch', patches: tick })
+      // Applied on arrival: the drag is visible before it is an undo entry.
+      expect(doc.terrain.height[cellIndex(doc.size, i, 0)]).toBe(before[i] + 1)
+      expect(store.reader.canUndo()).toBe(false)
     }
-    actor.send({ type: 'endStroke' })
+    actor.send({ type: 'endStroke', patches, inverse })
     expect(store.reader.canUndo()).toBe(true)
     expect(store.reader.undoLabel()).toBe('Raise')
 
@@ -152,6 +181,25 @@ describe('the read and write paths', () => {
     expect(reader.doc.name).toBe('Second')
     expect(reader.doc.size.width).toBe(6)
     expect(reader.canUndo()).toBe(false)
+  })
+
+  it('announces a replace as a generation, which an edit does not move', () => {
+    // `revision` says "something changed", the dirty set says "remesh these
+    // keys"; neither says "the object you cached is a different document".
+    // A consumer that holds `doc` by reference — the runtime scene does —
+    // needs the third fact, and it belongs beside the other two on the read
+    // path rather than beside one caller's dispatch site.
+    const { reader, writer } = createDocumentStore(createMap(4, 4, 'First'))
+    expect(reader.generation).toBe(0)
+
+    writer.apply('Raise', [{ t: 'terrain', field: 'height', index: 0, value: 3 }])
+    expect(reader.revision).toBeGreaterThan(0)
+    expect(reader.generation).toBe(0)
+
+    writer.replace(createMap(6, 6, 'Second'))
+    expect(reader.generation).toBe(1)
+    writer.replace(createMap(8, 8, 'Third'))
+    expect(reader.generation).toBe(2)
   })
 
   it('rejects all four write shapes at the type level and leaves reads alone', () => {

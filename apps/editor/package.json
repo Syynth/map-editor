@@ -13,8 +13,11 @@
   },
   "dependencies": {
     "@map-editor/document": "workspace:*",
+    "@map-editor/editor-host": "workspace:*",
+    "@map-editor/feature-terrain": "workspace:*",
     "@map-editor/fixtures": "workspace:*",
     "@map-editor/geometry": "workspace:*",
+    "@map-editor/registry": "workspace:*",
     "@map-editor/runtime": "workspace:*",
     "@map-editor/ui": "workspace:*",
     "@map-editor/viewport": "workspace:*",

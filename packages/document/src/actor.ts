@@ -15,7 +15,7 @@
  * 1. THE STORE ARRIVES BY FACTORY CLOSURE, NEVER BY `input`. `input` rides
  *    the `xstate.init` event and reaches an inspector even when kept out of
  *    context — measured at 100,089 bytes for a 50k-entry store against 22 for
- *    a closure (#4). `documentLogic(writer)` closes over the handle; the
+ *    a closure (#4). `documentLogic(writer, reader)` closes over both; the
  *    machine's context is empty and stays that way.
  *
  * 2. EVERY WRITE IS `enq(() => writer.…)`, NEVER INLINE. On `6.0.0-alpha.53` a
@@ -37,11 +37,26 @@
 import type { CommandEvent } from '@map-editor/registry'
 import { setup, types } from 'xstate'
 
-// Imported for its side effect as much as its exports: the module declares
-// `undo` and `redo` at import, and the actor is what makes them handled.
+// Two imports of one module, and the bare one is not redundant: it is the
+// SIDE EFFECT — `commands.ts` declares, at import, every command whose effect
+// is one call on the write handle, and this actor is what makes them handled.
+// The second import is types only, and a type-only import is elided from the
+// emitted module, so without the line above a consumer that reaches this file
+// without going through the barrel would get an actor whose commands nobody
+// declared.
 import './commands'
+import type {
+  AtmosphereChanges,
+  CameraChanges,
+  DocumentLoadArgs,
+  DocumentNewArgs,
+  ObjectUpdateArgs,
+} from './commands'
+import { createMap, type MapDoc } from './document'
 import type { Patch } from './edits'
-import { writerOf, type DocumentWriter, type EditorStore } from './store'
+import { deserialize } from './io'
+import { removeObjects, updateObject } from './ops'
+import { createDocumentStore, writerOf, type DocumentReader, type DocumentWriter, type EditorStore } from './store'
 
 /**
  * What the actor accepts. Plain data throughout — a `Patch` addresses its
@@ -50,30 +65,50 @@ import { writerOf, type DocumentWriter, type EditorStore } from './store'
  *
  * `command` is the host's route in (#8): the same `undo`/`redo` the raw
  * events carry, arriving as a dispatched command so a keybinding, a menu and
- * a test reach the write handle by one path. The raw events stay for callers
- * that hold the ref directly — the stroke actor (#66 step 4) will send
- * `patch` per tick without a command in between.
+ * a test reach the write handle by one path. The raw events are for callers
+ * that hold the ref directly — the stroke actor in `editor-host` (#11, #66
+ * step 4) sends `strokePatch` per tick without a command in between, and
+ * closes with `endStroke` carrying the record it compacted per address.
+ * Patches are applied as they arrive; the record is only what history keeps.
+ *
+ * `strokePatch` is a SEPARATE VERB from `patch` on purpose. When "inside a
+ * stroke" was a property of `apply` instead, an ordinary edit that happened
+ * to land mid-drag — the Delete keybinding fires on `window` during a pointer
+ * drag — was applied and recorded by nothing: not by the history, and not by
+ * the stroke actor's map, which only holds patches the stroke itself
+ * produced. `patch` now always records; a stroke tick says so in its type.
  */
 export type DocumentEvent =
   | { type: 'patch'; label: string; patches: Patch[] }
+  | { type: 'replace'; doc: MapDoc }
+  | { type: 'strokePatch'; patches: Patch[] }
   | { type: 'beginStroke'; label: string }
-  | { type: 'endStroke' }
+  | { type: 'endStroke'; patches: Patch[]; inverse: Patch[] }
   | { type: 'undo' }
   | { type: 'redo' }
   | CommandEvent
 
 /**
- * The machine, closed over a writer. Internal: the barrel exports only the
- * pre-wired `createDocumentActorLogic`, so the parameter type — the write
- * handle — is never namable outside this package.
+ * The machine, closed over a writer and the matching reader. Internal: the
+ * barrel exports only the pre-wired `createDocumentActorLogic`, so the
+ * parameter type — the write handle — is never namable outside this package.
+ *
+ * The reader is here because a command carries a REQUEST, not patches:
+ * `objects.delete({ ids })` has to be turned into the edit that removes them,
+ * and the op that does it reads the document. Read per event, never captured
+ * — the document is mutated in place, so a held `doc` is the live one anyway,
+ * but saying so at the call site is what keeps that true if it ever stops
+ * being.
  */
-export function documentLogic(writer: DocumentWriter) {
+export function documentLogic(writer: DocumentWriter, reader: DocumentReader) {
   return setup({
     schemas: {
       events: {
         patch: types<{ label: string; patches: Patch[] }>(),
+        replace: types<{ doc: MapDoc }>(),
+        strokePatch: types<{ patches: Patch[] }>(),
         beginStroke: types<{ label: string }>(),
-        endStroke: types<void>(),
+        endStroke: types<{ patches: Patch[]; inverse: Patch[] }>(),
         undo: types<void>(),
         redo: types<void>(),
         command: types<{ id: string; args: unknown }>(),
@@ -95,12 +130,26 @@ export function documentLogic(writer: DocumentWriter) {
             enq(() => writer.apply(event.label, event.patches))
             return {}
           },
+          // The whole document, swapped: load and new map. History is cleared
+          // by the writer, because an undo across a replace would restore
+          // patches addressed to a document that is gone.
+          replace: ({ event }, enq) => {
+            enq(() => writer.replace(event.doc))
+            return {}
+          },
+          strokePatch: ({ event }, enq) => {
+            // Same refusal as `patch`, and for the same reason: the empty list
+            // is the "not enabled" shape, taken before `enq` is touched.
+            if (event.patches.length === 0) return undefined
+            enq(() => writer.applyStrokeTick(event.patches))
+            return {}
+          },
           beginStroke: ({ event }, enq) => {
             enq(() => writer.beginStroke(event.label))
             return {}
           },
-          endStroke: (_, enq) => {
-            enq(() => writer.endStroke())
+          endStroke: ({ event }, enq) => {
+            enq(() => writer.endStroke({ patches: event.patches, inverse: event.inverse }))
             return {}
           },
           undo: (_, enq) => {
@@ -113,12 +162,52 @@ export function documentLogic(writer: DocumentWriter) {
           },
           command: ({ event }, enq) => {
             // Only the ids `commands.ts` declared can arrive here: the host
-            // routes by declaring owner, and this owner declared two. Anything
-            // else is refused with the `undefined` guard shape rather than
-            // dropped inside `enq`, so it takes no transition at all.
+            // routes by declaring owner, and this owner declared eight.
+            // Anything else is refused with the `undefined` guard shape rather
+            // than dropped inside `enq`, so it takes no transition at all.
+            //
+            // Everything below is computed ABOVE the first `enq` call, so it
+            // runs twice — and every one of them is pure (an op reads the
+            // document and returns patches; `deserialize` and `createMap`
+            // build a new one and touch nothing), which is the contract a v6
+            // transition body has to keep. A request that comes to no patches
+            // takes the `undefined` guard shape rather than enqueuing a write
+            // `apply` would prune anyway.
             if (event.id === 'undo') enq(() => writer.undo())
             else if (event.id === 'redo') enq(() => writer.redo())
-            else return undefined
+            else if (event.id === 'objects.delete') {
+              const patches = removeObjects(reader.doc, (event.args as { ids: string[] }).ids)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Delete object', patches))
+            } else if (event.id === 'objects.update') {
+              const { id, changes } = event.args as ObjectUpdateArgs
+              // An id the document does not hold comes to no patches, the
+              // same as a delete of one: the request named something that is
+              // not there, which is not an error to report from here.
+              const patches = updateObject(reader.doc, id, changes)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Edit object', patches))
+            } else if (event.id === 'camera.set') {
+              // One `doc` patch carrying the merged rig, not a patch per
+              // field: `camera` is one field of the document, so the
+              // before-value an undo restores is the whole rig.
+              const camera = { ...reader.doc.camera, ...(event.args as CameraChanges) }
+              enq(() => writer.apply('Camera rig', [{ t: 'doc', field: 'camera', value: camera }]))
+            } else if (event.id === 'atmosphere.set') {
+              const atmosphere = { ...reader.doc.atmosphere, ...(event.args as AtmosphereChanges) }
+              enq(() => writer.apply('Atmosphere', [{ t: 'doc', field: 'atmosphere', value: atmosphere }]))
+            } else if (event.id === 'document.load') {
+              // Parsed again here, having already parsed in the schema: the
+              // schema's copy is what turns a bad file into an `invalid-args`
+              // result instead of a throw inside this effect (see
+              // `commands.ts`), and what arrives is known to parse.
+              const doc = deserialize((event.args as DocumentLoadArgs).json)
+              enq(() => writer.replace(doc))
+            } else if (event.id === 'document.new') {
+              const { width, height, name } = event.args as DocumentNewArgs
+              const doc = createMap(width, height, name)
+              enq(() => writer.replace(doc))
+            } else return undefined
             return {}
           },
         },
@@ -128,13 +217,30 @@ export function documentLogic(writer: DocumentWriter) {
 }
 
 /**
- * The pre-wired logic the host spawns (#13): hand it the store the app holds
- * and get back a machine that writes it. This is the only public route to a
- * document actor, and it takes a store rather than a writer so the writer
- * type never crosses the package boundary.
+ * The pre-wired logic, over a store this package already holds. Internal since
+ * #66 step 7 — `EditorStore` is not namable outside the package, so the only
+ * callers left are `createDocument` below and this package's tests.
  */
 export function createDocumentActorLogic(store: EditorStore) {
-  return documentLogic(writerOf(store))
+  return documentLogic(writerOf(store), store.reader)
 }
 
 export type DocumentActorLogic = ReturnType<typeof createDocumentActorLogic>
+
+/**
+ * What a composition root asks for (#13, #66 step 7): a document, as the two
+ * faces it is allowed to have. The store is constructed in here and never
+ * escapes, so an app holds a `reader` to read through and a `logic` to hand
+ * `createHost`, and has no way to write except by dispatching a command at the
+ * actor the host spawns from that logic.
+ */
+export function createDocument(doc: MapDoc): DocumentSource {
+  const store = createDocumentStore(doc)
+  return { reader: store.reader, logic: documentLogic(store.writer, store.reader) }
+}
+
+/** The pair a host is built from. Named so `HostOptions` can take it as one argument. */
+export interface DocumentSource {
+  readonly reader: DocumentReader
+  readonly logic: DocumentActorLogic
+}

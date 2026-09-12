@@ -1,13 +1,30 @@
 import { describe, expect, it } from 'vitest'
 
 import { autotileMask, MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST } from './autotile'
-import { applyPatches, History } from './edits'
-import { cellIndex, createMap, NO_RAMP, type MapDoc } from './document'
+import { applyPatches, History, inversePatch, patchAddress, type Patch, type StrokeRecord } from './edits'
+import { cellIndex, createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject } from './document'
 import { deserialize, LoadError, serialize } from './io'
-import { brushCells, fillCells, flatten, paintTop, raise, setRamp } from './ops'
+import { addObject, brushCells, fillCells, flatten, paintTop, raise, removeObject, setRamp, updateObject } from './ops'
 import { cliffKey, countDormant, topKey } from './paint'
 import { EditorStore } from './store'
 import { groundHeight } from './terrain'
+
+function objectAt(id: string, x: number, z: number): MapObject {
+  return {
+    id,
+    name: id,
+    sprite: 'tree',
+    position: [x, 0, z],
+    rotationY: 0,
+    scale: 1,
+    display: 'auto',
+    facing: defaultFacing(),
+    anchorCell: [x, z],
+    seed: 0,
+    locked: false,
+    hidden: false,
+  }
+}
 
 function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
   doc.terrain.height[cellIndex(doc.size, x, y)] = h
@@ -65,19 +82,177 @@ describe('edits', () => {
   })
 })
 
+describe('patch addresses and inverses', () => {
+  it('keys a patch by the slot it writes, and nothing else', () => {
+    expect(patchAddress({ t: 'terrain', field: 'height', index: 7, value: 1 })).toBe(patchAddress({ t: 'terrain', field: 'height', index: 7, value: 9 }))
+    expect(patchAddress({ t: 'terrain', field: 'height', index: 7, value: 1 })).not.toBe(patchAddress({ t: 'terrain', field: 'water', index: 7, value: 1 }))
+    expect(patchAddress({ t: 'paint', layer: 'top', key: '1,2', value: 3 })).not.toBe(patchAddress({ t: 'paint', layer: 'cliff', key: '1,2', value: 3 }))
+    expect(patchAddress({ t: 'object', id: 'a', value: undefined })).toBe('object:a')
+    expect(patchAddress({ t: 'doc', field: 'camera', value: null })).toBe('doc:camera')
+  })
+
+  it('reads the before-value the applier would have returned, without writing', () => {
+    const doc = createMap(4, 4)
+    setHeight(doc, 1, 1, 6)
+    const patch: Patch = { t: 'terrain', field: 'height', index: cellIndex(doc.size, 1, 1), value: 9 }
+    const before = inversePatch(doc, patch)
+    expect(before).toEqual({ ...patch, value: 6 })
+    expect(doc.terrain.height[patch.index]).toBe(6)
+    // Same answer as the applier, which is what makes the two paths agree.
+    expect(applyPatches(doc, [patch])).toEqual([before])
+    expect(inversePatch(doc, { t: 'paint', layer: 'top', key: '0,0', value: 1 })).toEqual({ t: 'paint', layer: 'top', key: '0,0', value: undefined })
+  })
+})
+
+/**
+ * What the stroke actor does per tick, in miniature: read each patch's
+ * before-value BEFORE applying it, keep the first inverse and the last forward
+ * value per address, and hand the pair back on release.
+ */
+function compactingStroke(store: EditorStore, label: string): { apply(patches: Patch[]): void; end(): void } {
+  const compaction = new Map<string, { first: Patch; last: Patch }>()
+  store.beginStroke(label)
+  return {
+    apply(patches) {
+      for (const patch of patches) {
+        const key = patchAddress(patch)
+        const entry = compaction.get(key)
+        if (entry) entry.last = patch
+        else compaction.set(key, { first: inversePatch(store.reader.doc, patch), last: patch })
+      }
+      store.applyStrokeTick(patches)
+    },
+    end() {
+      const record: StrokeRecord = { patches: [], inverse: [] }
+      for (const { first, last } of compaction.values()) {
+        record.patches.push(last)
+        record.inverse.push(first)
+      }
+      store.endStroke(record)
+    },
+  }
+}
+
 describe('store', () => {
-  it('coalesces a stroke into one undo entry', () => {
+  it('records a stroke as the one entry its record describes', () => {
     const store = new EditorStore(createMap(8, 8))
-    store.beginStroke('Raise')
-    for (let i = 0; i < 5; i++) {
-      store.apply('Raise', raise(store.reader.doc, [[i, 0]], 1))
-    }
-    store.endStroke()
+    const stroke = compactingStroke(store, 'Raise')
+    for (let i = 0; i < 5; i++) stroke.apply(raise(store.reader.doc, [[i, 0]], 1))
+    stroke.end()
 
     expect(store.reader.doc.terrain.height[0]).toBe(3)
+    expect(store.reader.undoLabel()).toBe('Raise')
     store.undo()
     for (let i = 0; i < 5; i++) expect(store.reader.doc.terrain.height[i]).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
+  })
+
+  it('applies every tick immediately but keeps no history until the record arrives', () => {
+    const store = new EditorStore(createMap(8, 8))
+    const stroke = compactingStroke(store, 'Raise')
+    stroke.apply(raise(store.reader.doc, [[0, 0]], 1))
+    // The terrain moved mid-drag, and the drag is not an undo entry yet.
+    expect(store.reader.doc.terrain.height[0]).toBe(3)
+    expect(store.reader.canUndo()).toBe(false)
+    expect(store.inStroke).toBe(true)
+
+    // Undo mid-stroke is refused rather than closing the stroke early: the
+    // old close-and-undo left the rest of the drag with no record at all.
+    store.undo()
+    expect(store.reader.doc.terrain.height[0]).toBe(3)
+
+    stroke.end()
+    expect(store.reader.canUndo()).toBe(true)
+  })
+
+  it('records an ordinary edit that lands mid-stroke, so one undo brings it back', () => {
+    // The Delete keybinding is on `window` and fires during a pointer drag —
+    // pointer capture does not stop it — so an app write concurrent with a
+    // stroke is reachable, not hypothetical. It used to be folded into the
+    // open stroke; for one commit it was recorded by nothing at all.
+    const store = new EditorStore(createMap(8, 8))
+    const stroke = compactingStroke(store, 'Raise')
+    stroke.apply(raise(store.reader.doc, [[0, 0]], 1))
+    store.apply('Elsewhere', raise(store.reader.doc, [[7, 7]], 1))
+    expect(store.reader.doc.terrain.height[cellIndex(store.reader.doc.size, 7, 7)]).toBe(3)
+
+    stroke.end()
+    // Two entries, innermost last: the mid-stroke edit unwinds on its own undo
+    // and the drag unwinds on the next.
+    expect(store.reader.undoLabel()).toBe('Raise')
+    store.undo()
+    expect(store.reader.doc.terrain.height[0]).toBe(2)
+    expect(store.reader.undoLabel()).toBe('Elsewhere')
+    store.undo()
+    expect(store.reader.doc.terrain.height[cellIndex(store.reader.doc.size, 7, 7)]).toBe(2)
+    expect(store.reader.canUndo()).toBe(false)
+  })
+
+  it('refuses a mid-stroke edit at an address the stroke already wrote', () => {
+    // The collision the previous test does NOT have: same address, two
+    // entries. Recorded, they unwind in an order that never happened — the
+    // stroke's entry sits ON TOP of the concurrent one but holds the older
+    // before-value, so one undo restores a mid-drag state and the next
+    // restores the state before the drag began, out of order.
+    const store = new EditorStore(createMap(8, 8))
+    const stroke = compactingStroke(store, 'Raise')
+    stroke.apply(raise(store.reader.doc, [[0, 0]], 1))
+
+    store.apply('Collides', raise(store.reader.doc, [[0, 0]], 5))
+    // Refused whole: not applied, and not an entry.
+    expect(store.reader.doc.terrain.height[0]).toBe(3)
+
+    stroke.end()
+    expect(store.reader.undoLabel()).toBe('Raise')
+    store.undo()
+    expect(store.reader.doc.terrain.height[0]).toBe(2)
+    expect(store.reader.canUndo()).toBe(false)
+  })
+
+  it('refuses the colliding edit whole, never the half of it that does not collide', () => {
+    // `removeObject` is two patches — the object and the order — and the
+    // stroke owns only the first. Applying the other half would drop the id
+    // from `objectOrder` while `objects` kept it: the orphan, arrived at from
+    // the other side.
+    const store = new EditorStore(createMap(8, 8))
+    const object = objectAt('a', 1, 1)
+    store.apply('Add object', addObject(store.reader.doc, object))
+
+    const stroke = compactingStroke(store, 'Edit object')
+    stroke.apply(updateObject(store.reader.doc, 'a', { position: [4, 0, 4] }))
+    store.apply('Delete object', removeObject(store.reader.doc, 'a'))
+    expect(store.reader.doc.objectOrder).toEqual(['a'])
+    expect(store.reader.doc.objects.a).toBeDefined()
+
+    stroke.end()
+    store.undo()
+    expect(store.reader.doc.objects.a?.position).toEqual([1, 0, 1])
+    expect(store.reader.doc.objectOrder).toEqual(['a'])
+  })
+
+  it('refuses a stroke tick with no stroke open, since it addresses a replaced document', () => {
+    const store = new EditorStore(createMap(8, 8))
+    store.applyStrokeTick(raise(store.reader.doc, [[0, 0]], 1))
+    expect(store.reader.doc.terrain.height[0]).toBe(2)
+    expect(store.reader.canUndo()).toBe(false)
+  })
+
+  it('drops a record that arrives after the document was replaced', () => {
+    const store = new EditorStore(createMap(8, 8, 'First'))
+    const stroke = compactingStroke(store, 'Raise')
+    stroke.apply(raise(store.reader.doc, [[0, 0]], 1))
+    store.replace(createMap(4, 4, 'Second'))
+    stroke.end()
+    expect(store.reader.canUndo()).toBe(false)
+    expect(store.reader.doc.name).toBe('Second')
+  })
+
+  it('closes an empty stroke without an entry', () => {
+    const store = new EditorStore(createMap(8, 8))
+    store.beginStroke('Nothing')
+    store.endStroke(null)
+    expect(store.reader.canUndo()).toBe(false)
+    expect(store.inStroke).toBe(false)
   })
 
   it('drops no-op patches so idle brushing does not fill the undo stack', () => {

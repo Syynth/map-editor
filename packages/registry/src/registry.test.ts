@@ -16,7 +16,7 @@ import {
 // any actor exists" claim. Nothing below spawns anything, and the first test
 // reads what import time left behind.
 const importTime = 'test:import-time'
-const mode = defineContextKey<'edit' | 'play'>('test.registry.mode', 'edit')
+const mode = defineContextKey<'edit' | 'play'>(importTime, 'test.registry.mode', 'edit')
 commands.declare(importTime, { id: 'test.import.command', title: 'Import-time command', when: mode.is('edit') })
 tools.declare(importTime, { id: 'test.import.tool', title: 'Import-time tool' })
 panels.declare(importTime, { id: 'test.import.panel', title: 'Import-time panel', component: 'opaque' })
