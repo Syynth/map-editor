@@ -1,10 +1,12 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    // `DOM` stays, unlike `document` and `geometry`: a sprite is an
-    // `HTMLCanvasElement` and a texture is uploaded from one, so the canvas
-    // types are part of this package's surface rather than an accident.
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    // No `DOM`, like `document` and `geometry` (#47). A sprite is an `RgbaImage`
+    // and a texture is a `DataTexture` over its bytes, so nothing here names a
+    // canvas, an element or a `Blob` — and with `DOM` absent the compiler,
+    // not a grep, is what says so. The one host global the package does read,
+    // `performance.now()`, is declared in `src/hrtime.d.ts` for that reason.
+    "lib": ["ES2022"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "skipLibCheck": true,
@@ -18,7 +20,7 @@
     "noFallthroughCasesInSwitch": true,
 
     // No ambient `@types`. Issue #3 measured that nothing here creates a WebGL
-    // context, which is what lets the export CLI reuse this package headlessly;
+    // context, which is what lets a headless exporter reuse this package;
     // keeping Node's globals out means the day someone reaches for `process` or
     // `fs` the compiler says so here, while the same file still builds under
     // the root config. `@types/three` is reached through its import, not

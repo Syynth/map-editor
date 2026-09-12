@@ -41,7 +41,9 @@ import {
   wrapDegrees,
   type ObjectViewContext,
   type PickResult,
+  type SceneAssets,
 } from '@map-editor/runtime'
+import type { RgbaImage, SpriteAsset } from '@map-editor/document'
 
 /** Tilt-shift: a cheap vertical-gradient blur, the HD-2D miniature look. */
 const TiltShiftShader = {
@@ -187,6 +189,9 @@ export class Viewport {
   constructor(
     private canvas: HTMLCanvasElement,
     store: EditorStore,
+    // The art comes in from the composition root, never from here (#47): the
+    // viewport is a GL shell around the runtime and draws nothing itself.
+    assets: SceneAssets,
     handlers: ViewportHandlers,
   ) {
     this.store = store
@@ -199,7 +204,7 @@ export class Viewport {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.0
 
-    this.scene = new RuntimeScene(store.doc)
+    this.scene = new RuntimeScene(store.doc, assets)
     this.scene.rebuildChunks()
 
     const centre = this.scene.mapCentre()
@@ -300,8 +305,12 @@ export class Viewport {
     this.scene.applyAtmosphere()
   }
 
-  loadSheet(canvas: HTMLCanvasElement): void {
-    this.scene.refreshSheet(canvas)
+  loadSheet(sheet: RgbaImage): void {
+    this.scene.refreshSheet(sheet)
+  }
+
+  loadSprites(sprites: Record<string, SpriteAsset>): void {
+    this.scene.setSprites(sprites)
   }
 
   startSweep(): void {

@@ -27,6 +27,7 @@
     "shoot": "node scripts/screenshot.mjs",
     "tour": "node scripts/tour.mjs",
     "probe": "node scripts/probe.mjs",
+    "bake": "node scripts/bake-fixtures.mjs",
     "browsers": "playwright install chromium"
   },
   "devDependencies": {

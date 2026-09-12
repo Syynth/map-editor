@@ -14,9 +14,8 @@
 
 import * as THREE from 'three'
 
-import type { CameraRig, MapObject } from '@map-editor/document'
+import type { CameraRig, MapObject, RgbaImage, SpriteAsset } from '@map-editor/document'
 import { wrapDegrees, yawIsFree } from './camera'
-import type { SpriteAsset } from './textures'
 
 const DEG = Math.PI / 180
 
@@ -24,23 +23,40 @@ const DEG = Math.PI / 180
 const EXTRUDE_THICKNESS = 0.12
 const EXTRUDE_LAYERS = 7
 
-const textureCache = new WeakMap<HTMLCanvasElement, THREE.CanvasTexture>()
+const textureCache = new WeakMap<RgbaImage, THREE.DataTexture>()
 
-export function canvasTexture(canvas: HTMLCanvasElement, nearest: boolean): THREE.CanvasTexture {
-  const cached = textureCache.get(canvas)
+/**
+ * The GPU side of the texture boundary (#47): raw pixels in, a three texture
+ * out. One texture per image, cached by identity, because `ObjectView`,
+ * `Character` and `Sky` all ask for the same facing and a second upload of the
+ * same bytes would only cost memory.
+ *
+ * The image is top row first, as `getImageData` and every PNG decoder produce
+ * it. `flipY` stays on — the default a `CanvasTexture` had — so the UVs the
+ * mesher and `PlaneGeometry` emit keep meaning what they meant when the sheet
+ * was a canvas; the GPU flips at upload, the pixels are never copied.
+ */
+export function rgbaTexture(image: RgbaImage, nearest: boolean): THREE.DataTexture {
+  const cached = textureCache.get(image)
   if (cached) {
     cached.magFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter
     cached.minFilter = nearest ? THREE.NearestMipmapNearestFilter : THREE.LinearMipmapLinearFilter
     cached.needsUpdate = true
     return cached
   }
-  const texture = new THREE.CanvasTexture(canvas)
+  // A `Uint8Array` view over the same buffer: the byte layout is identical,
+  // and it is the type every WebGL implementation accepts for UNSIGNED_BYTE
+  // uploads, where `Uint8ClampedArray` was only admitted later.
+  const bytes = new Uint8Array(image.data.buffer, image.data.byteOffset, image.data.byteLength)
+  const texture = new THREE.DataTexture(bytes, image.width, image.height, THREE.RGBAFormat, THREE.UnsignedByteType)
+  texture.flipY = true
   texture.colorSpace = THREE.SRGBColorSpace
   texture.magFilter = nearest ? THREE.NearestFilter : THREE.LinearFilter
   texture.minFilter = nearest ? THREE.NearestMipmapNearestFilter : THREE.LinearMipmapLinearFilter
   texture.generateMipmaps = true
   texture.anisotropy = 4
-  textureCache.set(canvas, texture)
+  texture.needsUpdate = true
+  textureCache.set(image, texture)
   return texture
 }
 
@@ -152,7 +168,7 @@ export class ObjectView {
   constructor(object: MapObject, asset: SpriteAsset, context: ObjectViewContext) {
     this.object = object
     this.asset = asset
-    this.material = makeMaterial(canvasTexture(asset.facings[0], context.nearest), asset.emissive)
+    this.material = makeMaterial(rgbaTexture(asset.facings[0], context.nearest), asset.emissive)
     this.group.add(this.pivot)
     this.rebuild(object, asset, context)
   }
@@ -178,7 +194,7 @@ export class ObjectView {
     const height = asset.heightTiles * object.scale
     const hinge = object.facing.hinge
 
-    this.material.map = canvasTexture(asset.facings[0], context.nearest)
+    this.material.map = rgbaTexture(asset.facings[0], context.nearest)
     this.material.needsUpdate = true
 
     if (this.mode === 'crossed') {
@@ -236,12 +252,12 @@ export class ObjectView {
   }
 
   private applyFacing(index: number, mirrored: boolean, nearest: boolean): void {
-    const canvas = this.asset.facings[Math.min(index, this.asset.facings.length - 1)]
-    const texture = canvasTexture(canvas, nearest)
+    const image = this.asset.facings[Math.min(index, this.asset.facings.length - 1)]
+    const texture = rgbaTexture(image, nearest)
     this.material.map = texture
     if (this.asset.emissive) this.material.emissiveMap = texture
     this.material.needsUpdate = true
-    // Mirroring flips the quad rather than the texture, so one canvas serves
+    // Mirroring flips the quad rather than the texture, so one image serves
     // both sides without a second upload.
     const sign = mirrored ? -1 : 1
     for (const mesh of this.meshes) mesh.scale.x = Math.abs(mesh.scale.x) * sign
@@ -300,7 +316,7 @@ export class ObjectView {
       if (object.facing.transition === 'crossfade' && this.fadeMesh && this.fadeMaterial) {
         this.fade = Math.min(1, this.fade + step)
         this.fadeMesh.visible = true
-        this.fadeMaterial.map = canvasTexture(this.asset.facings[this.pendingFacing], context.nearest)
+        this.fadeMaterial.map = rgbaTexture(this.asset.facings[this.pendingFacing], context.nearest)
         this.fadeMaterial.opacity = this.fade
         this.fadeMaterial.needsUpdate = true
         if (this.fade >= 1) {

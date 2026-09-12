@@ -11,10 +11,13 @@ import {
   type CameraRig,
   type MapDoc,
   type MapObject,
+  type RgbaImage,
 } from '@map-editor/document'
+import { SPRITE_NAMES } from '@map-editor/fixtures'
 import { sheetLayoutFor, tileColumnRow } from '@map-editor/geometry'
-import { SPRITE_NAMES, analyseCoverage, type CoverageReport } from '@map-editor/runtime'
+import { analyseCoverage, type CoverageReport } from '@map-editor/runtime'
 import { ColorInput, Field, Note, NumberInput, Panel, Segmented, Select, Slider } from '@map-editor/ui'
+import { rgbaToDataUrl } from './rgba'
 import type { EditorState } from './state'
 
 // --- tile palette -----------------------------------------------------------
@@ -26,7 +29,7 @@ export function TilePalette({
   onSelect,
 }: {
   doc: MapDoc
-  sheet: HTMLCanvasElement | null
+  sheet: RgbaImage | null
   selected: number
   onSelect: (tile: number) => void
 }) {
@@ -35,7 +38,7 @@ export function TilePalette({
 
   useEffect(() => {
     if (!sheet) return setUrl(null)
-    setUrl(sheet.toDataURL())
+    setUrl(rgbaToDataUrl(sheet))
   }, [sheet])
 
   const { column, row } = tileColumnRow(layout, selected)
@@ -83,7 +86,7 @@ export function ToolPanel({
 }: {
   doc: MapDoc
   state: EditorState
-  sheet: HTMLCanvasElement | null
+  sheet: RgbaImage | null
   set: (changes: Partial<EditorState>) => void
   onLoadSheet: (file: File) => void
   sheetWarning: string | null

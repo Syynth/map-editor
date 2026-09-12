@@ -1,13 +1,21 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    // `DOM` is here for one module, `textures.ts`: the placeholder generator
+    // draws with a 2D canvas and reads the pixels back out at its edge (#47).
+    // It came from `runtime`, which dropped `DOM` the same day — the canvas
+    // types moved with the only code that used them.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     // Same as the root config, and the same reason as `document`'s and
-    // `geometry`'s: dependencies' declarations reach for `DOM` and Node types
-    // this package does not load.
+    // `geometry`'s: dependencies' declarations reach for Node types this
+    // package does not load.
     "skipLibCheck": true,
+    // For `src/baked.test.ts` alone: it imports `../baked/manifest.json` to
+    // hold the checked-in bake to the live sample map, and a JSON import is
+    // the one way to read that file with no Node types in this program.
+    "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
@@ -17,12 +25,15 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
-    // No `DOM`, no ambient `@types`. A fixture is dev-only in the sense that
-    // nothing shipped depends on it, but what it produces is a real `MapDoc`
-    // the editor loads — so it is built out of document verbs and sheet layout
-    // and nothing else. Leaving `window` and Node's globals out is what keeps
-    // that true: the day a fixture reaches for a canvas or the filesystem to
-    // fake something up, the compiler says so here.
+    // No ambient `@types`. A fixture is dev-only in the sense that nothing
+    // shipped depends on it, but what it produces is real data the editor
+    // loads: the sample map is built out of document verbs and sheet layout
+    // and nothing else, and the generator's canvas never leaves `textures.ts`.
+    // Leaving Node's globals out is what keeps the second half of that
+    // compiler-checked: the day a fixture reaches for the filesystem to fake
+    // something up, the compiler says so here. (`DOM` above means a fixture
+    // reaching for a canvas is now a review question rather than a compile
+    // error — the price of housing the one module that legitimately does.)
     "types": []
   },
 

@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bake fixtures — placeholder art for the sample map</title>
+    <style>
+      body { font: 14px system-ui, sans-serif; margin: 1.5rem; background: #2a2a30; color: #ddd; }
+      img { image-rendering: pixelated; background: repeating-conic-gradient(#3a3a42 0 25%, #30303a 0 50%) 0 0 / 16px 16px; margin: 0 8px 8px 0; }
+      h2 { font-size: 1rem; margin: 1.5rem 0 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <!-- Dev-only. Not in the production build (Vite's build input is
+         index.html alone); `pnpm bake` drives it headless to regenerate
+         packages/fixtures/baked/, and `pnpm dev` serves it at /bake.html for
+         a human to look at the same art. -->
+    <p>The placeholder art for the sample map, exactly as <code>pnpm bake</code> captures it into <code>packages/fixtures/baked/</code>.</p>
+    <div id="bake"></div>
+    <script type="module" src="/src/bake/main.ts"></script>
+  </body>
+</html>

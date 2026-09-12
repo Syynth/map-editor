@@ -10,15 +10,20 @@
  * Terrain geometry is managed imperatively, chunk by chunk. Only chunks the
  * store marks dirty are rebuilt, so a brush stroke does not touch the rest of
  * the map.
+ *
+ * The art is an input, never a default (#47). The scene takes its template
+ * sheet and sprite library as raw pixels from whoever composes it — the editor
+ * generates placeholders through `fixtures`, a game would load real art — and
+ * has no way to draw any itself. That is what keeps this package free of the
+ * DOM: a runtime that could fall back to a canvas would need one.
  */
 
 import * as THREE from 'three'
 
-import { allChunkKeys, type MapDoc, type MapObject } from '@map-editor/document'
+import { allChunkKeys, type MapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
 import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
-import { ObjectView, canvasTexture, type ObjectViewContext } from './billboard'
+import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
 import { Sky, sunDirection } from './sky'
-import { generateSprites, generateTerrainSheet, type SpriteAsset } from './textures'
 
 function buildGeometry(buffers: MeshBuffers): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry()
@@ -46,6 +51,18 @@ export interface SceneStats {
   lastMeshMs: number
 }
 
+/**
+ * Everything the scene textures with. Both halves are authored at the
+ * document's texel density; the composition root regenerates or reloads them
+ * when that changes and hands the new ones to `refreshSheet` / `setSprites`.
+ */
+export interface SceneAssets {
+  /** The template sheet, laid out as `packages/geometry/src/template.ts` says. */
+  sheet: RgbaImage
+  /** Keyed by `MapObject.sprite`; an unknown name falls back to `rock`. */
+  sprites: Record<string, SpriteAsset>
+}
+
 export class RuntimeScene {
   readonly scene = new THREE.Scene()
   readonly terrainGroup = new THREE.Group()
@@ -59,16 +76,16 @@ export class RuntimeScene {
   private views = new Map<string, ObjectView>()
   private terrainMaterial: THREE.MeshStandardMaterial
   private waterMaterial: THREE.MeshStandardMaterial
-  private sheetTexture: THREE.CanvasTexture | null = null
+  private sheet: RgbaImage
   private sun = new THREE.DirectionalLight(0xffffff, 1)
   private hemisphere = new THREE.HemisphereLight(0xffffff, 0x444444, 1)
   private pointLights = new Map<string, THREE.PointLight>()
   private doc: MapDoc
-  private lastSignature = ''
 
-  constructor(doc: MapDoc) {
+  constructor(doc: MapDoc, assets: SceneAssets) {
     this.doc = doc
-    this.sprites = generateSprites(doc.texelDensity)
+    this.sheet = assets.sheet
+    this.sprites = assets.sprites
 
     this.terrainMaterial = new THREE.MeshStandardMaterial({
       vertexColors: true,
@@ -103,41 +120,51 @@ export class RuntimeScene {
     this.scene.add(this.sun.target)
     this.scene.add(this.hemisphere)
 
-    this.refreshSheet()
+    this.applySheet()
     this.applyAtmosphere()
   }
 
+  /**
+   * Swap the document underneath the scene. The art is not touched: a density
+   * or material change is the composition root's to notice, and it answers
+   * with `refreshSheet` / `setSprites`. Filtering IS answered here, because it
+   * is a document setting applied to art the scene already holds.
+   */
   setDocument(doc: MapDoc): void {
-    const resolutionChanged =
-      doc.texelDensity !== this.doc.texelDensity || doc.filtering !== this.doc.filtering
+    const filteringChanged = doc.filtering !== this.doc.filtering
     this.doc = doc
-    if (resolutionChanged) {
-      this.sprites = generateSprites(doc.texelDensity)
-      for (const view of this.views.values()) view.dispose()
-      this.views.clear()
-      this.objectGroup.clear()
+    if (filteringChanged) {
+      this.dropViews()
+      this.applySheet()
     }
-    this.refreshSheet()
+  }
+
+  /** The template sheet, generated or artist-supplied; the caller cannot tell which and neither can this. */
+  refreshSheet(sheet: RgbaImage): void {
+    this.sheet = sheet
+    this.applySheet()
   }
 
   /**
-   * The template sheet. Regenerated when the materials or the resolution
-   * profile change; an artist-supplied sheet replaces it wholesale.
+   * Replace the sprite library. Every view and backdrop is rebuilt from it on
+   * the next sync, since the old images may be at the wrong density.
    */
-  refreshSheet(sheet?: HTMLCanvasElement): void {
-    const signature =
-      sheet
-        ? `custom:${sheet.width}x${sheet.height}`
-        : `${this.doc.texelDensity}:${this.doc.filtering}:${this.doc.materials
-            .map((m) => `${m.name}${m.color}`)
-            .join(',')}`
-    if (!sheet && signature === this.lastSignature) return
-    this.lastSignature = signature
+  setSprites(sprites: Record<string, SpriteAsset>): void {
+    this.sprites = sprites
+    this.dropViews()
+    this.sky.apply(this.doc.atmosphere, this.sprites, this.doc.filtering === 'nearest')
+  }
 
-    const canvas = sheet ?? generateTerrainSheet(this.doc.materials, this.doc.texelDensity)
-    this.sheetTexture = canvasTexture(canvas, this.doc.filtering === 'nearest')
-    this.terrainMaterial.map = this.sheetTexture
+  private applySheet(): void {
+    this.terrainMaterial.map = rgbaTexture(this.sheet, this.doc.filtering === 'nearest')
     this.terrainMaterial.needsUpdate = true
+  }
+
+  private dropViews(): void {
+    for (const view of this.views.values()) view.dispose()
+    this.views.clear()
+    this.objectGroup.clear()
+    this.pointLights.clear()
   }
 
   applyAtmosphere(): void {
@@ -309,5 +336,3 @@ export class RuntimeScene {
     this.sky.dispose()
   }
 }
-
-export type { MapObject }

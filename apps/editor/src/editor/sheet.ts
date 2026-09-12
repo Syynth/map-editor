@@ -13,10 +13,11 @@
  */
 
 import { BLOCK_COLUMNS, BLOCK_ROWS } from '@map-editor/geometry'
-import type { MapDoc } from '@map-editor/document'
+import type { MapDoc, RgbaImage } from '@map-editor/document'
 
 export interface SheetLoadResult {
-  canvas: HTMLCanvasElement
+  /** Raw pixels, the form the runtime takes a sheet in (#47). */
+  image: RgbaImage
   /** Density the file appears to have been authored at. */
   detectedDensity: number
   warning: string | null
@@ -30,7 +31,7 @@ export function expectedSheetSize(doc: MapDoc): { width: number; height: number 
   }
 }
 
-function drawTo(image: HTMLImageElement, width: number, height: number): HTMLCanvasElement {
+function drawTo(image: HTMLImageElement, width: number, height: number): RgbaImage {
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -38,7 +39,8 @@ function drawTo(image: HTMLImageElement, width: number, height: number): HTMLCan
   if (!ctx) throw new Error('2D canvas unavailable')
   ctx.imageSmoothingEnabled = false
   ctx.drawImage(image, 0, 0, width, height)
-  return canvas
+  // The canvas was only ever the decoder and the rescaler; what leaves is pixels.
+  return { width, height, data: ctx.getImageData(0, 0, width, height).data }
 }
 
 export async function loadSheetFromFile(file: File, doc: MapDoc): Promise<SheetLoadResult> {
@@ -56,7 +58,7 @@ export async function loadSheetFromFile(file: File, doc: MapDoc): Promise<SheetL
     const detectedDensity = image.width / columns
 
     if (image.width === expected.width && image.height === expected.height) {
-      return { canvas: drawTo(image, image.width, image.height), detectedDensity, warning: null, rescaled: false }
+      return { image: drawTo(image, image.width, image.height), detectedDensity, warning: null, rescaled: false }
     }
 
     const ratio = expected.width / image.width
@@ -66,7 +68,7 @@ export async function loadSheetFromFile(file: File, doc: MapDoc): Promise<SheetL
 
     if (sameShape && wholeRatio) {
       return {
-        canvas: drawTo(image, expected.width, expected.height),
+        image: drawTo(image, expected.width, expected.height),
         detectedDensity,
         warning:
           `Sheet was authored at ${detectedDensity}px per tile; this map is ${doc.texelDensity}px. ` +
@@ -76,7 +78,7 @@ export async function loadSheetFromFile(file: File, doc: MapDoc): Promise<SheetL
     }
 
     return {
-      canvas: drawTo(image, expected.width, expected.height),
+      image: drawTo(image, expected.width, expected.height),
       detectedDensity,
       warning:
         `Sheet is ${image.width}x${image.height}, but this map's template expects ` +

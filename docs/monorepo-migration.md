@@ -23,10 +23,13 @@ packages/viewport          editor GL shell: renderer, post-processing, overlays,
 packages/viewport-contrib  what a feature may import to contribute an overlay.
 packages/editor-host       root actor, dispatch wiring, tool/stroke framework, files, play, feature folders.
 packages/feature-terrain   the one extracted feature, proving the import surface is sufficient.
-packages/fixtures          procedural texture generation + the sample map. Dev-only, but NOT lint-exempt.
+packages/fixtures          procedural texture generation (returns raw RGBA; the sample map's
+                           output is also checked in under baked/ as PNG) + the sample map.
+                           Dev-only, but NOT lint-exempt.
 apps/editor                index.html, Vite config, mount, composition root, features/index.ts.
-apps/export-cli            headless glTF exporter. CUT 2026-09-11 — needed a native canvas;
-                           returns once export has a canvas-free texture path.
+apps/export-cli            headless glTF exporter. CUT 2026-09-11 — needed a native canvas.
+                           The texture path is canvas-free since #47; what still blocks a
+                           revival is three's own GLB assembly (see the checklist below).
 ```
 
 Direction: `registry <- document <- geometry <- runtime <- viewport <- editor-host`, with
@@ -97,8 +100,15 @@ move rather than to the whole restructure. Order follows the dependency directio
 - [ ] Build emit (tsup or unbuild) where a package needs to be consumable.
 - [ ] `apps/export-cli` must produce a `.glb` with **no WebGL context** — *built, then cut:
       it needed `@napi-rs/canvas`, a native binary, because both `textures.ts` and three's
-      GLTFExporter draw through a 2D canvas. Revive after the canvas-free texture path.* — the forcing
-      function the boundary script always named.
+      GLTFExporter draw through a 2D canvas.* The texture half is done (#47): `runtime`
+      compiles without `DOM`, takes its sheet and sprites as raw RGBA, and `exportGltf`
+      encodes its embedded PNGs through a caller-supplied `encodePng`, so three's canvas
+      never runs. What still stands between a CLI and a `.glb` is three's own GLB
+      assembly: `GLTFWriter.writeAsync` (three 0.186.0, `GLTFExporter.js`: `new Blob` at
+      line 679, `new FileReader()` at 697 and 731) concatenates its buffers with `Blob` +
+      `FileReader`, and Node has no `FileReader`.
+      That is a three-side seam, not a texture one — the forcing function the boundary
+      script always named.
 - [x] A test enforcing dependency direction, since pnpm does not.
       `tests/dependency-direction.test.ts`: it reads every workspace `package.json`,
       checks each declared arrow against the ladder above, checks the graph is
