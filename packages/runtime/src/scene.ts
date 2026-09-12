@@ -45,6 +45,12 @@ interface ChunkView {
   triangleCount: number
 }
 
+/**
+ * After the viewport's overlays (900–901), so the water surface composites
+ * over a preview drawn on the lake bed and the preview reads as under water.
+ */
+export const WATER_RENDER_ORDER = 1000
+
 export interface SceneStats {
   chunksBuilt: number
   triangles: number
@@ -99,6 +105,10 @@ export class RuntimeScene {
       opacity: 0.66,
       roughness: 0.25,
       metalness: 0,
+      // A translucent surface that wrote depth would hide whatever the editor
+      // draws on the lake bed under it — the brush preview, the hover. It
+      // draws last instead (`WATER_RENDER_ORDER`) and tints what is below.
+      depthWrite: false,
     })
 
     this.sun.castShadow = true
@@ -236,6 +246,7 @@ export class RuntimeScene {
       if (mesh.water) {
         water = new THREE.Mesh(buildGeometry(mesh.water), this.waterMaterial)
         water.receiveShadow = true
+        water.renderOrder = WATER_RENDER_ORDER
         water.userData.chunkKey = key
         water.userData.surface = 'water'
         this.terrainGroup.add(water)
