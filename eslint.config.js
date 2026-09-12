@@ -77,25 +77,6 @@ export default tseslint.config(
   },
 
   {
-    files: ['packages/runtime/src/export.ts'],
-    // The two rules from `recommendedTypeChecked` that the existing code does
-    // not satisfy, and whose fixes are API-shape decisions rather than
-    // mechanical ones. Both land on `exportGltf`/`buildExportScene` in
-    // `packages/runtime/src/export.ts`, which has no test covering it — so "make the
-    // linter happy" would mean reshaping untested exported surface inside a
-    // toolchain commit. Turned on by whoever owns that call, with a test.
-    rules: {
-      // `buildExportScene` is declared `async` and never awaits. Dropping
-      // `async` changes its exported return type; keeping it may be deliberate
-      // headroom for image decoding. Not this commit's call.
-      '@typescript-eslint/require-await': 'off',
-      // The glTF exporter's error callback is rejected verbatim. Wrapping it in
-      // an `Error` changes what the one caller catches, unobserved by any test.
-      '@typescript-eslint/prefer-promise-reject-errors': 'off',
-    },
-  },
-
-  {
     // The house rules — the register of machine-checked constraints. Empty
     // today: `enq` purity is #22 and no-styles-outside-`packages/ui` is #12,
     // and both are deliberately unimplemented here. The wiring lands now so
@@ -106,7 +87,20 @@ export default tseslint.config(
     rules: {},
   },
 
-  { files: ['apps/editor/src/**'], languageOptions: { globals: globals.browser } },
+  // This block is not about `no-undef` — that's already off for every
+  // `.ts`/`.tsx` file (see `eslint-recommended-raw` inside
+  // `recommendedTypeChecked`), so deleting this block once looked inert. What
+  // it actually buys is `no-global-assign`, from `js.configs.recommended`,
+  // which reads `languageOptions.globals` directly and is untouched by that
+  // `no-undef` shutoff — and `tsc` doesn't cover it either, since `window` and
+  // `document` are ambient `declare var`s that happily accept a reassignment.
+  // Verified on a probe: with this block absent, `window = undefined as never`
+  // under `apps/editor/src` lints clean and type-checks clean; restoring the
+  // block reports `no-global-assign`. Scoped to the packages that actually run
+  // in a browser, not the whole repo, so a Node-only package keeps
+  // `no-global-assign`'s real signal on its own globals instead of losing it
+  // to a blanket `globals.browser`.
+  { files: ['apps/editor/src/**', 'packages/{ui,viewport,runtime}/src/**'], languageOptions: { globals: globals.browser } },
   {
     // `**/` matters: a flat-config pattern with no slash matches only at the
     // config's own directory, and the app's Vite config now sits in

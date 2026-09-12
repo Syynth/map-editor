@@ -12,6 +12,7 @@ decisions and their reasoning.
 
 ```bash
 pnpm install
+pnpm browsers      # once, fetch the Chromium build these scripts drive
 pnpm dev           # http://localhost:5173
 pnpm test          # unit tests
 pnpm lint          # type-aware ESLint; no inline suppressions exist
@@ -20,6 +21,10 @@ pnpm shoot         # drive it headless and save screenshots to shots/
 pnpm tour          # capture the 25-step guided walkthrough to shots/tour/
 pnpm probe         # measure whether post-processing survives on this GPU
 ```
+
+`shoot`, `tour` and `probe` default to a SwiftShader software renderer, for
+parity with CI; add `--gpu` (e.g. `pnpm tour --gpu`) to drive the real GPU
+backend instead.
 
 ## What works
 
