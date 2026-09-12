@@ -294,6 +294,11 @@ export class RuntimeScene {
     return this.terrainGroup.children.filter((child): child is THREE.Mesh => (child as THREE.Mesh).isMesh)
   }
 
+  /** The ground alone — what a pick lands on; the water surface is looked through. */
+  solidTerrainMeshes(): THREE.Mesh[] {
+    return this.terrainMeshes().filter((mesh) => mesh.userData.surface !== 'water')
+  }
+
   /** Reconcile object views against the document. */
   syncObjects(context: ObjectViewContext): void {
     const wanted = new Set(this.doc.objectOrder)
