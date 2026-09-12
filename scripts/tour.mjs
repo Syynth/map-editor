@@ -19,6 +19,30 @@ import { fileURLToPath } from 'node:url'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromiumArgs, stripGpuFlag, wantsGpu } from './chromium-launch.mjs'
+import { meanLuminance } from './luminance.mjs'
+
+// Thresholds below were read off a real green run against the sample map
+// (`node scripts/tour.mjs`, default SwiftShader path, as CI runs it) and are
+// set with headroom under that reading, not at it — the point is to catch a
+// collapse, not to pin the exact pixel this scene happens to render today.
+//
+// A black (or near-black) frame is this project's worst rendering
+// regression — see FINDINGS.md, "Bloom renders black under software GL" —
+// and it can clear every other check here: no console error, no thrown
+// `expect()`, a perfectly ordinary status bar. Averaged over the WHOLE
+// canvas rather than a small centre crop: a fixed crop can land on one dark
+// cliff face or water tile by pure camera framing (measured 36 there on a
+// known-good frame, against 82 for the same frame averaged over the full
+// canvas) and a floor set to survive that framing accident would no longer
+// separate "renders something" from "renders nothing". The whole-canvas
+// average of a real black frame is still near zero regardless of framing, so
+// 30 stays well clear of both the bug and this scene's own variation.
+const LUMINANCE_FLOOR = 30
+// A clean run reports "5k tris" in the status bar at the opening step (the
+// sample map, default camera). A mesher that silently emitted nothing, or a
+// scene that failed to load, reports 0; 1000 sits well under the real count
+// without pinning the exact figure this map happens to produce today.
+const TRIANGLE_FLOOR = 1000
 
 // Vite's config, `index.html` and `dist/` all live with the app now, so both
 // spawns below run from there rather than from the repo root.
@@ -179,6 +203,25 @@ console.log('\nCapturing tour...\n')
 
 // ---------------------------------------------------------------- 1. opening
 await shot('opening', 'First run opens the sample map, not an empty plane.')
+
+// Structural signals a machine can judge reliably, per #56/#60: no pixel
+// baselines yet (SwiftShader-vs-Metal and run-to-run GL noise would make
+// tolerance tuning a treadmill), so CI asserts on things a rendering
+// collapse actually breaks instead — a black frame, a mesh that produced no
+// triangles. Checked at the very first frame: it is the earliest point a
+// silent renderer failure could already be hiding behind a green console.
+const openingLuma = await meanLuminance(page, box)
+if (openingLuma < LUMINANCE_FLOOR) {
+  throw new Error(
+    `opening frame is too dark to be a real render: luma=${openingLuma.toFixed(1)}, floor=${LUMINANCE_FLOOR}`,
+  )
+}
+
+// "Xk tris" in the fifth status-bar span — see App.tsx's <footer className="status">.
+const openingTris = Number((await statusBar())[4].match(/([\d.]+)k tris/)?.[1]) * 1000
+if (!(openingTris >= TRIANGLE_FLOOR)) {
+  throw new Error(`mesh produced too few triangles to be real geometry: tris=${openingTris}, floor=${TRIANGLE_FLOOR}`)
+}
 
 // ---------------------------------------------------------------- 2. sculpt
 await clickText('Terrain', '.left')
