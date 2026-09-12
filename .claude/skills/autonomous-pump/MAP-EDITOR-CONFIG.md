@@ -183,6 +183,29 @@ empirically in this repo, and all of them are on the wayfinder map
   conflicts with anything landed since the branch was cut** — a PR that edits the same
   README paragraph or doc section another merged PR just rewrote will merge clean by text but
   silently drop the newer wording.
+- **Never derive a filesystem path from `new URL(...).pathname`** — it is percent-encoded, so
+  any checkout path with a space, `%`, `#`, or non-ASCII character produces a path that does
+  not exist on disk (`pr%2083%20space/...`) and every `readFile` against it fails with
+  `ENOENT`. Use `fileURLToPath` (or pass the `URL` straight to an fs API that accepts one)
+  instead of reading `.pathname`.
+- **A test that builds a package must build into an isolated (e.g. `mkdtemp`) output
+  directory, not the package's real `dist/`.** If the task graph doesn't guarantee that
+  build happens strictly before that test with no other build running concurrently, two
+  writers to the same `dist/` (one with `emptyOutDir: true`) can race and empty the file the
+  other is about to spawn.
+- **When forwarding flags through a `pnpm run <script> ...` invocation, don't add a literal
+  `--` separator** — pnpm passes every token after the script name through verbatim
+  (`--` included), so `pnpm foo -- --with-deps` executes the underlying command with a
+  literal `-- --with-deps` argument, not `--with-deps`. Drop the `--` unless the underlying
+  command itself expects one.
+- **A test that asserts a CI step's exact command must match the full invocation, not a
+  prefix or substring** — a regex like `/run:\s*pnpm browsers\b/` passes against both the
+  correct command and a broken one with extra trailing tokens, so it can't catch the bug it
+  exists for. Anchor the match to the complete line.
+- **Before writing a WHY comment that names a specific compiler/runtime cause (e.g. "closures
+  don't preserve narrowing"), verify the claim with an isolated probe** — one PR's comment
+  blamed the wrong mechanism (closures in general, when it was hoisted `function` decls
+  specifically that lost narrowing); a plausible-sounding cause is not a verified one.
 
 ## Verification: how the human drives it
 
