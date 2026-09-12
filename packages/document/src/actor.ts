@@ -37,12 +37,26 @@
 import type { CommandEvent } from '@map-editor/registry'
 import { setup, types } from 'xstate'
 
-// Imported for its side effect as much as its exports: the module declares
-// `undo` and `redo` at import, and the actor is what makes them handled.
+// Two imports of one module, and the bare one is not redundant: it is the
+// SIDE EFFECT — `commands.ts` declares, at import, every command whose effect
+// is one call on the write handle, and this actor is what makes them handled.
+// The second import is types only, and a type-only import is elided from the
+// emitted module, so without the line above a consumer that reaches this file
+// without going through the barrel would get an actor whose commands nobody
+// declared.
 import './commands'
+import type {
+  AtmosphereChanges,
+  CameraChanges,
+  DocumentLoadArgs,
+  DocumentNewArgs,
+  ObjectUpdateArgs,
+} from './commands'
+import { createMap, type MapDoc } from './document'
 import type { Patch } from './edits'
-import { removeObjects } from './ops'
-import { writerOf, type DocumentReader, type DocumentWriter, type EditorStore } from './store'
+import { deserialize } from './io'
+import { removeObjects, updateObject } from './ops'
+import { createDocumentStore, writerOf, type DocumentReader, type DocumentWriter, type EditorStore } from './store'
 
 /**
  * What the actor accepts. Plain data throughout — a `Patch` addresses its
@@ -66,6 +80,7 @@ import { writerOf, type DocumentReader, type DocumentWriter, type EditorStore } 
  */
 export type DocumentEvent =
   | { type: 'patch'; label: string; patches: Patch[] }
+  | { type: 'replace'; doc: MapDoc }
   | { type: 'strokePatch'; patches: Patch[] }
   | { type: 'beginStroke'; label: string }
   | { type: 'endStroke'; patches: Patch[]; inverse: Patch[] }
@@ -90,6 +105,7 @@ export function documentLogic(writer: DocumentWriter, reader: DocumentReader) {
     schemas: {
       events: {
         patch: types<{ label: string; patches: Patch[] }>(),
+        replace: types<{ doc: MapDoc }>(),
         strokePatch: types<{ patches: Patch[] }>(),
         beginStroke: types<{ label: string }>(),
         endStroke: types<{ patches: Patch[]; inverse: Patch[] }>(),
@@ -112,6 +128,13 @@ export function documentLogic(writer: DocumentWriter, reader: DocumentReader) {
             // failure mode is an inline effect firing on exactly this branch.
             if (event.patches.length === 0) return undefined
             enq(() => writer.apply(event.label, event.patches))
+            return {}
+          },
+          // The whole document, swapped: load and new map. History is cleared
+          // by the writer, because an undo across a replace would restore
+          // patches addressed to a document that is gone.
+          replace: ({ event }, enq) => {
+            enq(() => writer.replace(event.doc))
             return {}
           },
           strokePatch: ({ event }, enq) => {
@@ -139,20 +162,51 @@ export function documentLogic(writer: DocumentWriter, reader: DocumentReader) {
           },
           command: ({ event }, enq) => {
             // Only the ids `commands.ts` declared can arrive here: the host
-            // routes by declaring owner, and this owner declared three. Anything
-            // else is refused with the `undefined` guard shape rather than
-            // dropped inside `enq`, so it takes no transition at all.
+            // routes by declaring owner, and this owner declared eight.
+            // Anything else is refused with the `undefined` guard shape rather
+            // than dropped inside `enq`, so it takes no transition at all.
+            //
+            // Everything below is computed ABOVE the first `enq` call, so it
+            // runs twice — and every one of them is pure (an op reads the
+            // document and returns patches; `deserialize` and `createMap`
+            // build a new one and touch nothing), which is the contract a v6
+            // transition body has to keep. A request that comes to no patches
+            // takes the `undefined` guard shape rather than enqueuing a write
+            // `apply` would prune anyway.
             if (event.id === 'undo') enq(() => writer.undo())
             else if (event.id === 'redo') enq(() => writer.redo())
             else if (event.id === 'objects.delete') {
-              // Computed ABOVE the first `enq` call, so this runs twice — it
-              // is pure (`removeObjects` reads and returns, it does not
-              // write), which is the contract a v6 transition body has to
-              // keep. The empty case takes the `undefined` guard shape rather
-              // than enqueuing a write `apply` would prune anyway.
               const patches = removeObjects(reader.doc, (event.args as { ids: string[] }).ids)
               if (patches.length === 0) return undefined
               enq(() => writer.apply('Delete object', patches))
+            } else if (event.id === 'objects.update') {
+              const { id, changes } = event.args as ObjectUpdateArgs
+              // An id the document does not hold comes to no patches, the
+              // same as a delete of one: the request named something that is
+              // not there, which is not an error to report from here.
+              const patches = updateObject(reader.doc, id, changes)
+              if (patches.length === 0) return undefined
+              enq(() => writer.apply('Edit object', patches))
+            } else if (event.id === 'camera.set') {
+              // One `doc` patch carrying the merged rig, not a patch per
+              // field: `camera` is one field of the document, so the
+              // before-value an undo restores is the whole rig.
+              const camera = { ...reader.doc.camera, ...(event.args as CameraChanges) }
+              enq(() => writer.apply('Camera rig', [{ t: 'doc', field: 'camera', value: camera }]))
+            } else if (event.id === 'atmosphere.set') {
+              const atmosphere = { ...reader.doc.atmosphere, ...(event.args as AtmosphereChanges) }
+              enq(() => writer.apply('Atmosphere', [{ t: 'doc', field: 'atmosphere', value: atmosphere }]))
+            } else if (event.id === 'document.load') {
+              // Parsed again here, having already parsed in the schema: the
+              // schema's copy is what turns a bad file into an `invalid-args`
+              // result instead of a throw inside this effect (see
+              // `commands.ts`), and what arrives is known to parse.
+              const doc = deserialize((event.args as DocumentLoadArgs).json)
+              enq(() => writer.replace(doc))
+            } else if (event.id === 'document.new') {
+              const { width, height, name } = event.args as DocumentNewArgs
+              const doc = createMap(width, height, name)
+              enq(() => writer.replace(doc))
             } else return undefined
             return {}
           },
@@ -163,13 +217,30 @@ export function documentLogic(writer: DocumentWriter, reader: DocumentReader) {
 }
 
 /**
- * The pre-wired logic the host spawns (#13): hand it the store the app holds
- * and get back a machine that writes it. This is the only public route to a
- * document actor, and it takes a store rather than a writer so the writer
- * type never crosses the package boundary.
+ * The pre-wired logic, over a store this package already holds. Internal since
+ * #66 step 7 — `EditorStore` is not namable outside the package, so the only
+ * callers left are `createDocument` below and this package's tests.
  */
 export function createDocumentActorLogic(store: EditorStore) {
   return documentLogic(writerOf(store), store.reader)
 }
 
 export type DocumentActorLogic = ReturnType<typeof createDocumentActorLogic>
+
+/**
+ * What a composition root asks for (#13, #66 step 7): a document, as the two
+ * faces it is allowed to have. The store is constructed in here and never
+ * escapes, so an app holds a `reader` to read through and a `logic` to hand
+ * `createHost`, and has no way to write except by dispatching a command at the
+ * actor the host spawns from that logic.
+ */
+export function createDocument(doc: MapDoc): DocumentSource {
+  const store = createDocumentStore(doc)
+  return { reader: store.reader, logic: documentLogic(store.writer, store.reader) }
+}
+
+/** The pair a host is built from. Named so `HostOptions` can take it as one argument. */
+export interface DocumentSource {
+  readonly reader: DocumentReader
+  readonly logic: DocumentActorLogic
+}

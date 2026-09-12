@@ -1,4 +1,4 @@
-import { EditorStore, createDocumentActorLogic, createMap, type SurfaceAddress } from '@map-editor/document'
+import { createDocument, createMap, type SurfaceAddress } from '@map-editor/document'
 import { describe, expect, it } from 'vitest'
 import { createActor } from 'xstate'
 
@@ -28,8 +28,16 @@ function press(x: number, y: number, extra: Partial<PointerPress> = {}): Pointer
 
 function rig(options: { editing?: boolean; strokes?: boolean } = {}) {
   const editing = options.editing ?? true
-  const store = new EditorStore(createMap(8, 8))
-  const document = createActor(createDocumentActorLogic(store)).start() as DocumentRef
+  const { reader, logic } = createDocument(createMap(8, 8))
+  const actor = createActor(logic).start()
+  const document = actor as DocumentRef
+  // What the document actor RECEIVED, off the system's inspector — the same
+  // record `stroke.test.ts` keeps, and the honest form of "the stroke
+  // bracketed the write path": an event it took a transition on.
+  const received: Array<{ type: string } & Record<string, unknown>> = []
+  actor.system.inspect((event) => {
+    if (event.type === '@xstate.transition' && event.actorRef.sessionId === actor.sessionId) received.push(event.event)
+  })
   const begun: StrokeSample[] = []
   const moved: StrokeSample[] = []
   const ended: StrokeSample[] = []
@@ -51,7 +59,7 @@ function rig(options: { editing?: boolean; strokes?: boolean } = {}) {
   }
   const gesture = createActor(
     gestureLogic({
-      reader: store.reader,
+      reader,
       document,
       strokeFor: () => {
         asked += 1
@@ -71,7 +79,7 @@ function rig(options: { editing?: boolean; strokes?: boolean } = {}) {
     gesture.send({ type: 'pointer.up', x, y })
     return gesture.getSnapshot().value
   }
-  return { gesture, store, down, move, up, begun, moved, ended, asked: () => asked }
+  return { gesture, reader, received, down, move, up, begun, moved, ended, asked: () => asked }
 }
 
 const ALT = { modifiers: { ...NO_MODIFIERS, alt: true } }
@@ -199,12 +207,15 @@ describe('a stroke', () => {
   })
 
   it('brackets the document actor with beginStroke and endStroke under the handler\'s label', () => {
-    const { store, down, up } = rig()
+    const { reader, received, down, up } = rig()
     down(press(0, 0))
-    expect(store.inStroke).toBe(true)
-    expect(store.reader.canUndo()).toBe(false)
+    expect(received.map((event) => event.type)).toEqual(['beginStroke'])
+    expect(received[0].label).toBe('Recorded')
+    // Undo is refused for as long as the bracket is open: the entry the drag
+    // will produce does not exist yet.
+    expect(reader.canUndo()).toBe(false)
     up(0, 0)
-    expect(store.inStroke).toBe(false)
+    expect(received.map((event) => event.type)).toEqual(['beginStroke', 'endStroke'])
   })
 })
 

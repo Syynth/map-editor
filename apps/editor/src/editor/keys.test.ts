@@ -1,4 +1,4 @@
-import { EditorStore, addObject, cellIndex, createMap, defaultFacing, raise, type MapObject } from '@map-editor/document'
+import { createDocument, addObject, cellIndex, createMap, defaultFacing, raise, type MapObject, type Patch } from '@map-editor/document'
 import { createHost, type Host } from '@map-editor/editor-host'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -50,13 +50,17 @@ class FakeKeys implements KeyTarget {
 
 const started: Array<{ host: Host; remove: () => void }> = []
 
-function editor(): { host: Host; store: EditorStore; keys: FakeKeys } {
-  const store = new EditorStore(createMap(8, 8))
-  const host = createHost({ store })
+function editor(): { host: Host; keys: FakeKeys } {
+  const host = createHost({ document: createDocument(createMap(8, 8)) })
   const keys = new FakeKeys()
   const remove = installKeyDispatcher(host, { target: keys, platform: 'other' })
   started.push({ host, remove })
-  return { host, store, keys }
+  return { host, keys }
+}
+
+/** Setup: one labelled edit, at the document actor's own event — there is no writer to reach for (#13). */
+function apply(host: Host, label: string, patches: Patch[]): void {
+  host.children.document.send({ type: 'patch', label, patches })
 }
 
 afterEach(() => {
@@ -83,11 +87,11 @@ const OBJECT: MapObject = {
 
 describe('the one keyboard dispatcher', () => {
   it('turns the undo chord into a dispatch the reader reflects', () => {
-    const { host, store, keys } = editor()
-    const index = cellIndex(store.reader.doc.size, 2, 2)
-    const before = store.reader.doc.terrain.height[index]
-    store.apply('Raise', raise(store.reader.doc, [[2, 2]], 3))
-    expect(store.reader.doc.terrain.height[index]).toBe(before + 3)
+    const { host, keys } = editor()
+    const index = cellIndex(host.reader.doc.size, 2, 2)
+    const before = host.reader.doc.terrain.height[index]
+    apply(host, 'Raise', raise(host.reader.doc, [[2, 2]], 3))
+    expect(host.reader.doc.terrain.height[index]).toBe(before + 3)
 
     keys.send('keydown', 'z', { ctrlKey: true })
 
@@ -97,14 +101,14 @@ describe('the one keyboard dispatcher', () => {
   })
 
   it('undoes once per keypress, not twice', () => {
-    const { store, keys } = editor()
-    store.apply('Raise', raise(store.reader.doc, [[1, 1]], 1))
-    store.apply('Raise', raise(store.reader.doc, [[2, 2]], 1))
+    const { host, keys } = editor()
+    apply(host, 'Raise', raise(host.reader.doc, [[1, 1]], 1))
+    apply(host, 'Raise', raise(host.reader.doc, [[2, 2]], 1))
 
     keys.send('keydown', 'z', { ctrlKey: true })
 
-    expect(store.reader.canUndo()).toBe(true)
-    expect(store.reader.canRedo()).toBe(true)
+    expect(host.reader.canUndo()).toBe(true)
+    expect(host.reader.canRedo()).toBe(true)
   })
 
   it('does not consume a chord whose command is unavailable', () => {
@@ -160,14 +164,14 @@ describe('the one keyboard dispatcher', () => {
   })
 
   it('deletes the selected object and clears the selection', () => {
-    const { host, store, keys } = editor()
-    store.apply('Add object', addObject(store.reader.doc, OBJECT))
+    const { host, keys } = editor()
+    apply(host, 'Add object', addObject(host.reader.doc, OBJECT))
     host.dispatch('selection.set', { id: OBJECT.id })
 
     keys.send('keydown', 'Delete')
 
-    expect(store.reader.doc.objects[OBJECT.id]).toBeUndefined()
-    expect(store.reader.doc.objectOrder).toEqual([])
+    expect(host.reader.doc.objects[OBJECT.id]).toBeUndefined()
+    expect(host.reader.doc.objectOrder).toEqual([])
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
   })
 
@@ -175,8 +179,8 @@ describe('the one keyboard dispatcher', () => {
     // The two halves the old code split across two listeners: `App.tsx`
     // ignored everything over an input, `viewport.ts` tracked held keys
     // regardless. WASD in play mode reads that set every frame.
-    const { host, store, keys } = editor()
-    store.apply('Raise', raise(store.reader.doc, [[2, 2]], 1))
+    const { host, keys } = editor()
+    apply(host, 'Raise', raise(host.reader.doc, [[2, 2]], 1))
     const input = { tagName: 'INPUT' }
 
     keys.send('keydown', 'w', { target: input as unknown as EventTarget })
@@ -185,7 +189,7 @@ describe('the one keyboard dispatcher', () => {
     // …and the chord half is suppressed, so typing "z" into a name field with
     // ctrl held does not undo the document.
     keys.send('keydown', 'z', { ctrlKey: true, target: input as unknown as EventTarget })
-    expect(store.reader.canUndo()).toBe(true)
+    expect(host.reader.canUndo()).toBe(true)
     expect(keys.prevented).toEqual([])
 
     keys.send('keyup', 'w', { target: input as unknown as EventTarget })
@@ -195,8 +199,7 @@ describe('the one keyboard dispatcher', () => {
   })
 
   it('removes both listeners when disposed', () => {
-    const store = new EditorStore(createMap(4, 4))
-    const host = createHost({ store })
+    const host = createHost({ document: createDocument(createMap(4, 4)) })
     const keys = new FakeKeys()
     const remove = installKeyDispatcher(host, { target: keys, platform: 'other' })
     expect(keys.listenerCount).toBe(2)

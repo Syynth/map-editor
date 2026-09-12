@@ -31,6 +31,7 @@ export type {
   HostChildren,
   HostOptions,
   Mode,
+  PlaySession,
 } from './host'
 
 // Side-effect-bearing: importing it declares the default keymap (#14). The

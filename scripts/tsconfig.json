@@ -27,6 +27,13 @@
     "noFallthroughCasesInSwitch": true,
     "allowJs": true,
     "checkJs": true,
+    // Nothing under `scripts/**` contains JSX. This is here because
+    // `global.ts` types `window.__host` as `editor-host`'s `Host`, and that
+    // package's barrel re-exports its React glue — a `.tsx` file this program
+    // therefore has to parse. Without it the import fails with TS6142 and the
+    // globals silently widen, which is the failure this config exists to
+    // prevent (see `global.ts`'s header on why it is not a `.d.ts`).
+    "jsx": "react-jsx",
 
     // `DOM` alongside Node's own types, unlike every package config in this
     // repo (see `packages/document/tsconfig.json`'s "no DOM" rationale): these

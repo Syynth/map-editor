@@ -59,6 +59,20 @@ keypress that does nothing has exactly one place to be looked for.
 
 The host also holds the editor's **mode**: editing, or playing the level.
 
+## Play session
+
+One run of the level, from the moment the editor enters play mode to the
+moment it leaves. It is an actor the [Host](#host) spawns, not a flag: it owns
+the character — where the hero is put down is read off the [Map](#map) once,
+when the session starts — and the character's lifetime IS the session's, so
+leaving play mode stops the actor and the character goes with it.
+
+A session is a value that leaves the host, too: the renderer is handed the
+running session or nothing at all, rather than a boolean plus a position it
+would have to recompute. The two packages that type against it declare the
+shape separately, because the renderer is below the host and may not import
+it; the glossary is what says they are the same thing.
+
 ## Context key
 
 A named fact about the editor's current state — which mode it is in, whether

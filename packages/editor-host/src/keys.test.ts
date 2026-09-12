@@ -2,7 +2,7 @@ import { commands, keymap, parseChords, resolve, validateArgs, type Chord, type 
 import { describe, expect, it } from 'vitest'
 
 import { createHost, type Host } from './host'
-import { EditorStore, createMap } from '@map-editor/document'
+import { createDocument, createMap } from '@map-editor/document'
 
 // Importing the module is what declares the defaults, and the barrel is what
 // an app reaches them through.
@@ -17,7 +17,7 @@ import { CORE_KEYMAP_OWNER } from './keys'
  * holds the same field).
  */
 function host(): Host {
-  return createHost({ store: new EditorStore(createMap(8, 8)) })
+  return createHost({ document: createDocument(createMap(8, 8)) })
 }
 
 const press = (spec: string): Chord => parseChords(spec, 'other')[0]

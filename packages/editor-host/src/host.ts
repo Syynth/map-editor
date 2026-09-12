@@ -14,7 +14,10 @@
  * the lifetimes of its children: the document actor (the one holder of the
  * write path, #13), the long-lived `tools`, `view` and `gesture` actors, and
  * one actor per installed feature. The gesture actor in turn spawns one
- * stroke actor per pointer-down (`gesture.ts`, `stroke.ts`). Children are
+ * stroke actor per pointer-down (`gesture.ts`, `stroke.ts`), and entering
+ * `play` spawns one play actor per SESSION (`play.ts`), stopped on the way
+ * back out — the two places where a lifetime shorter than the host's is a
+ * lifetime an actor has rather than a flag somebody clears. Children are
  * held in context as refs, and a STALE REF IS RETAINED, NEVER NULLED: a send
  * to a stopped ref dead-letters with `reason: 'stopped'` and the router stays
  * `active`, while a send to `undefined` is a silent no-op (#15, measured on
@@ -31,9 +34,10 @@
  * Three constraints from the map shape the code and are easy to undo by
  * accident:
  *
- * 1. THE STORE ARRIVES BY FACTORY CLOSURE, NEVER BY `input`. `hostLogic`
- *    closes over it; the machine's context holds refs and nothing else, so
- *    nothing the size of a document can reach an inspector (#4).
+ * 1. THE DOCUMENT ARRIVES BY FACTORY CLOSURE, NEVER BY `input`. `hostLogic`
+ *    closes over the reader (and `play.ts` over it again); the machine's
+ *    context holds refs and nothing else, so nothing the size of a document
+ *    can reach an inspector (#4).
  * 2. EVERY EFFECT GOES THROUGH `enq`. A v6 transition body re-runs from the
  *    top the moment it touches `enq` (#2), so the routing bodies below are
  *    pure apart from `enq.sendTo` / `enq.stop`, and the dead letters the
@@ -62,12 +66,11 @@
 
 import {
   DOCUMENT_OWNER,
-  createDocumentActorLogic,
   documentKeys,
   type Cell,
   type DocumentActorLogic,
   type DocumentReader,
-  type EditorStore,
+  type DocumentSource,
   type Patch,
   type ReadonlyMapDoc,
 } from '@map-editor/document'
@@ -102,6 +105,7 @@ import {
 } from 'xstate'
 
 import { gestureLogic, type Gesture, type GestureLogic, type PointerMotion, type PointerPress, type PointerRelease } from './gesture'
+import { playLogic, type PlayLogic } from './play'
 import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps, type StrokeSample, type ToolsSnapshot } from './strokes'
 import { TOOLS_OWNER, toolKeys, toolsLogic, type ToolsLogic } from './tools'
 import { VIEW_OWNER, viewKeys, viewLogic, type ViewLogic } from './view'
@@ -111,6 +115,15 @@ export const HOST_OWNER = reserveOwner('editor-host')
 export const GESTURE_OWNER = reserveOwner('editor-host.gesture')
 
 export type Mode = 'edit' | 'play'
+
+/**
+ * What a running play session tells the outside world: where the character
+ * was put down. Read by the viewport, which builds the character from it —
+ * the session's own context, narrowed to what leaves the host.
+ */
+export interface PlaySession {
+  readonly start: readonly [number, number, number]
+}
 
 export const hostKeys = {
   mode: defineContextKey<Mode>(HOST_OWNER, 'host.mode', 'edit'),
@@ -203,6 +216,17 @@ interface HostContext {
    * are the helper readers get instead.
    */
   readonly children: Readonly<Record<OwnerId, AnyActorRef>>
+  /**
+   * The play session, spawned on the way into `play` and stopped on the way
+   * out (#11). Typed rather than `AnyActorRef` because something reads its
+   * context: `Host.playSession` answers with the character's start.
+   *
+   * The stopped ref is RETAINED, as every other child ref is — what says the
+   * session is over is the host's own state, not a null here, and a stale ref
+   * is what makes a send to a finished session dead-letter instead of
+   * vanishing (#15).
+   */
+  readonly play: ActorRefFrom<PlayLogic> | null
 }
 
 /** An undelivered event, as the dispatcher saw it. `target` is the actor id the ref pointed at. */
@@ -221,7 +245,13 @@ export interface DeadLetter {
 export type Clock = NonNullable<ActorOptions<AnyActorLogic>['clock']>
 
 export interface HostOptions {
-  readonly store: EditorStore
+  /**
+   * The document, as the two faces `createDocument` hands out (#13, #66 step
+   * 7): the reader everything reads through and the logic the host spawns the
+   * one write path from. No store — there is no such type outside
+   * `packages/document` any more.
+   */
+  readonly document: DocumentSource
   /** Time is injected (#10). Absent means xstate's real clock. */
   readonly clock?: Clock
   readonly features?: readonly Feature[]
@@ -260,8 +290,8 @@ function contractFor(instances: Map<OwnerId, EditorFeatureInstance>, toolId: str
   return owner === undefined ? undefined : instances.get(owner)?.tools?.[toolId]
 }
 
-function hostLogic(store: EditorStore, features: readonly Feature[], instances: Map<OwnerId, EditorFeatureInstance>) {
-  const documentLogic = createDocumentActorLogic(store)
+function hostLogic(source: DocumentSource, features: readonly Feature[], instances: Map<OwnerId, EditorFeatureInstance>) {
+  const { reader } = source
 
   return setup({
     schemas: {
@@ -278,7 +308,7 @@ function hostLogic(store: EditorStore, features: readonly Feature[], instances: 
     // alpha.53 `spawn('key')` inside the initial-context factory reaches a
     // logic with no `initialTransition` and the child starts in `error`.
     context: ({ spawn }) => {
-      const document = spawn(documentLogic, { id: 'document' })
+      const document = spawn(source.logic, { id: 'document' })
       const tools = spawn(toolsLogic, { id: 'tools' })
       const view = spawn(viewLogic, { id: 'view' })
       // The gesture actor's stroke children write through the document ref,
@@ -299,7 +329,7 @@ function hostLogic(store: EditorStore, features: readonly Feature[], instances: 
       // a change to the schema's shape reaches these call sites, and nothing
       // here pretends to be a command. `dispatch` stays the only way IN.
       const strokeDeps: StrokeDeps = {
-        reader: store.reader,
+        reader,
         tools: () => {
           const snapshot = tools.getSnapshot()
           return { ...snapshot.context, terrainMode: snapshot.value }
@@ -313,7 +343,7 @@ function hostLogic(store: EditorStore, features: readonly Feature[], instances: 
       }
       const gesture = spawn(
         gestureLogic({
-          reader: store.reader,
+          reader,
           document,
           // #11: a handler never reads ambient selection; the host fills the
           // id in at the press, the way a UI fills in a command's argument.
@@ -325,7 +355,7 @@ function hostLogic(store: EditorStore, features: readonly Feature[], instances: 
       // and the instance is kept beside the ref: `create` answers with the
       // actor to spawn plus the tool contracts and context keys the
       // declarations alone cannot carry (#9's two-registry split).
-      const deps = featureDeps(store.reader, document, tools)
+      const deps = featureDeps(reader, document, tools)
       const spawned = features.map((feature) => {
         const instance = feature.create(deps)
         instances.set(feature.owner, instance)
@@ -339,6 +369,7 @@ function hostLogic(store: EditorStore, features: readonly Feature[], instances: 
           [GESTURE_OWNER]: gesture,
           ...Object.fromEntries(spawned),
         },
+        play: null,
       }
     },
     initial: 'edit',
@@ -346,7 +377,13 @@ function hostLogic(store: EditorStore, features: readonly Feature[], instances: 
       edit: {
         on: {
           command: ({ context, event }, enq) => {
-            if (event.owner === HOST_OWNER) return event.id === 'mode.play' ? { target: 'play' } : undefined
+            if (event.owner === HOST_OWNER) {
+              if (event.id !== 'mode.play') return undefined
+              // The session actor and the `play` state begin together, in one
+              // transition: spawning it from an effect elsewhere would leave a
+              // window in which the editor is in play mode with no session.
+              return { target: 'play', context: { play: enq.spawn(playLogic(reader), { id: 'play' }) } }
+            }
             enq.sendTo(context.children[event.owner], { type: 'command', id: event.id, args: event.args })
             return {}
           },
@@ -370,7 +407,14 @@ function hostLogic(store: EditorStore, features: readonly Feature[], instances: 
       play: {
         on: {
           command: ({ context, event }, enq) => {
-            if (event.owner === HOST_OWNER) return event.id === 'mode.edit' ? { target: 'edit' } : undefined
+            if (event.owner === HOST_OWNER) {
+              if (event.id !== 'mode.edit') return undefined
+              // Stopped through `enq`, never in `exit`: exit actions do not
+              // run when an actor is stopped (xstate#4630), and a non-root
+              // actor is stopped only this way. The ref stays in context.
+              if (context.play) enq.stop(context.play)
+              return { target: 'edit' }
+            }
             enq.sendTo(context.children[event.owner], { type: 'command', id: event.id, args: event.args })
             return {}
           },
@@ -446,6 +490,12 @@ export interface Host {
    * the contract cannot exist before the deps do.
    */
   toolContract(toolId: string): ToolContract<StrokeSample, Patch> | undefined
+  /**
+   * The running play session, or `null` while editing (#11). Gated on the
+   * host's own state rather than on the ref, which is retained after the
+   * session is stopped — the mode is what says whether a session is running.
+   */
+  playSession(): PlaySession | null
   /** The ref an owner's commands route to, stopped or not; `undefined` if that owner was never installed. */
   child(owner: OwnerId): AnyActorRef | undefined
   /**
@@ -459,7 +509,7 @@ export interface Host {
   stop(): void
 }
 
-export function createHost({ store, clock, features = [] }: HostOptions): Host {
+export function createHost({ document: source, clock, features = [] }: HostOptions): Host {
   const deadLetters: DeadLetter[] = []
   // Built by `create` beside each spawned ref, and replaced wholesale when a
   // hot re-import re-mints the owner.
@@ -475,10 +525,10 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
     deadLetters.push({ reason: event.reason, target, event: event.event })
   }
 
-  const actor = createActor(hostLogic(store, features, instances), clock ? { clock, inspect } : { inspect })
+  const actor = createActor(hostLogic(source, features, instances), clock ? { clock, inspect } : { inspect })
   actor.start()
 
-  const { reader } = store
+  const { reader } = source
   const initial = actor.getSnapshot().context.children
   const children: HostChildren = {
     document: initial[DOCUMENT_OWNER] as ActorRefFrom<DocumentActorLogic>,
@@ -540,6 +590,13 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
 
   function child(owner: OwnerId): AnyActorRef | undefined {
     return actor.getSnapshot().context.children[owner]
+  }
+
+  function playSession(): PlaySession | null {
+    const snapshot = actor.getSnapshot()
+    if (snapshot.value !== 'play') return null
+    const session = snapshot.context.play
+    return session === null ? null : { start: session.getSnapshot().context.start }
   }
 
   /**
@@ -638,6 +695,7 @@ export function createHost({ store, clock, features = [] }: HostOptions): Host {
     dispatch,
     contextKeys,
     toolContract,
+    playSession,
     child,
     dispose,
     stop: () => {

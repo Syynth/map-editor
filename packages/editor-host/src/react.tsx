@@ -75,7 +75,17 @@ export function useViewSelector<T>(selector: (snapshot: SnapshotFrom<HostChildre
 export function useDocument<T>(selector: (doc: ReadonlyMapDoc) => T): T {
   const { reader } = useHost()
   const revision = useSyncExternalStore(reader.subscribe, reader.getSnapshot)
-  // `revision` is the dependency that matters; `selector` is listed so an
-  // inline arrow recomputes too rather than pinning the first render's.
-  return useMemo(() => selector(reader.doc), [reader, revision, selector])
+  return useMemo(() => {
+    // Named in the body as well as in the array, and that is the point rather
+    // than a trick: `exhaustive-deps` (#37, on since #66 step 7) sees a value
+    // the callback never reads and calls it unnecessary, because it cannot
+    // know that `reader.doc` is mutated in place and that this counter is the
+    // only thing about the document that ever moves. Drop it and this
+    // memoises the first render's answer forever.
+    void revision
+    // `selector` is listed too, so an inline arrow recomputes rather than
+    // pinning the first render's — which is why a caller that cares about the
+    // cost hoists its selector to module scope.
+    return selector(reader.doc)
+  }, [reader, revision, selector])
 }

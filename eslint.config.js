@@ -113,21 +113,23 @@ export default tseslint.config(
     // `eslint-disable-next-line react-hooks/exhaustive-deps` comments the
     // ESLint task (#20) found in `App.tsx`/`panels.tsx` were suppressing a
     // rule that never ran — dead comments over unchecked code, not actually
-    // enforced anything. `rules-of-hooks` only (call order, conditional
-    // hooks): it has zero violations here, so turning it on costs nothing
-    // and catches a real class of bug. `exhaustive-deps` is deliberately
-    // NOT enabled — the three sites that would flag document two different
-    // shapes, each on purpose: `App.tsx:364` and `panels.tsx:534` key a
-    // `useMemo` on a revision counter standing in for a document that's
-    // mutated in place and never changes identity, while `App.tsx:151` is a
-    // mount-once `useEffect` that intentionally reads live state through
-    // refs rather than the dependency array. #11's actor migration deletes
-    // all three rather than restructuring them to satisfy the rule. Do not
-    // "fix" this by turning `exhaustive-deps` on; it deletes itself when
-    // #11 lands.
+    // enforced anything. `rules-of-hooks` has been on since; `exhaustive-deps`
+    // joins it here.
+    //
+    // It was deferred on one condition, named in #37: the three sites that
+    // would have flagged were a `useMemo` keyed on a revision counter
+    // standing in for a document that is mutated in place, another the same,
+    // and a mount-once `useEffect` reading live state through refs. All three
+    // were to be DELETED rather than restructured to satisfy the rule, and
+    // #66 step 7 is where that happened — the two memos are `useDocument`
+    // selectors now, which memoise on the revision inside the hook, and the
+    // viewport effect is created from values that are stable for the app's
+    // life. The rule is on with no suppressions anywhere (`noInlineConfig`
+    // above means there could not be one), so an effect that lies about what
+    // it reads fails the gate.
     files: ['**/*.{ts,tsx}'],
     plugins: { 'react-hooks': reactHooks },
-    rules: { 'react-hooks/rules-of-hooks': 'error' },
+    rules: { 'react-hooks/rules-of-hooks': 'error', 'react-hooks/exhaustive-deps': 'error' },
   },
 
   // This block is not about `no-undef` — that's already off for every

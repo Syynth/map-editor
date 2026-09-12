@@ -12,14 +12,15 @@
  * remesh only what moved.
  *
  * Two faces (#13). `reader` is what everyone sees: the document as
- * `ReadonlyMapDoc`, the revision, the subscription, and the undo-stack
- * queries a toolbar needs. `writer` is the five verbs plus `replace`, and the
- * document actor is the only thing constructed with it — `createDocumentStore`
- * is deliberately absent from the package barrel, so nothing outside
- * `packages/document` can obtain a writer at all. `doc` itself is `private`:
- * the field that used to be the enforcement hole is now unreachable from
- * outside this class, and the type system, not a convention, is what keeps a
- * consumer from writing through the reader.
+ * `ReadonlyMapDoc`, the revision, the subscription, the dirty-chunk queue the
+ * mesher drains, and the undo-stack queries a toolbar needs. `writer` is the
+ * five verbs plus `replace`, and the document actor is the only thing
+ * constructed with it — neither `createDocumentStore` nor this class is in the
+ * package barrel, so nothing outside `packages/document` can obtain a writer,
+ * or a store, at all. `doc` itself is `private`: the field that used to be the
+ * enforcement hole is now unreachable from outside this class, and the type
+ * system, not a convention, is what keeps a consumer from writing through the
+ * reader.
  *
  * A stroke is bracketed by `beginStroke`/`endStroke`, and its ticks arrive by
  * their own verb: `applyStrokeTick` APPLIES but does not RECORD, so terrain
@@ -51,10 +52,10 @@
  * touched until it closes and a colliding `apply` is refused whole; `apply`
  * carries the reasoning, including why the other direction needs nothing.
  *
- * The verbs are still public methods on the class for one reason: `App.tsx`
- * calls `store.apply` directly today, and #66 keeps it doing so until step 7
- * rewires the app onto the host actor. That is a temporary second write path,
- * not a design — the class leaves the barrel with it.
+ * Nothing outside this package names the class any more: an app asks for a
+ * `createDocument(doc)` (`actor.ts`) and receives the reader plus the actor
+ * logic, so the second write path #66 left open until step 7 — `App.tsx`
+ * calling `store.apply` — is closed by the type graph rather than by a rule.
  */
 
 import {
@@ -79,6 +80,21 @@ export interface DocumentReader {
   readonly doc: ReadonlyMapDoc
   readonly revision: number
   /**
+   * How many times the document changed IDENTITY — `replace`, and nothing
+   * else. `revision` moves for every edit, and a dirty chunk describes a
+   * remesh; neither says "the object you cached is not the document any
+   * more", which is the one change a consumer holding `doc` by reference
+   * cannot recover from. It is on the read path for the same reason the dirty
+   * set is: the viewport already drains this side every frame, so a renderer
+   * that compares the generation it last drew against this one re-points
+   * itself no matter WHO dispatched the load — a keybinding, a palette, a
+   * test, `window.__host.dispatch`. Before it existed, one hand-written
+   * `viewport.reset()` beside one dispatch site was the only thing keeping
+   * the renderer pointed at the live document, which made `document.load`
+   * and `document.new` dispatchable only from that site.
+   */
+  readonly generation: number
+  /**
    * `this: void` on both: they are handed to `useSyncExternalStore` detached
    * from the reader (`useDocument` in `editor-host` does exactly that), so
    * the type says they may be, and the store binds them as arrows to keep it
@@ -87,6 +103,17 @@ export interface DocumentReader {
   subscribe(this: void, listener: Listener): () => void
   /** `useSyncExternalStore`'s second argument: the revision, as a value. */
   getSnapshot(this: void): number
+  /**
+   * What the last writes dirtied, for the mesher. These are on the READ path
+   * deliberately: the set is the same change notification `revision` is, at
+   * the resolution the viewport remeshes in, and the viewport is the only
+   * caller — it holds a reader and no writer, which is the whole point of
+   * `EditorStore` having left the barrel (#66 step 7). `take` clears, because
+   * a chunk that has been remeshed is not dirty any more; that is the queue
+   * draining, not a document write.
+   */
+  hasDirtyChunks(): boolean
+  takeDirtyChunks(): string[]
   canUndo(): boolean
   canRedo(): boolean
   undoLabel(): string | null
@@ -124,6 +151,7 @@ interface OpenStroke {
 export class EditorStore implements DocumentWriter {
   private doc: MapDoc
   revision = 0
+  private generation = 0
   private history = new History()
 
   private listeners = new Set<Listener>()
@@ -145,6 +173,7 @@ export class EditorStore implements DocumentWriter {
     // here because this is the class body — the one place it may be.
     const currentDoc = (): ReadonlyMapDoc => this.doc
     const currentRevision = (): number => this.revision
+    const currentGeneration = (): number => this.generation
     this.reader = {
       get doc(): ReadonlyMapDoc {
         return currentDoc()
@@ -152,8 +181,13 @@ export class EditorStore implements DocumentWriter {
       get revision(): number {
         return currentRevision()
       },
+      get generation(): number {
+        return currentGeneration()
+      },
       subscribe: this.subscribe,
       getSnapshot: this.getSnapshot,
+      hasDirtyChunks: () => this.hasDirtyChunks(),
+      takeDirtyChunks: () => this.takeDirtyChunks(),
       // False while a stroke is open: the entry it will produce does not exist
       // yet, so an undo now would skip past the drag in progress and leave its
       // applied patches with no record to unwind them.
@@ -176,11 +210,20 @@ export class EditorStore implements DocumentWriter {
     for (const listener of this.listeners) listener()
   }
 
-  /** Replace the whole document, as on load or new map. Clears history. */
+  /**
+   * Replace the whole document, as on load or new map. Clears history.
+   *
+   * `generation` is bumped beside `markAllDirty()` because they are the two
+   * halves of the same announcement: every chunk has to be remeshed AND the
+   * document those chunks are meshed from is a different object. A consumer
+   * that drains only the dirty set would remesh the new map's chunk keys out
+   * of the old map's arrays.
+   */
   replace(doc: MapDoc): void {
     this.doc = doc
     this.history.clear()
     this.stroke = null
+    this.generation += 1
     this.markAllDirty()
     this.emit()
   }
@@ -271,9 +314,10 @@ export class EditorStore implements DocumentWriter {
    * to do, and it was order-correct, but compaction moved the stroke's record
    * out to the actor (#11) and there is nothing here to fold into any more.
    * So the collision is refused instead: the stroke claimed the address
-   * first and keeps it until it closes. `inStroke` lets a caller see that
-   * coming and skip its own bookkeeping — `App.tsx` leaves the selection
-   * alone rather than clearing it for a delete this would refuse.
+   * first and keeps it until it closes. The host publishes the same fact as
+   * the `host.stroking` context key, which is how a keybinding sees the
+   * refusal coming: `selection.delete` is unavailable mid-drag rather than
+   * firing into a write this would refuse.
    *
    * Only that direction. An `apply` at an address the stroke has NOT touched
    * yet is fine even if the drag later crosses it, because the stroke records
@@ -345,7 +389,7 @@ export class EditorStore implements DocumentWriter {
     this.emit()
   }
 
-  /** Whether a stroke is open, so a caller can skip a write `apply` would refuse rather than half-do it. */
+  /** Whether a stroke is open. Read by the tests that drive a drag; a UI asks the host's `host.stroking` key instead. */
   get inStroke(): boolean {
     return this.stroke !== null
   }
@@ -384,10 +428,10 @@ export function createDocumentStore(doc: MapDoc): { reader: DocumentReader; writ
 }
 
 /**
- * The store's write face, for the actor factory that is handed an existing
- * `EditorStore` rather than a fresh document — `main.tsx` still constructs the
- * store and hands it to both `createHost` and `App` until #66 step 7, and the
- * actor has to write the same instance the app reads.
+ * The store's write face, for `actor.ts` — which is handed a store rather than
+ * a fresh document by `createDocumentActorLogic`, the door this package's own
+ * tests come in through when they want a reader and a writer over one
+ * document.
  */
 export function writerOf(store: EditorStore): DocumentWriter {
   return {

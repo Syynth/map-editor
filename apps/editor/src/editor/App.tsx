@@ -1,34 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import {
-  LoadError,
   SURFACE_CLIFF,
-  brushCells,
   cellIndex,
   countDormant,
   describeSurface,
-  deserialize,
-  flatten,
   inBounds,
-  raise,
-  removeObject,
   serialize,
-  updateObject,
   type Atmosphere,
   type CameraRig,
-  type EditorStore,
   type MapObject,
+  type ReadonlyMapDoc,
   type RgbaImage,
   type SurfaceAddress,
 } from '@map-editor/document'
 import {
+  useDocument,
   useHost,
   useHostSelector,
   useToolsSelector,
   useViewSelector,
   type Host,
-  type ToolSettings,
-  type ViewSettings,
+  type ToolsSnapshot,
 } from '@map-editor/editor-host'
 // The brush preview draws the cells a terrain stroke will touch, so it calls
 // the same function the stroke does (`feature-terrain`'s, the one
@@ -50,86 +43,89 @@ import {
   ToolPanel,
 } from './panels'
 import { saveAutosave } from './autosave'
-import type { EditorState } from './state'
 import { encodePngWithCanvas } from './rgba'
 import { installKeyDispatcher } from './keys'
 import { loadSheetFromFile } from './sheet'
 import { Viewport } from '@map-editor/viewport'
 
-/** The eleven tool parameters, which is exactly what `tools.set` takes. */
-const TOOL_FIELDS = [
-  'tool',
-  'terrainMode',
-  'sculptVerb',
-  'paintVerb',
-  'strokeShape',
-  'brush',
-  'material',
-  'tile',
-  'tint',
-  'rampDir',
-  'spriteName',
-] as const satisfies ReadonlyArray<keyof ToolSettings & keyof EditorState>
-
-const VIEW_FIELDS = ['showGrid', 'gameCamera', 'inspector'] as const satisfies ReadonlyArray<
-  keyof ViewSettings & keyof EditorState
->
+/**
+ * Selectors, at module scope so they are the same function every render:
+ * `useSelector` compares what a selector RETURNS, and a snapshot's identity is
+ * stable between transitions, so selecting the whole snapshot re-renders
+ * exactly when that actor moves. `useDocument`'s selectors are here for a
+ * sharper reason — it memoises on `[reader, revision, selector]`, so an inline
+ * arrow recomputes on every render and a module-level one recomputes only when
+ * the document changed.
+ */
+const snapshotOf = <T,>(snapshot: T): T => snapshot
+const isPlaying = (snapshot: { value: unknown }): boolean => snapshot.value === 'play'
+const wholeDocument = (doc: ReadonlyMapDoc): ReadonlyMapDoc => doc
 
 /**
- * Pull the keys a command owns out of a `set` patch, dropping the ones that
- * are absent. The schemas are `.strict()` with `exactOptional` fields (#23):
- * a key present with the value `undefined` is refused just as loudly as a
- * stray one, so "absent" has to mean absent.
+ * Painted work that geometry currently hides. Counted per revision rather than
+ * per render: it walks every painted address, and the document is mutated in
+ * place, so nothing else about it would tell a memo to recompute.
  */
-function pick<K extends keyof EditorState>(changes: Partial<EditorState>, keys: readonly K[]): Partial<Pick<EditorState, K>> {
-  const out: Partial<Pick<EditorState, K>> = {}
-  for (const key of keys) if (changes[key] !== undefined) out[key] = changes[key]
-  return out
+function dormantPaint(doc: ReadonlyMapDoc): { top: number; cliff: number } {
+  return countDormant(doc.paint, (kind, key) => {
+    const [x, y] = key.split(',').map(Number)
+    if (!inBounds(doc.size, x, y)) return false
+    if (kind === 'top') return true
+    const level = Number(key.split(',')[3])
+    return level < doc.terrain.height[cellIndex(doc.size, x, y)]
+  })
+}
+
+/** What a refusal says, flattened to one line; `null` when there was none. */
+function refusal(result: ReturnType<Host['dispatch']>): string | null {
+  if (result.ok) return null
+  return result.kind === 'invalid-args'
+    ? result.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ')
+    : result.reason
 }
 
 /**
  * `dispatch` never throws (#8) — it answers with a result — so a refusal has
- * to be looked at or it is swallowed. Every call below is the app dispatching
- * its own declared command with arguments it built, so a refusal is a bug
- * here rather than anything a user did.
+ * to be looked at or it is swallowed. Every call routed through here is the
+ * app dispatching its own declared command with arguments it built, so a
+ * refusal is a bug here rather than anything a user did; the one refusal a
+ * user CAN cause, a malformed map file, is read off the result instead and
+ * shown to them.
  */
 function report(id: string, result: ReturnType<Host['dispatch']>): void {
-  if (result.ok) return
-  const why = result.kind === 'invalid-args' ? result.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ') : result.reason
-  console.warn(`[editor] ${id} refused: ${result.kind} — ${why}`)
+  const why = refusal(result)
+  if (why !== null) console.warn(`[editor] ${id} refused: ${why}`)
 }
 
-export default function App({ store }: { store: EditorStore }) {
+export default function App() {
   // Built at the composition root (`main.tsx`), never here: the viewport is
-  // handed `host.input` before React has rendered anything.
+  // handed `host.input` before React has rendered anything, and a host built
+  // by a hook is rebuilt when React remounts.
   const host = useHost()
+  const { reader } = host
 
-  const revision = useSyncExternalStore(store.subscribe, store.getSnapshot)
-  const doc = store.reader.doc
-  void revision // the document is mutated in place; revision is the signal
+  // `EditorState`'s eighteen fields are gone (#11, #66 step 7): eleven belong
+  // to the host's tools actor, four to its view actor, and `playing` IS the
+  // host's mode. Nothing is mirrored — the stroke actor reads the same tool
+  // parameters the panels show, and the eyedropper writing a tile back is a
+  // `tools.set` that re-renders this by the ordinary route.
+  const toolsSnapshot = useToolsSelector(snapshotOf)
+  const viewSnapshot = useViewSelector(snapshotOf)
+  const playing = useHostSelector(isPlaying)
+  const view = viewSnapshot.context
+  const params = useMemo<ToolsSnapshot>(
+    () => ({ ...toolsSnapshot.context, terrainMode: toolsSnapshot.value }),
+    [toolsSnapshot],
+  )
+
+  const doc = useDocument(wholeDocument)
+  const dormant = useDocument(dormantPaint)
+  // The revision itself, for the effects that fire on ANY change: the document
+  // is mutated in place, so it is the only thing about it that moves.
+  const revision = useSyncExternalStore(reader.subscribe, reader.getSnapshot)
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewportRef = useRef<Viewport | null>(null)
-
-  // `EditorState`'s sixteen fields are no longer a `useState`: eleven belong
-  // to the host's tools actor, four to its view actor, and `playing` IS the
-  // host's mode. What is assembled here is a VIEW of those three snapshots in
-  // the shape the panels already take. One owner per field, so nothing has to
-  // be mirrored — the stroke actor reads the same tool parameters the panels
-  // show, and the eyedropper writing a tile back is a `tools.set` that
-  // re-renders this by the ordinary route. Selecting the whole snapshot is
-  // deliberate: its identity is stable between transitions, so this
-  // re-renders exactly when one of the three actors moves.
-  const toolsSnapshot = useToolsSelector((snapshot) => snapshot)
-  const viewSnapshot = useViewSelector((snapshot) => snapshot)
-  const playing = useHostSelector((snapshot) => snapshot.value === 'play')
-
-  const state = useMemo<EditorState>(
-    () => ({ ...toolsSnapshot.context, terrainMode: toolsSnapshot.value, ...viewSnapshot.context, playing }),
-    [toolsSnapshot, viewSnapshot, playing],
-  )
-  const stateRef = useRef(state)
-  stateRef.current = state
 
   const [hover, setHover] = useState<SurfaceAddress | null>(null)
   const [hoverCells, setHoverCells] = useState<Array<[number, number]>>([])
@@ -140,27 +136,14 @@ export default function App({ store }: { store: EditorStore }) {
   const [sheetWarning, setSheetWarning] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
-  /**
-   * The panels' one write verb, unchanged in shape and now ROUTED rather than
-   * stored: each group of fields goes to the command that owns it, and a
-   * panel needs to know nothing about which actor that is.
-   */
-  const set = useCallback(
-    (changes: Partial<EditorState>) => {
-      const tools = pick(changes, TOOL_FIELDS)
-      if (Object.keys(tools).length > 0) report('tools.set', host.dispatch('tools.set', tools))
+  /** The one write verb the panels get, routed to the actor that owns the parameters. */
+  const setParams = useCallback(
+    (changes: Partial<ToolsSnapshot>) => report('tools.set', host.dispatch('tools.set', changes)),
+    [host],
+  )
 
-      const view = pick(changes, VIEW_FIELDS)
-      if (Object.keys(view).length > 0) report('view.set', host.dispatch('view.set', view))
-
-      // `in`, not a truthiness test: clearing the selection is `null`.
-      if ('selectedObjectId' in changes) report('selection.set', host.dispatch('selection.set', { id: changes.selectedObjectId ?? null }))
-
-      if (changes.playing !== undefined) {
-        const id = changes.playing ? 'mode.play' : 'mode.edit'
-        report(id, host.dispatch(id))
-      }
-    },
+  const select = useCallback(
+    (id: string | null) => report('selection.set', host.dispatch('selection.set', { id })),
     [host],
   )
 
@@ -177,6 +160,16 @@ export default function App({ store }: { store: EditorStore }) {
   )
   const sprites = useMemo(() => generateSprites(doc.texelDensity), [doc.texelDensity])
 
+  /**
+   * The art as of right now, for the ONE effect that must not re-run when it
+   * changes: rebuilding the viewport would cost a WebGL context per material
+   * edit. The effects below push replacements into the live viewport instead,
+   * and they run on mount too, so the pair here only has to be good enough to
+   * construct with.
+   */
+  const assetsRef = useRef({ sheet: generatedSheet, sprites })
+  assetsRef.current = { sheet: generatedSheet, sprites }
+
   useEffect(() => {
     setSheet(generatedSheet)
     setSheetWarning(null)
@@ -188,14 +181,23 @@ export default function App({ store }: { store: EditorStore }) {
   }, [sprites])
 
   // --- viewport lifecycle ---------------------------------------------------
+  // Created once, from values that are stable for the app's life: the host is
+  // built outside React, and the refs below are React's own. Everything that
+  // changes reaches the live viewport through `setOptions` or a loader, which
+  // is why this survives `exhaustive-deps` being on (#37) without a ref to a
+  // whole state object.
+  const liveRef = useRef({ params, playing })
+  liveRef.current = { params, playing }
+
   useEffect(() => {
-    if (!canvasRef.current) return
+    const canvas = canvasRef.current
+    if (!canvas) return
     // Pointer input is not a command: it goes straight to the host's gesture
     // actor, which answers with what the press turned out to be (#11). What
     // used to be here — a `strokeRef` holding the anchor, the flatten height
     // and the last cell, and a rectangle's release commit — is the stroke
     // actor's context now, and dies with the stroke.
-    const viewport = new Viewport(canvasRef.current, store, { sheet: generatedSheet, sprites }, {
+    const viewport = new Viewport(canvas, host.reader, assetsRef.current, {
       onPointerDown: (press) => {
         host.input.pointerDown(press)
       },
@@ -205,11 +207,11 @@ export default function App({ store }: { store: EditorStore }) {
       heldKeys: () => host.input.heldKeys(),
       onHover: (pick) => {
         setHover(pick.surface)
-        const current = stateRef.current
-        if (pick.surface && current.tool === 'terrain' && !current.playing) {
+        const live = liveRef.current
+        if (pick.surface && live.params.tool === 'terrain' && !live.playing) {
           // The same cells the stroke will touch, grown from the same origin
           // — read off the open stroke rather than recomputed from a copy.
-          setHoverCells(strokeCells(store.reader.doc, current, pick.surface, host.input.strokeOrigin()))
+          setHoverCells(strokeCells(host.reader.doc, live.params, pick.surface, host.input.strokeOrigin()))
         } else {
           setHoverCells([])
         }
@@ -229,19 +231,20 @@ export default function App({ store }: { store: EditorStore }) {
     setSoftwareRenderer(viewport.softwareRenderer)
     // Scripting hooks. scripts/tour.mjs and scripts/probe.mjs drive the real
     // editor in a headless browser; these are also handy from the console.
-    // Nothing in the app reads them.
+    // Nothing in the app reads them. `__host` replaced `__store`, `__ops` and
+    // `__selectObject` with #66 step 7 — there is no store to expose, and the
+    // host is the front door the editor itself uses: `reader` for a read,
+    // `dispatch` for a write (scripts/global.ts types both, and is
+    // typechecked, so a rename here fails the gate rather than the tour).
     const scripting = window as unknown as Record<string, unknown>
     scripting.__viewport = viewport
-    scripting.__store = store
-    scripting.__ops = { flatten, raise, removeObject, updateObject }
-    scripting.__selectObject = (id: string | null) => set({ selectedObjectId: id })
+    scripting.__host = host
     viewport.frameMap()
     return () => {
       viewport.dispose()
       viewportRef.current = null
     }
-    // Intentionally created once: the viewport reads live state through refs.
-  }, [])
+  }, [host])
 
   // --- keyboard -------------------------------------------------------------
   // One listener for the whole editor, and it holds no key names: what is
@@ -250,79 +253,86 @@ export default function App({ store }: { store: EditorStore }) {
   // viewport's own `Set` of held keys, are both gone into it.
   useEffect(() => installKeyDispatcher(host), [host])
 
+  // --- the play session -----------------------------------------------------
+  // The session is an actor the host spawns for the duration of play (#11);
+  // what the viewport needs from it is where the character stands up. Read at
+  // the transition, which is exactly when `playing` moves.
+  const play = useMemo(() => (playing ? host.playSession() : null), [host, playing])
+
   // --- push editor state into the viewport ----------------------------------
   useEffect(() => {
     viewportRef.current?.setOptions({
-      brushPreview: state.tool === 'terrain' && !state.playing ? hoverCells : [],
-      showGrid: state.showGrid,
-      gameCamera: state.gameCamera,
-      playing: state.playing,
-      hover: state.tool === 'terrain' ? hover : null,
-      selectedObjectId: state.selectedObjectId,
+      brushPreview: params.tool === 'terrain' && !playing ? hoverCells : [],
+      showGrid: view.showGrid,
+      gameCamera: view.gameCamera,
+      play,
+      hover: params.tool === 'terrain' ? hover : null,
+      selectedObjectId: view.selectedObjectId,
     })
-  }, [state, hover, hoverCells])
+  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selectedObjectId, hover, hoverCells])
 
   useEffect(() => {
     viewportRef.current?.refreshAtmosphere()
-  }, [doc.atmosphere, revision])
+  }, [doc.atmosphere])
 
   // --- autosave -------------------------------------------------------------
   useEffect(() => {
-    const handle = setTimeout(() => saveAutosave(store.reader.doc), 1200)
+    const handle = setTimeout(() => saveAutosave(reader.doc), 1200)
     return () => clearTimeout(handle)
-  }, [revision, store])
+  }, [revision, reader])
 
   // --- commands -------------------------------------------------------------
   const updateSelected = useCallback(
     (changes: Partial<MapObject>) => {
-      const id = stateRef.current.selectedObjectId
+      const id = view.selectedObjectId
       if (!id) return
-      store.apply('Edit object', updateObject(store.reader.doc, id, changes))
+      report('objects.update', host.dispatch('objects.update', { id, changes }))
     },
-    [store],
+    [host, view.selectedObjectId],
   )
 
   const setRig = useCallback(
-    (changes: Partial<CameraRig>) => {
-      store.apply('Camera rig', [{ t: 'doc', field: 'camera', value: { ...store.reader.doc.camera, ...changes } }])
-    },
-    [store],
+    (changes: Partial<CameraRig>) => report('camera.set', host.dispatch('camera.set', changes)),
+    [host],
   )
 
   const setAtmosphere = useCallback(
     (changes: Partial<Atmosphere>) => {
-      store.apply('Atmosphere', [
-        { t: 'doc', field: 'atmosphere', value: { ...store.reader.doc.atmosphere, ...changes } },
-      ])
+      report('atmosphere.set', host.dispatch('atmosphere.set', changes))
       viewportRef.current?.refreshAtmosphere()
     },
-    [store],
+    [host],
   )
 
   const onSave = useCallback(() => {
-    const blob = new Blob([serialize(store.reader.doc)], { type: 'application/json' })
+    const blob = new Blob([serialize(doc)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `${store.reader.doc.name.replace(/\s+/g, '-').toLowerCase()}.map.json`
+    link.download = `${doc.name.replace(/\s+/g, '-').toLowerCase()}.map.json`
     link.click()
     URL.revokeObjectURL(url)
     setMessage(`Saved ${link.download}`)
-  }, [store])
+  }, [doc])
 
   const onLoad = useCallback(
     async (file: File) => {
-      try {
-        const doc = deserialize(await file.text())
-        store.replace(doc)
-        viewportRef.current?.reset()
-        viewportRef.current?.frameMap()
-        setMessage(`Loaded ${file.name}`)
-      } catch (error) {
-        setMessage(error instanceof LoadError ? error.message : String(error))
-      }
+      // The file's TEXT is the argument (#2: plain serialisable data). Parsing
+      // it is the command's, and a map that will not parse comes back as an
+      // `invalid-args` refusal carrying the load error's own message — which
+      // is what this shows, rather than catching a throw.
+      const why = refusal(host.dispatch('document.load', { json: await file.text() }))
+      if (why !== null) return setMessage(why)
+      // The document's identity changed, which no patch does — but the
+      // viewport notices that itself now, off `reader.generation`, so there is
+      // no `reset()` to remember here. That matters because this is not the
+      // only place `document.load` can be dispatched from: a keybinding, the
+      // palette, a test or `window.__host.dispatch` all reach the same
+      // command, and a renderer that only re-points when App says so would
+      // keep meshing the replaced document for all of them.
+      setMessage(`Loaded ${file.name}`)
     },
-    [store],
+    [host],
   )
 
   const onExport = useCallback(async () => {
@@ -330,7 +340,7 @@ export default function App({ store }: { store: EditorStore }) {
     try {
       // The generated sheet, as before #47 when the exporter generated its own:
       // an artist's loaded sheet still previews but does not export.
-      const bytes = await exportGltf(store.reader.doc, {
+      const bytes = await exportGltf(doc, {
         merge: false,
         sheet: generatedSheet,
         sprites,
@@ -340,19 +350,19 @@ export default function App({ store }: { store: EditorStore }) {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${store.reader.doc.name.replace(/\s+/g, '-').toLowerCase()}.glb`
+      link.download = `${doc.name.replace(/\s+/g, '-').toLowerCase()}.glb`
       link.click()
       URL.revokeObjectURL(url)
       setMessage(`Exported ${link.download} (${(blob.size / 1024).toFixed(0)} KB)`)
     } catch (error) {
       setMessage(`Export failed: ${String(error)}`)
     }
-  }, [store, generatedSheet, sprites])
+  }, [doc, generatedSheet, sprites])
 
   const onLoadSheet = useCallback(
     async (file: File) => {
       try {
-        const result = await loadSheetFromFile(file, store.reader.doc)
+        const result = await loadSheetFromFile(file, doc)
         setSheet(result.image)
         setSheetWarning(result.warning)
         viewportRef.current?.loadSheet(result.image)
@@ -360,34 +370,20 @@ export default function App({ store }: { store: EditorStore }) {
         setSheetWarning(String(error))
       }
     },
-    [store],
+    [doc],
   )
 
-  const dormant = useMemo(() => {
-    const d = store.reader.doc
-    return countDormant(d.paint, (kind, key) => {
-      const [x, y] = key.split(',').map(Number)
-      if (!inBounds(d.size, x, y)) return false
-      if (kind === 'top') return true
-      const level = Number(key.split(',')[3])
-      const height = d.terrain.height[cellIndex(d.size, x, y)]
-      return level < height
-    })
-    // Keyed on the revision counter alone: the document is mutated in place,
-    // so `store.reader.doc` never changes identity and would never retrigger this.
-  }, [revision])
-
-  const selected = state.selectedObjectId ? doc.objects[state.selectedObjectId] ?? null : null
+  const selected = view.selectedObjectId ? doc.objects[view.selectedObjectId] ?? null : null
 
   return (
     <div className="app">
       <header className="toolbar">
         <strong className="brand">{doc.name}</strong>
         <span className="toolbar-group">
-          <button type="button" onClick={() => store.undo()} disabled={!store.reader.canUndo()}>
+          <button type="button" onClick={() => report('undo', host.dispatch('undo'))} disabled={!reader.canUndo()}>
             Undo
           </button>
-          <button type="button" onClick={() => store.redo()} disabled={!store.reader.canRedo()}>
+          <button type="button" onClick={() => report('redo', host.dispatch('redo'))} disabled={!reader.canRedo()}>
             Redo
           </button>
         </span>
@@ -416,26 +412,29 @@ export default function App({ store }: { store: EditorStore }) {
           <label className="toggle">
             <input
               type="checkbox"
-              checked={state.showGrid}
-              onChange={(event) => set({ showGrid: event.target.checked })}
+              checked={view.showGrid}
+              onChange={(event) => report('view.set', host.dispatch('view.set', { showGrid: event.target.checked }))}
             />
             Grid
           </label>
           <label className="toggle" title="G — clamp the view to the game's camera bounds">
             <input
               type="checkbox"
-              checked={state.gameCamera}
-              onChange={(event) => set({ gameCamera: event.target.checked })}
+              checked={view.gameCamera}
+              onChange={(event) => report('view.set', host.dispatch('view.set', { gameCamera: event.target.checked }))}
             />
             Game camera
           </label>
           <button
             type="button"
-            className={state.playing ? 'active' : ''}
-            onClick={() => set({ playing: !state.playing })}
+            className={playing ? 'active' : ''}
+            onClick={() => {
+              const id = playing ? 'mode.edit' : 'mode.play'
+              report(id, host.dispatch(id))
+            }}
             title="P — walk the map with WASD"
           >
-            {state.playing ? 'Stop' : 'Play'}
+            {playing ? 'Stop' : 'Play'}
           </button>
         </span>
       </header>
@@ -444,22 +443,22 @@ export default function App({ store }: { store: EditorStore }) {
         <aside className="left">
           <ToolPanel
             doc={doc}
-            state={state}
+            params={params}
             sheet={sheet}
-            set={set}
+            set={setParams}
             onLoadSheet={(file) => void onLoadSheet(file)}
             sheetWarning={sheetWarning}
           />
         </aside>
 
         <main className="stage">
-          <canvas ref={canvasRef} className={state.playing ? 'playing' : ''} />
-          {!camera.inBounds && !state.playing ? (
+          <canvas ref={canvasRef} className={playing ? 'playing' : ''} />
+          {!camera.inBounds && !playing ? (
             <div className="envelope-warning">
               Outside the game's camera envelope — press G to clamp
             </div>
           ) : null}
-          {state.playing ? <div className="play-hint">WASD to walk · P to stop</div> : null}
+          {playing ? <div className="play-hint">WASD to walk · P to stop</div> : null}
         </main>
 
         <aside className="right">
@@ -468,16 +467,16 @@ export default function App({ store }: { store: EditorStore }) {
               <button
                 key={tab}
                 type="button"
-                className={state.inspector === tab ? 'active' : ''}
-                onClick={() => set({ inspector: tab })}
+                className={view.inspector === tab ? 'active' : ''}
+                onClick={() => report('view.set', host.dispatch('view.set', { inspector: tab }))}
               >
                 {tab}
               </button>
             ))}
           </nav>
 
-          {state.inspector === 'properties' ? (
-            state.tool === 'camera' ? (
+          {view.inspector === 'properties' ? (
+            params.tool === 'camera' ? (
               <CameraPanel
                 rig={doc.camera}
                 onChange={setRig}
@@ -488,16 +487,15 @@ export default function App({ store }: { store: EditorStore }) {
               <ObjectInspector
                 object={selected}
                 onChange={updateSelected}
-                onDelete={() => {
-                  if (!selected) return
-                  store.apply('Delete object', removeObject(store.reader.doc, selected.id))
-                  set({ selectedObjectId: null })
-                }}
+                // `selection.delete` is the composite the keymap binds too: it
+                // expands to `objects.delete({ ids })` plus clearing the
+                // selection, with the ids filled in outside every actor (#11).
+                onDelete={() => report('selection.delete', host.dispatch('selection.delete'))}
               />
             )
           ) : null}
 
-          {state.inspector === 'coverage' ? (
+          {view.inspector === 'coverage' ? (
             <>
               <CameraPanel
                 rig={doc.camera}
@@ -506,24 +504,29 @@ export default function App({ store }: { store: EditorStore }) {
                 onPreview={() => viewportRef.current?.applyRigDefaults()}
               />
               <CoveragePanel
-                doc={doc}
-                revision={revision}
-                onSelect={(id) => set({ selectedObjectId: id, inspector: 'properties', tool: 'object' })}
-                onFix={(id) => store.apply('Fix display mode', updateObject(store.reader.doc, id, { display: 'billboardY' }))}
+                onSelect={(id) => {
+                  select(id)
+                  report('view.set', host.dispatch('view.set', { inspector: 'properties' }))
+                  setParams({ tool: 'object' })
+                }}
+                onFix={(id) => report('objects.update', host.dispatch('objects.update', { id, changes: { display: 'billboardY' } }))}
               />
             </>
           ) : null}
 
-          {state.inspector === 'atmosphere' ? (
+          {view.inspector === 'atmosphere' ? (
             <AtmospherePanel atmosphere={doc.atmosphere} onChange={setAtmosphere} />
           ) : null}
 
-          {state.inspector === 'outliner' ? (
+          {view.inspector === 'outliner' ? (
             <Outliner
               doc={doc}
-              selectedId={state.selectedObjectId}
-              onSelect={(id) => set({ selectedObjectId: id, tool: 'object' })}
-              onChange={(id, changes) => store.apply('Edit object', updateObject(store.reader.doc, id, changes))}
+              selectedId={view.selectedObjectId}
+              onSelect={(id) => {
+                select(id)
+                setParams({ tool: 'object' })
+              }}
+              onChange={(id, changes) => report('objects.update', host.dispatch('objects.update', { id, changes }))}
             />
           ) : null}
 
@@ -555,11 +558,8 @@ export default function App({ store }: { store: EditorStore }) {
             undo and reports `canUndo` false while `undoLabel` still names the
             entry underneath the stroke, so naming it here would advertise
             something the disabled button beside it will not do. */}
-        <span>{store.reader.canUndo() ? store.reader.undoLabel() : 'nothing to undo'}</span>
+        <span>{reader.canUndo() ? reader.undoLabel() : 'nothing to undo'}</span>
       </footer>
     </div>
   )
 }
-
-/** Re-exported so the brush preview can be computed without importing ops here. */
-export { brushCells }

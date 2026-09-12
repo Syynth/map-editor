@@ -4,8 +4,6 @@ import {
   cellIndex,
   cliffKey,
   createMap,
-  EditorStore,
-  flatten,
   readAddress,
   SURFACE_CLIFF,
   SURFACE_TOP,
@@ -19,20 +17,21 @@ function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
 
 describe('paint survives sculpt', () => {
   it('keeps cliff paint dormant when the cliff is lowered, and restores it', () => {
-    // Shaped before it enters the store: `reader.doc` is deep-readonly, so a
-    // test that wants a hand-built document builds it first (#13).
+    // Built directly, and no store at all: this is a fact about the mesher and
+    // the paint addressing, and a test may construct a document (#10). The
+    // write path is an actor in another package now — reaching for one here
+    // would only re-test that actor.
     const doc = createMap(8, 8)
     setHeight(doc, 3, 3, 8)
-    const store = new EditorStore(doc)
 
     // Paint the band at absolute level 6 on the east face.
     const key = cliffKey(3, 3, 0, 6)
-    store.apply('Paint cliff', [{ t: 'paint', layer: 'cliff', key, value: 42 }])
-    expect(store.reader.doc.paint.cliff[key]).toBe(42)
+    doc.paint.cliff[key] = 42
+    expect(doc.paint.cliff[key]).toBe(42)
 
     // Sculpt the cliff down below that band. The face stops being meshed.
-    store.apply('Lower', flatten(store.reader.doc, [[3, 3]], 4))
-    const lowered = meshTerrainChunk(store.reader.doc, '0,0')
+    setHeight(doc, 3, 3, 4)
+    const lowered = meshTerrainChunk(doc, '0,0')
     const levels = new Set<number>()
     for (let tri = 0; tri < lowered.solid.triangleCount; tri++) {
       const address = readAddress(lowered.solid.faceAddr, tri)
@@ -43,11 +42,11 @@ describe('paint survives sculpt', () => {
     expect(levels.has(6)).toBe(false)
 
     // The paint is still there. Nothing garbage-collected it.
-    expect(store.reader.doc.paint.cliff[key]).toBe(42)
+    expect(doc.paint.cliff[key]).toBe(42)
 
     // Raise it back and the artist's work reappears at the same address.
-    store.apply('Raise', flatten(store.reader.doc, [[3, 3]], 8))
-    const restored = meshTerrainChunk(store.reader.doc, '0,0')
+    setHeight(doc, 3, 3, 8)
+    const restored = meshTerrainChunk(doc, '0,0')
     let found = false
     for (let tri = 0; tri < restored.solid.triangleCount; tri++) {
       const address = readAddress(restored.solid.faceAddr, tri)
@@ -56,7 +55,7 @@ describe('paint survives sculpt', () => {
       }
     }
     expect(found).toBe(true)
-    expect(store.reader.doc.paint.cliff[key]).toBe(42)
+    expect(doc.paint.cliff[key]).toBe(42)
   })
 })
 

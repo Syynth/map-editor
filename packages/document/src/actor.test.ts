@@ -183,6 +183,25 @@ describe('the read and write paths', () => {
     expect(reader.canUndo()).toBe(false)
   })
 
+  it('announces a replace as a generation, which an edit does not move', () => {
+    // `revision` says "something changed", the dirty set says "remesh these
+    // keys"; neither says "the object you cached is a different document".
+    // A consumer that holds `doc` by reference — the runtime scene does —
+    // needs the third fact, and it belongs beside the other two on the read
+    // path rather than beside one caller's dispatch site.
+    const { reader, writer } = createDocumentStore(createMap(4, 4, 'First'))
+    expect(reader.generation).toBe(0)
+
+    writer.apply('Raise', [{ t: 'terrain', field: 'height', index: 0, value: 3 }])
+    expect(reader.revision).toBeGreaterThan(0)
+    expect(reader.generation).toBe(0)
+
+    writer.replace(createMap(6, 6, 'Second'))
+    expect(reader.generation).toBe(1)
+    writer.replace(createMap(8, 8, 'Third'))
+    expect(reader.generation).toBe(2)
+  })
+
   it('rejects all four write shapes at the type level and leaves reads alone', () => {
     // Each directive below is checked by the package's `tsc` run: if the
     // deep-readonly type ever stopped rejecting one of these, the directive

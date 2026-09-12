@@ -90,7 +90,11 @@ alone; do not route it through a machine.
       (#66 step 3). Since step 4 it is the only copy: `App.tsx` derives
       `playing` from the host's mode, and the gesture actor reads it per press
       to decide whether a left press starts a stroke — middle, right and
-      alt+drag still orbit and pan in play mode, as they always did.
+      alt+drag still orbit and pan in play mode, as they always did. Step 7
+      added the SESSION beneath it: `mode.play` spawns a play actor whose
+      lifetime is the session and which reads where the character stands up
+      from the document once, at spawn; `mode.edit` stops it. The per-frame
+      character simulation stays in the viewport, where the clock is.
 - [ ] Async work as actors: worker meshing, file load/save, glTF export,
       autosave — with cancellation, progress and failure handling.
 - [x] Move the 18-field `EditorState` out of the single `useState` in `App.tsx`.
@@ -101,28 +105,34 @@ alone; do not route it through a machine.
       (`playing`), and `App` assembles the object the panels take from their
       snapshots. `set` routes each group to `tools.set`, `view.set`,
       `selection.set` or `mode.play`/`mode.edit`.
-- [ ] Finish the App rewire (#66 step 7). Step 4 took the state ownership half
+- [x] Finish the App rewire (#66 step 7). Step 4 took the state ownership half
       early — it had to, since the stroke actor reads the tool parameters and
-      the eyedropper writes them back — so step 7 is smaller than it was, but
-      it is NOT done. What it still owes, explicitly:
-      - Panels select the fields they read (`useToolsSelector`,
-        `useViewSelector`) instead of every one of them taking the single
-        `state` object `App` assembles, so changing brush size stops
-        re-rendering every panel.
-      - `exhaustive-deps` enabled for `App.tsx`: the viewport effect still
-        carries a `[]` with a prose justification beside it.
-      - Commands for the direct store calls left in `App.tsx` — the undo/redo
-        buttons, object edit and display fix, camera rig, atmosphere, and the
-        `replace` on load — which are the second write path `EditorStore` stays
-        exported for. The keybindings among them are gone: step 6 routed
-        undo/redo and Delete through `dispatch`, and object deletion has a
-        command (`objects.delete`, by stable id) that the inspector's own
-        button has yet to use.
-      - `EditorStore` out of `packages/document`'s barrel and out of
-        `main.tsx`, once nothing outside the document actor writes.
-      - `apps/editor/src/editor/state.ts`'s type aliases deleted: `ToolId`,
-        `TerrainMode`, `SculptVerb`, `PaintVerb` and `StrokeShape` now
-        duplicate `editor-host`'s, which are the ones the schemas derive from.
+      the eyedropper writes them back — and step 7 took the rest:
+      - `apps/editor/src/editor/state.ts` is deleted. `App` reads the tool
+        parameters, the view toggles, the selection and the mode from their
+        actors, and every setter is a `dispatch`.
+      - `exhaustive-deps` is on, repo-wide, with no suppressions (there could
+        not be one: `noInlineConfig`). The viewport effect now depends on
+        `[host]` and constructs from a ref of the current art, so the WebGL
+        context survives a material edit; the two memos keyed on a revision
+        counter are `useDocument` selectors, which memoise on the revision
+        inside the hook.
+      - Every direct store call in `App.tsx` has a command: `objects.update`,
+        `camera.set`, `atmosphere.set`, `document.load` and `document.new`
+        join `undo`/`redo`/`objects.delete` on the document actor, and the
+        inspector's Delete button dispatches the `selection.delete` composite
+        the keymap already bound.
+      - `EditorStore` is out of `packages/document`'s barrel and out of
+        `main.tsx`: an app calls `createDocument(doc)` and holds a `reader`
+        plus the actor logic. There is no second write path left to document.
+      - The left column renders the terrain feature's DECLARED panels, chosen
+        by the active tool's declaring owner, rather than the app's own copy
+        of the same controls.
+      - `window.__store` became `window.__host`, and `__ops` and
+        `__selectObject` went away with it: the tour reads through
+        `reader` and writes through `dispatch`, so a tour step exercises the
+        command path the editor itself uses (`scripts/global.ts` types both,
+        and is typechecked).
 - [ ] Establish the machine/store boundary in code review terms, so the document
       never drifts into machine context.
 
@@ -130,10 +140,11 @@ alone; do not route it through a machine.
 - [x] `createDocumentStore()` returns `{ reader, writer }`; only the machine is
       constructed with `writer`. Neither `createDocumentStore` nor the writer
       type is in `packages/document`'s barrel; the package exposes the
-      pre-wired `createDocumentActorLogic(store)` instead (#13, #66 step 2).
-      `EditorStore` itself stays exported, with its verbs public, only because
-      `App.tsx` still writes through it directly — a documented, temporary
-      second write path that #66 step 7 removes.
+      pre-wired `createDocument(doc)` instead — `{ reader, logic }`, the two
+      faces an app may hold (#13, #66 steps 2 and 7). `EditorStore` left the
+      barrel with step 7, when the last direct `store.apply` in `App.tsx`
+      became a command: the second write path is closed by the type graph
+      rather than by a rule.
 - [x] Type the public document as `ReadonlyMapDoc` (a deep-readonly mapped
       type). Verified to reject indexed assignment, record assignment, array
       mutation and property replacement, while leaving reads untouched — the

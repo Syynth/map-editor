@@ -1,12 +1,15 @@
 import {
-  EditorStore,
   addObject,
   cellIndex,
+  createDocument,
   createMap,
+  groundHeight,
   defaultFacing,
   raise,
   removeObject,
+  serialize,
   type MapObject,
+  type Patch,
   type SurfaceAddress,
 } from '@map-editor/document'
 import { commands, defineFeature, dispose, provideFeature, type HotHandle } from '@map-editor/registry'
@@ -19,9 +22,9 @@ import type { PointerPress } from './gesture'
 /**
  * #10's shape: a behavior test dispatches at the root actor and asserts
  * through `reader` and the actor snapshots. No React, no DOM, no GL. Setup
- * may construct documents directly — `createMap` plus the ops verbs, applied
- * through the store — but every assertion about behavior goes through
- * `dispatch`.
+ * may construct documents directly — `createMap` plus the ops verbs, sent at
+ * the document actor with `apply` below — but every assertion about behavior
+ * goes through `dispatch`.
  *
  * `dispatched` records every id this file sends, for the enumeration test at
  * the bottom: a command the registry knows and no test here has dispatched
@@ -29,29 +32,37 @@ import type { PointerPress } from './gesture'
  */
 const dispatched = new Set<string>()
 
-function makeHost(features?: readonly Feature[]): { host: Host; store: EditorStore; clock: SimulatedClock; dispatch: Host['dispatch'] } {
-  const store = new EditorStore(createMap(8, 8))
+function makeHost(features?: readonly Feature[]): { host: Host; clock: SimulatedClock; dispatch: Host['dispatch'] } {
   const clock = new SimulatedClock()
-  const host = createHost({ store, clock, features })
+  const host = createHost({ document: createDocument(createMap(8, 8)), clock, features })
   const dispatch: Host['dispatch'] = (id, args) => {
     dispatched.add(id)
     return host.dispatch(id, args)
   }
-  return { host, store, clock, dispatch }
+  return { host, clock, dispatch }
+}
+
+/**
+ * Setup: one labelled edit, at the document actor's own event rather than
+ * through a command. A test holds the ref the same way the stroke actor does
+ * — there is no writer to reach for, which is the point (#13).
+ */
+function apply(host: Host, label: string, patches: Patch[]): void {
+  host.children.document.send({ type: 'patch', label, patches })
 }
 
 /** One committed edit, so there is something to undo. */
-function raiseOnce(store: EditorStore, x: number, y: number, by = 1): void {
-  store.apply('Raise', raise(store.reader.doc, [[x, y]], by))
+function raiseOnce(host: Host, x: number, y: number, by = 1): void {
+  apply(host, 'Raise', raise(host.reader.doc, [[x, y]], by))
 }
 
 describe('the document commands, routed to the document actor', () => {
-  it('undoes and redoes what the store recorded, seen through reader', () => {
-    const { host, store, dispatch } = makeHost()
-    const index = cellIndex(store.reader.doc.size, 2, 2)
-    const before = store.reader.doc.terrain.height[index]
-    raiseOnce(store, 2, 2, 3)
-    expect(store.reader.doc.terrain.height[index]).toBe(before + 3)
+  it('undoes and redoes what the write path recorded, seen through reader', () => {
+    const { host, dispatch } = makeHost()
+    const index = cellIndex(host.reader.doc.size, 2, 2)
+    const before = host.reader.doc.terrain.height[index]
+    raiseOnce(host, 2, 2, 3)
+    expect(host.reader.doc.terrain.height[index]).toBe(before + 3)
 
     expect(dispatch('undo')).toEqual({ ok: true })
     expect(host.reader.doc.terrain.height[index]).toBe(before)
@@ -62,14 +73,14 @@ describe('the document commands, routed to the document actor', () => {
 
   it('undoes exactly once per dispatch, not twice', () => {
     // Two edits in history, one undo: a doubled write would empty the stack.
-    const { store, dispatch } = makeHost()
-    raiseOnce(store, 1, 1)
-    raiseOnce(store, 2, 2)
+    const { host, dispatch } = makeHost()
+    raiseOnce(host, 1, 1)
+    raiseOnce(host, 2, 2)
 
     dispatch('undo')
 
-    expect(store.reader.canUndo()).toBe(true)
-    expect(store.reader.canRedo()).toBe(true)
+    expect(host.reader.canUndo()).toBe(true)
+    expect(host.reader.canRedo()).toBe(true)
   })
 
   it('is unavailable with nothing to undo, and says which key failed', () => {
@@ -79,10 +90,128 @@ describe('the document commands, routed to the document actor', () => {
   })
 
   it('refuses arguments the declaration does not take', () => {
-    const { store, dispatch } = makeHost()
-    raiseOnce(store, 1, 1)
+    const { host, dispatch } = makeHost()
+    raiseOnce(host, 1, 1)
     expect(dispatch('undo', { steps: 2 })).toMatchObject({ ok: false, kind: 'invalid-args' })
-    expect(store.reader.canUndo()).toBe(true)
+    expect(host.reader.canUndo()).toBe(true)
+  })
+
+  /**
+   * The writes `App.tsx` made through `store.apply` until #66 step 7. Each is
+   * one labelled entry, addressed by stable id or by the document field it
+   * owns — there is no store to call any more, so these are the whole of what
+   * the inspector, the camera panel and the atmosphere panel can do.
+   */
+  it('edits an object by id, as one undoable entry', () => {
+    const { host, dispatch } = makeHost()
+    apply(host, 'Add object', addObject(host.reader.doc, OBJECT))
+    expect(dispatch('objects.update', { id: OBJECT.id, changes: { name: 'Renamed', display: 'billboardY' } })).toEqual({ ok: true })
+
+    expect(host.reader.doc.objects[OBJECT.id].name).toBe('Renamed')
+    expect(host.reader.doc.objects[OBJECT.id].display).toBe('billboardY')
+    // Untouched fields survive: the handler merges onto the object it read.
+    expect(host.reader.doc.objects[OBJECT.id].sprite).toBe(OBJECT.sprite)
+    expect(host.reader.undoLabel()).toBe('Edit object')
+
+    dispatch('undo')
+    expect(host.reader.doc.objects[OBJECT.id].name).toBe(OBJECT.name)
+  })
+
+  it('records nothing for an object id the document does not hold', () => {
+    const { host, dispatch } = makeHost()
+    expect(dispatch('objects.update', { id: 'nobody', changes: { name: 'x' } })).toEqual({ ok: true })
+    expect(host.reader.canUndo()).toBe(false)
+  })
+
+  it('refuses an object change the schema does not name, rather than writing it', () => {
+    const { host, dispatch } = makeHost()
+    apply(host, 'Add object', addObject(host.reader.doc, OBJECT))
+    // `id` is identity, not an edit; `seed` is what makes an export
+    // reproducible. Both are absent from the schema, so `.strict()` refuses.
+    expect(dispatch('objects.update', { id: OBJECT.id, changes: { seed: 9 } })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    // Nothing was written: the top of the stack is still the setup's entry.
+    expect(host.reader.undoLabel()).toBe('Add object')
+  })
+
+  it('merges the camera rig and the atmosphere, one entry each', () => {
+    const { host, dispatch } = makeHost()
+    const fov = host.reader.doc.camera.fov
+    expect(dispatch('camera.set', { yawSnapDeg: 90 })).toEqual({ ok: true })
+    expect(host.reader.doc.camera.yawSnapDeg).toBe(90)
+    expect(host.reader.doc.camera.fov).toBe(fov)
+    expect(host.reader.undoLabel()).toBe('Camera rig')
+
+    expect(dispatch('atmosphere.set', { bloom: 1.25 })).toEqual({ ok: true })
+    expect(host.reader.doc.atmosphere.bloom).toBe(1.25)
+    expect(host.reader.doc.atmosphere.preset).toBe('Clear noon')
+    expect(host.reader.undoLabel()).toBe('Atmosphere')
+
+    dispatch('undo')
+    expect(host.reader.doc.atmosphere.bloom).not.toBe(1.25)
+    expect(host.reader.doc.camera.yawSnapDeg).toBe(90)
+  })
+
+  it('opens a map from its text, clearing the history the replaced document owned', () => {
+    const { host, dispatch } = makeHost()
+    raiseOnce(host, 1, 1)
+    expect(host.reader.canUndo()).toBe(true)
+
+    const other = createMap(6, 6, 'Other')
+    expect(dispatch('document.load', { json: serialize(other) })).toEqual({ ok: true })
+    expect(host.reader.doc.name).toBe('Other')
+    expect(host.reader.doc.size).toEqual({ width: 6, height: 6 })
+    // Nothing on the stack addresses a document that is gone.
+    expect(host.reader.canUndo()).toBe(false)
+  })
+
+  it('refuses a malformed map as invalid-args carrying the load error, and leaves the document alone', () => {
+    // The parse lives in the schema so a refusal is a RESULT (#8) rather than
+    // a throw inside the enqueued write. A transition that never ran is what
+    // keeps the open document open.
+    const { host, dispatch } = makeHost()
+    const name = host.reader.doc.name
+    expect(dispatch('document.load', { json: '{ "formatVersion": 1 }' })).toMatchObject({
+      ok: false,
+      kind: 'invalid-args',
+      issues: [{ path: ['json'], message: expect.stringContaining('no size') as string }],
+    })
+    expect(host.reader.doc.name).toBe(name)
+  })
+
+  it('starts a blank map at the size asked for', () => {
+    const { host, dispatch } = makeHost()
+    raiseOnce(host, 1, 1)
+    expect(dispatch('document.new', { width: 4, height: 4, name: 'Fresh' })).toEqual({ ok: true })
+    expect(host.reader.doc.size).toEqual({ width: 4, height: 4 })
+    expect(host.reader.doc.name).toBe('Fresh')
+    expect(host.reader.canUndo()).toBe(false)
+    expect(dispatch('document.new', { width: 0, height: 4 })).toMatchObject({ ok: false, kind: 'invalid-args' })
+  })
+
+  it('moves the reader generation on a replace and on nothing else, so a renderer re-points itself', () => {
+    // The renderer caches the document BY REFERENCE (`RuntimeScene`), and no
+    // patch and no dirty chunk says "that object is not the document any
+    // more". `generation` is that announcement, and it is on the read path
+    // the viewport already drains every frame — which is what makes these two
+    // commands dispatchable from anywhere rather than only from the one App
+    // callback that used to call `viewport.reset()` by hand beside them.
+    const { host, dispatch } = makeHost()
+    const start = host.reader.generation
+
+    raiseOnce(host, 1, 1)
+    dispatch('camera.set', { yaw: 10 })
+    expect(host.reader.revision).toBeGreaterThan(0)
+    expect(host.reader.generation).toBe(start)
+
+    expect(dispatch('document.new', { width: 4, height: 4, name: 'Fresh' })).toEqual({ ok: true })
+    expect(host.reader.generation).toBe(start + 1)
+
+    expect(dispatch('document.load', { json: serialize(createMap(6, 6, 'Other')) })).toEqual({ ok: true })
+    expect(host.reader.generation).toBe(start + 2)
+
+    // A refused load replaced nothing, so it announces nothing.
+    expect(dispatch('document.load', { json: '{ "formatVersion": 1 }' })).toMatchObject({ ok: false })
+    expect(host.reader.generation).toBe(start + 2)
   })
 })
 
@@ -115,6 +244,43 @@ describe('mode: the host\'s own top-level state', () => {
     dispatch('mode.play')
     expect(dispatch('view.set', { showGrid: false })).toEqual({ ok: true })
     expect(host.children.view.getSnapshot().context.showGrid).toBe(false)
+  })
+
+  it('spawns a play session that knows where the character stands up, and stops it on the way out', () => {
+    // #11: the session is an actor with the session's lifetime, not a flag.
+    // What it holds is read from the document once, at spawn — the middle of
+    // the map, on the ground under that point — which is what the viewport's
+    // `togglePlay` used to compute for itself.
+    const { host, dispatch } = makeHost()
+    expect(host.playSession()).toBeNull()
+
+    apply(host, 'Raise', raise(host.reader.doc, [[4, 4]], 6))
+    dispatch('mode.play')
+    const session = host.playSession()
+    expect(session?.start).toEqual([4, groundHeight(host.reader.doc, 4, 4), 4])
+    expect(host.actor.getSnapshot().context.play?.getSnapshot().status).toBe('active')
+
+    // Stopped through `enq`, and the ref is retained: what says the session is
+    // over is the mode, so `playSession` answers null while the stopped child
+    // is still addressable.
+    const ref = host.actor.getSnapshot().context.play
+    dispatch('mode.edit')
+    expect(host.playSession()).toBeNull()
+    expect(ref?.getSnapshot().status).toBe('stopped')
+    expect(host.actor.getSnapshot().context.play).toBe(ref)
+  })
+
+  it('reads the ground again for the NEXT session, not for the one already walking', () => {
+    const { host, dispatch } = makeHost()
+    dispatch('mode.play')
+    const first = host.playSession()?.start
+    apply(host, 'Raise', raise(host.reader.doc, [[4, 4]], 4))
+    expect(host.playSession()?.start).toEqual(first)
+
+    dispatch('mode.edit')
+    dispatch('mode.play')
+    expect(host.playSession()?.start).toEqual([4, groundHeight(host.reader.doc, 4, 4), 4])
+    expect(host.playSession()?.start).not.toEqual(first)
   })
 })
 
@@ -293,14 +459,14 @@ describe('pointer input through the host', () => {
     // entry pops first and writes `doc.objects[A]` while `objectOrder`, which
     // only the delete's entry owns, stays without it. The store refuses the
     // colliding write, and `selection.delete` is unavailable mid-drag — the
-    // `store.inStroke` check `App.tsx` used to carry, now a predicate that
-    // says why — so the drag is all that happened and one undo takes it back
-    // whole.
-    const { host, store, dispatch } = makeHost()
+    // open-stroke check `App.tsx` used to make against the store, now a
+    // predicate that says why — so the drag is all that happened and one undo
+    // takes it back whole.
+    const { host, dispatch } = makeHost()
     dispatch('tools.set', { tool: 'object' })
     const object = { ...OBJECT, position: [1, 0, 1] as [number, number, number], anchorCell: [1, 1] as [number, number] }
-    store.apply('Add object', addObject(store.reader.doc, object))
-    const doc = store.reader.doc
+    apply(host, 'Add object', addObject(host.reader.doc, object))
+    const doc = host.reader.doc
 
     const onObject = { pick: { surface: topAt(1, 1), point: { x: 1, z: 1 }, objectId: object.id } }
     expect(host.input.pointerDown(pressAt(1, 1, onObject))).toBe('stroke')
@@ -311,7 +477,6 @@ describe('pointer input through the host', () => {
     const groundPlane = (id: string) => [doc.objects[id]?.position[0], doc.objects[id]?.position[2]]
     expect(groundPlane(object.id)).toEqual([5, 5])
 
-    expect(store.inStroke).toBe(true)
     expect(host.contextKeys()['host.stroking']).toBe(true)
     expect(dispatch('selection.delete')).toMatchObject({
       ok: false,
@@ -319,11 +484,11 @@ describe('pointer input through the host', () => {
       reason: expect.stringContaining('host.stroking') as string,
     })
     // And the store would have refused it even if the predicate had not.
-    store.apply('Delete object', removeObject(doc, object.id))
+    apply(host, 'Delete object', removeObject(doc, object.id))
     expect(doc.objectOrder).toEqual([object.id])
 
     host.input.pointerUp({ x: 50, y: 50 })
-    expect(store.reader.undoLabel()).toBe('Edit object')
+    expect(host.reader.undoLabel()).toBe('Edit object')
     expect(dispatch('undo')).toEqual({ ok: true })
     // The invariant: an id in `objects` is an id in `objectOrder`, and the
     // object is back where the drag began, not where it ended.
@@ -332,13 +497,13 @@ describe('pointer input through the host', () => {
   })
 
   it('refuses undo and redo while the stroke is open, and says which key failed', () => {
-    const { host, store, dispatch } = makeHost()
+    const { host, dispatch } = makeHost()
     dispatch('tools.set', { tool: 'object' })
-    raiseOnce(store, 5, 5)
-    expect(store.reader.canUndo()).toBe(true)
+    raiseOnce(host, 5, 5)
+    expect(host.reader.canUndo()).toBe(true)
 
     host.input.pointerDown(pressAt(3, 3))
-    expect(store.reader.canUndo()).toBe(false)
+    expect(host.reader.canUndo()).toBe(false)
     expect(dispatch('undo')).toMatchObject({ ok: false, kind: 'unavailable' })
     host.input.pointerUp({ x: 30, y: 30 })
     expect(dispatch('undo')).toEqual({ ok: true })
@@ -349,24 +514,24 @@ describe('pointer input through the host', () => {
     // host was not given. `toolContract` answers `undefined`, so the gesture
     // actor spawns no stroke — the same fall-through a declined press gets,
     // rather than a half-live stroke over a tool nothing implements.
-    const { host, store } = makeHost()
+    const { host } = makeHost()
     expect(host.contextKeys()['tools.tool']).toBe('terrain')
     expect(host.toolContract('terrain')).toBeUndefined()
 
     expect(host.input.pointerDown(pressAt(3, 3))).toBe('none')
     host.input.pointerUp({ x: 30, y: 30 })
-    expect(store.reader.canUndo()).toBe(false)
+    expect(host.reader.canUndo()).toBe(false)
   })
 
   it('in play mode a left press starts no stroke, while middle and right still orbit and pan', () => {
-    const { host, store, dispatch } = makeHost()
+    const { host, dispatch } = makeHost()
     dispatch('tools.set', { tool: 'object', spriteName: 'tree' })
     dispatch('mode.play')
 
     expect(host.input.pointerDown(pressAt(1, 1))).toBe('none')
     host.input.pointerUp({ x: 10, y: 10 })
-    expect(store.reader.doc.objectOrder).toEqual([])
-    expect(store.reader.canUndo()).toBe(false)
+    expect(host.reader.doc.objectOrder).toEqual([])
+    expect(host.reader.canUndo()).toBe(false)
 
     expect(host.input.pointerDown(pressAt(1, 1, { button: 1, pick: null }))).toBe('orbit')
     host.input.pointerUp({ x: 10, y: 10 })
@@ -377,14 +542,14 @@ describe('pointer input through the host', () => {
     dispatch('mode.edit')
     expect(host.input.pointerDown(pressAt(1, 1))).toBe('stroke')
     host.input.pointerUp({ x: 10, y: 10 })
-    expect(store.reader.doc.objectOrder).toHaveLength(1)
-    expect(store.reader.canUndo()).toBe(true)
+    expect(host.reader.doc.objectOrder).toHaveLength(1)
+    expect(host.reader.canUndo()).toBe(true)
   })
 
   it('the object tool places on a press, drags what it placed, and selects it through the view actor', () => {
-    const { host, store, dispatch } = makeHost()
+    const { host, dispatch } = makeHost()
     dispatch('tools.set', { tool: 'object', spriteName: 'tree' })
-    const doc = store.reader.doc
+    const doc = host.reader.doc
     expect(doc.objectOrder).toHaveLength(0)
 
     host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.5, z: 2.5 }, objectId: null } }))
@@ -396,7 +561,7 @@ describe('pointer input through the host', () => {
     host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.5, z: 4.5 }, objectId: null }, NO_MODIFIERS)
     expect(doc.objects[id].position[0]).toBeCloseTo(4.5)
     host.input.pointerUp({ x: 40, y: 40 })
-    expect(store.reader.undoLabel()).toBe('Edit object')
+    expect(host.reader.undoLabel()).toBe('Edit object')
   })
 
   it('camera tool: a left press is no gesture at all', () => {
@@ -714,19 +879,19 @@ describe('the relative and composite commands the keymap needs', () => {
 describe('deleting objects', () => {
   function withObject(): ReturnType<typeof makeHost> & { object: MapObject } {
     const made = makeHost()
-    made.store.apply('Add object', addObject(made.store.reader.doc, OBJECT))
+    apply(made.host, 'Add object', addObject(made.host.reader.doc, OBJECT))
     return { ...made, object: OBJECT }
   }
 
   it('deletes by stable id, leaving objects and objectOrder agreeing', () => {
-    const { store, dispatch, object } = withObject()
-    expect(store.reader.doc.objectOrder).toEqual([object.id])
+    const { host, dispatch, object } = withObject()
+    expect(host.reader.doc.objectOrder).toEqual([object.id])
 
     expect(dispatch('objects.delete', { ids: [object.id] })).toEqual({ ok: true })
 
-    expect(store.reader.doc.objects[object.id]).toBeUndefined()
-    expect(store.reader.doc.objectOrder).toEqual([])
-    expect(Object.keys(store.reader.doc.objects)).toEqual(store.reader.doc.objectOrder)
+    expect(host.reader.doc.objects[object.id]).toBeUndefined()
+    expect(host.reader.doc.objectOrder).toEqual([])
+    expect(Object.keys(host.reader.doc.objects)).toEqual(host.reader.doc.objectOrder)
   })
 
   it('deletes several at once without one restoring another', () => {
@@ -734,24 +899,24 @@ describe('deleting objects', () => {
     // that has not been written yet, so mapping it over two ids would have
     // the second list still holding the first — and the last patch to land
     // would put it back.
-    const { store, dispatch } = makeHost()
+    const { host, dispatch } = makeHost()
     const second = { ...OBJECT, id: 'obj-2' }
-    store.apply('Add object', addObject(store.reader.doc, OBJECT))
-    store.apply('Add object', addObject(store.reader.doc, second))
+    apply(host, 'Add object', addObject(host.reader.doc, OBJECT))
+    apply(host, 'Add object', addObject(host.reader.doc, second))
 
     expect(dispatch('objects.delete', { ids: [OBJECT.id, second.id] })).toEqual({ ok: true })
-    expect(store.reader.doc.objectOrder).toEqual([])
-    expect(Object.keys(store.reader.doc.objects)).toEqual([])
+    expect(host.reader.doc.objectOrder).toEqual([])
+    expect(Object.keys(host.reader.doc.objects)).toEqual([])
   })
 
   it('leaves the document alone when no id names anything', () => {
-    const { store, dispatch } = withObject()
-    const revision = store.reader.revision
+    const { host, dispatch } = withObject()
+    const revision = host.reader.revision
     expect(dispatch('objects.delete', { ids: ['nobody'] })).toEqual({ ok: true })
-    expect(store.reader.revision).toBe(revision)
+    expect(host.reader.revision).toBe(revision)
     // No entry pushed either: the top of the stack is still what put the
     // object there, so an undo does not have a no-op to eat first.
-    expect(store.reader.undoLabel()).toBe('Add object')
+    expect(host.reader.undoLabel()).toBe('Add object')
   })
 
   it('refuses an empty or malformed id list', () => {
@@ -764,12 +929,12 @@ describe('deleting objects', () => {
     // The whole point of the composite: what reaches a handler is
     // `objects.delete({ ids })`. No actor learns what was selected (#11), and
     // the expansion happens in `dispatch`, outside every machine.
-    const { host, store, dispatch, object } = withObject()
+    const { host, dispatch, object } = withObject()
     dispatch('selection.set', { id: object.id })
 
     expect(dispatch('selection.delete')).toEqual({ ok: true })
 
-    expect(store.reader.doc.objects[object.id]).toBeUndefined()
+    expect(host.reader.doc.objects[object.id]).toBeUndefined()
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
     expect(host.contextKeys()['view.hasSelection']).toBe(false)
   })

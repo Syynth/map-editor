@@ -1,4 +1,4 @@
-import { EditorStore, brushCells, cellIndex, createDocumentActorLogic, createMap, patchAddress, raise, type Patch, type SurfaceAddress } from '@map-editor/document'
+import { brushCells, cellIndex, createDocument, createMap, patchAddress, raise, type Patch, type SurfaceAddress } from '@map-editor/document'
 import type { ToolContract } from '@map-editor/registry'
 import { describe, expect, it } from 'vitest'
 import { createActor, type InspectionEvent } from 'xstate'
@@ -67,8 +67,8 @@ function raiseContract(deps: StrokeDeps): ToolContract<StrokeSample, Patch> {
 }
 
 function rig(tools: ToolsSnapshot = SCULPT, contract: (deps: StrokeDeps) => ToolContract<StrokeSample, Patch> | undefined = raiseContract) {
-  const store = new EditorStore(createMap(16, 16))
-  const document = createActor(createDocumentActorLogic(store)).start()
+  const { reader, logic } = createDocument(createMap(16, 16))
+  const document = createActor(logic).start()
   // What the document actor RECEIVED, off the system's inspector: `send` is a
   // getter on v6's `Actor`, so it cannot be spied on, and this is the honest
   // record anyway — an event the actor took a transition on.
@@ -77,7 +77,7 @@ function rig(tools: ToolsSnapshot = SCULPT, contract: (deps: StrokeDeps) => Tool
     if (event.type === '@xstate.transition' && event.actorRef.sessionId === document.sessionId) received.push(event.event)
   })
   const deps: StrokeDeps = {
-    reader: store.reader,
+    reader,
     tools: () => tools,
     setTools: () => undefined,
     select: () => undefined,
@@ -87,7 +87,7 @@ function rig(tools: ToolsSnapshot = SCULPT, contract: (deps: StrokeDeps) => Tool
   const start = (at: StrokeSample) => {
     const handler = createStrokeHandler(deps, at, null)
     if (!handler) throw new Error('the installed tool declined the press')
-    const stroke = createActor(strokeLogic(handler, store.reader, document as DocumentRef), {
+    const stroke = createActor(strokeLogic(handler, reader, document as DocumentRef), {
       inspect: (event) => void (event.type === '@xstate.deadletter' && dead.push(event)),
     }).start()
     stroke.send({ type: 'begin', sample: at })
@@ -99,7 +99,7 @@ function rig(tools: ToolsSnapshot = SCULPT, contract: (deps: StrokeDeps) => Tool
     if (!end) throw new Error('no endStroke was sent')
     return end
   }
-  return { store, document, deps, start, patchEvents, record, dead }
+  return { reader, document, deps, start, patchEvents, record, dead }
 }
 
 /**
@@ -110,9 +110,9 @@ function rig(tools: ToolsSnapshot = SCULPT, contract: (deps: StrokeDeps) => Tool
  */
 describe('the tool contract behind a press', () => {
   it('runs the contract for the active tool, and its label is the one the Edit gets', () => {
-    const { store, start } = rig()
+    const { reader, start } = rig()
     start(sample(4, 4)).send({ type: 'end', sample: sample(4, 4) })
-    expect(store.reader.undoLabel()).toBe('Raise')
+    expect(reader.undoLabel()).toBe('Raise')
   })
 
   it('starts no stroke when the tool\'s feature contributed no contract', () => {
@@ -129,8 +129,8 @@ describe('the tool contract behind a press', () => {
 
 describe('the stroke actor', () => {
   it('applies every tick immediately, then commits one Edit with one patch per address', () => {
-    const { store, start, patchEvents, record } = rig()
-    const doc = store.reader.doc
+    const { reader, document, start, patchEvents, record } = rig()
+    const doc = reader.doc
     const before = doc.terrain.height.slice()
     const at = (x: number, y: number) => doc.terrain.height[cellIndex(doc.size, x, y)]
 
@@ -146,7 +146,7 @@ describe('the stroke actor', () => {
       expect(at(x, y), 'a mid-drag tick is visible before release').toBe(seen + 1)
     }
     // Not an undo entry yet: the stroke is still open.
-    expect(store.reader.canUndo()).toBe(false)
+    expect(reader.canUndo()).toBe(false)
 
     stroke.send({ type: 'end', sample: sample(6, 4) })
 
@@ -159,20 +159,20 @@ describe('the stroke actor', () => {
     expect(stroke.getSnapshot().status).toBe('done')
 
     // One Edit, and undoing it restores every cell to before the press.
-    expect(store.reader.canUndo()).toBe(true)
-    expect(store.reader.undoLabel()).toBe('Raise')
+    expect(reader.canUndo()).toBe(true)
+    expect(reader.undoLabel()).toBe('Raise')
     const after = doc.terrain.height.slice()
-    store.undo()
+    document.send({ type: 'undo' })
     expect(doc.terrain.height).toEqual(before)
-    expect(store.reader.canUndo()).toBe(false)
+    expect(reader.canUndo()).toBe(false)
     // And the compacted forward values reproduce the final state exactly.
-    store.redo()
+    document.send({ type: 'redo' })
     expect(doc.terrain.height).toEqual(after)
   })
 
   it('keeps the first inverse and the last value: raise, raise, lower undoes to the start in one step', () => {
-    const { store, start, record } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
-    const doc = store.reader.doc
+    const { reader, document, start, record } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
+    const doc = reader.doc
     const index = cellIndex(doc.size, 3, 3)
     const before = doc.terrain.height[index]
 
@@ -190,12 +190,12 @@ describe('the stroke actor', () => {
     const inverse = edit.inverse.find((patch) => patch.t === 'terrain' && patch.index === index)
     expect(mine?.value).toBe(before + 1)
     expect(inverse?.value).toBe(before)
-    store.undo()
+    document.send({ type: 'undo' })
     expect(doc.terrain.height[index]).toBe(before)
   })
 
   it('drops an address put back where it started, and commits no Edit when nothing remains', () => {
-    const { store, start, patchEvents, record } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
+    const { reader, start, patchEvents, record } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
     const stroke = start(sample(2, 2))
     stroke.send({ type: 'move', sample: sample(3, 2) })
     stroke.send({ type: 'move', sample: sample(2, 2, { shift: true }) })
@@ -206,7 +206,7 @@ describe('the stroke actor', () => {
     expect(patchEvents()).toHaveLength(4)
     // …and the record is empty, so the stroke closed without an entry.
     expect(record().patches).toEqual([])
-    expect(store.reader.canUndo()).toBe(false)
+    expect(reader.canUndo()).toBe(false)
   })
 
   it('records where it began, for the rectangle preview', () => {
@@ -216,8 +216,8 @@ describe('the stroke actor', () => {
   })
 
   it('stops itself on end, so a late move dead-letters rather than landing', () => {
-    const { store, start, dead } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
-    const doc = store.reader.doc
+    const { reader, start, dead } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
+    const doc = reader.doc
     const stroke = start(sample(1, 1))
     stroke.send({ type: 'end', sample: sample(1, 1) })
     const settled = doc.terrain.height.slice()

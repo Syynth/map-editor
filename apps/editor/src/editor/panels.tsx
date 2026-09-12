@@ -1,11 +1,24 @@
-/** The React side: palettes, properties, outliner, coverage. */
+/**
+ * The React side: palettes, properties, outliner, coverage.
+ *
+ * Every control here is a DISPATCH, not a setter: the app's state object is
+ * gone (#11, #66 step 7), so a panel takes what it shows as props and calls a
+ * callback that the composition root turns into `host.dispatch`. The one
+ * exception is the document itself, which the coverage readout selects
+ * through `useDocument` — it is the only panel whose work is expensive enough
+ * that recomputing it on an unrelated re-render would show.
+ *
+ * The terrain half of the tool panel is NOT here any more: it is the terrain
+ * feature's own component, declared through the registry and rendered below by
+ * the tool's owner. That is the point of #12's "panels are components" — the
+ * app no longer holds a copy of a feature's controls.
+ */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ComponentType } from 'react'
 
 import {
   ATMOSPHERE_PRESETS,
   DISPLAY_MODES,
-  DIR_NAMES,
   makeAtmosphere,
   type Atmosphere,
   type CameraRig,
@@ -17,11 +30,13 @@ import {
 // Behind the `./textures` subpath, not the package root — see the comment in
 // `App.tsx`'s import of the same package.
 import { SPRITE_NAMES } from '@map-editor/fixtures/textures'
+import { useDocument, useHost, type ToolsSnapshot } from '@map-editor/editor-host'
+import type { TerrainPanelProps } from '@map-editor/feature-terrain'
 import { sheetLayoutFor, tileColumnRow } from '@map-editor/geometry'
+import { always, evaluate, panels, tools } from '@map-editor/registry'
 import { analyseCoverage, type CoverageReport } from '@map-editor/runtime'
 import { ColorInput, Field, Note, NumberInput, Panel, Segmented, Select, Slider } from '@map-editor/ui'
 import { rgbaToDataUrl } from './rgba'
-import type { EditorState } from './state'
 
 // --- tile palette -----------------------------------------------------------
 
@@ -79,18 +94,68 @@ export function TilePalette({
 
 // --- tool panel -------------------------------------------------------------
 
+/**
+ * The panels the ACTIVE TOOL's owner declared, in declaration order, each shown
+ * only while its own `when` holds (#9, #12).
+ *
+ * The rule is the registry's rather than a list of feature names: the tool
+ * registry says whose tool `terrain` is, and that owner's panels are the ones
+ * that edit the parameters a stroke with that tool reads — the same join by
+ * declaring owner that `Host.toolContract` makes for the handler (#8). A tool
+ * nobody declared, or an owner that contributed no panels, renders nothing,
+ * which is what the object and camera tools do.
+ *
+ * The cast is the app's to make and nobody else's. A `PanelDecl` carries an
+ * opaque component because `registry` sits below React (#3), and what props it
+ * takes is the feature's business; an app is the only thing that sees both
+ * halves (#35), and this app installs one feature, whose panels take the doc,
+ * the parameters and a setter.
+ */
+function FeaturePanels({
+  tool,
+  doc,
+  params,
+  set,
+}: {
+  tool: ToolsSnapshot['tool']
+  doc: ReadonlyMapDoc
+  params: ToolsSnapshot
+  set: (changes: Partial<ToolsSnapshot>) => void
+}) {
+  const host = useHost()
+  const owner = tools.ownerOf(tool)
+  // Derived per render, never held: the same rule `dispatch` follows (#8's
+  // finding 2). A panel gated on the ramp verb has to appear the render after
+  // the verb changed, and this component re-renders with the parameters.
+  const keys = host.contextKeys()
+  if (owner === undefined) return null
+
+  return (
+    <>
+      {panels
+        .all()
+        .filter((decl) => panels.ownerOf(decl.id) === owner && evaluate(decl.when ?? always, keys).available)
+        .map((decl) => {
+          const Component = decl.component as ComponentType<TerrainPanelProps>
+          return <Component key={decl.id} doc={doc} params={params} set={set} />
+        })}
+    </>
+  )
+}
+
 export function ToolPanel({
   doc,
-  state,
+  params,
   sheet,
   set,
   onLoadSheet,
   sheetWarning,
 }: {
   doc: ReadonlyMapDoc
-  state: EditorState
+  params: ToolsSnapshot
   sheet: RgbaImage | null
-  set: (changes: Partial<EditorState>) => void
+  /** One partial of tool parameters, which is exactly what `tools.set` takes. */
+  set: (changes: Partial<ToolsSnapshot>) => void
   onLoadSheet: (file: File) => void
   sheetWarning: string | null
 }) {
@@ -100,7 +165,7 @@ export function ToolPanel({
     <>
       <Panel title="Tool">
         <Segmented
-          value={state.tool}
+          value={params.tool}
           onChange={(tool) => set({ tool })}
           options={[
             { value: 'terrain', label: 'Terrain', title: '1' },
@@ -109,114 +174,12 @@ export function ToolPanel({
           ]}
         />
 
-        {state.tool === 'terrain' ? (
-          <>
-            <Segmented
-              value={state.terrainMode}
-              onChange={(terrainMode) => set({ terrainMode })}
-              options={[
-                { value: 'sculpt', label: 'Sculpt', title: 'Tab' },
-                { value: 'paint', label: 'Paint', title: 'Tab' },
-              ]}
-            />
+        <FeaturePanels tool={params.tool} doc={doc} params={params} set={set} />
 
-            {state.terrainMode === 'sculpt' ? (
-              <Field label="Verb">
-                <Segmented
-                  value={state.sculptVerb}
-                  onChange={(sculptVerb) => set({ sculptVerb })}
-                  options={[
-                    { value: 'raise', label: 'Raise' },
-                    { value: 'flatten', label: 'Flatten' },
-                    { value: 'ramp', label: 'Ramp' },
-                    { value: 'water', label: 'Water' },
-                  ]}
-                />
-              </Field>
-            ) : (
-              <Field label="Verb">
-                <Segmented
-                  value={state.paintVerb}
-                  onChange={(paintVerb) => set({ paintVerb })}
-                  options={[
-                    { value: 'tile', label: 'Tile' },
-                    { value: 'material', label: 'Material' },
-                    { value: 'tint', label: 'Tint' },
-                  ]}
-                />
-              </Field>
-            )}
-
-            <Field label="Stroke">
-              <Segmented
-                value={state.strokeShape}
-                onChange={(strokeShape) => set({ strokeShape })}
-                options={[
-                  { value: 'brush', label: 'Brush' },
-                  { value: 'rect', label: 'Rect' },
-                  { value: 'fill', label: 'Fill' },
-                ]}
-              />
-            </Field>
-
-            <Field label="Brush size" hint="[ and ]">
-              <Slider
-                value={state.brush.size}
-                min={1}
-                max={12}
-                onChange={(size) => set({ brush: { ...state.brush, size } })}
-              />
-            </Field>
-
-            <Field label="Brush shape">
-              <Segmented
-                value={state.brush.shape}
-                onChange={(shape) => set({ brush: { ...state.brush, shape } })}
-                options={[
-                  { value: 'square', label: 'Square' },
-                  { value: 'circle', label: 'Circle' },
-                ]}
-              />
-            </Field>
-
-            {state.sculptVerb === 'ramp' && state.terrainMode === 'sculpt' ? (
-              <Field label="Ramp faces" hint="Or just click a cliff face directly">
-                <Select
-                  value={String(state.rampDir)}
-                  onChange={(value) => set({ rampDir: Number(value) })}
-                  options={[
-                    { value: '-1', label: 'Click a cliff' },
-                    ...DIR_NAMES.map((name, index) => ({ value: String(index), label: name })),
-                  ]}
-                />
-              </Field>
-            ) : null}
-
-            {state.terrainMode === 'paint' && state.paintVerb === 'tint' ? (
-              <Field label="Tint">
-                <ColorInput value={state.tint} onChange={(tint) => set({ tint })} />
-              </Field>
-            ) : null}
-
-            {state.terrainMode === 'paint' && state.paintVerb === 'material' ? (
-              <Field label="Material">
-                <Select
-                  value={String(state.material)}
-                  onChange={(value) => set({ material: Number(value) })}
-                  options={doc.materials.map((material, index) => ({
-                    value: String(index),
-                    label: material.name,
-                  }))}
-                />
-              </Field>
-            ) : null}
-          </>
-        ) : null}
-
-        {state.tool === 'object' ? (
+        {params.tool === 'object' ? (
           <Field label="Sprite">
             <Select
-              value={state.spriteName}
+              value={params.spriteName}
               onChange={(spriteName) => set({ spriteName })}
               options={SPRITE_NAMES.map((name) => ({ value: name, label: name }))}
             />
@@ -224,7 +187,10 @@ export function ToolPanel({
         ) : null}
       </Panel>
 
-      {state.tool === 'terrain' && state.terrainMode === 'paint' && state.paintVerb === 'tile' ? (
+      {/* The sheet itself is the app's: an artist loads a PNG here, and the
+          generated fallback comes from the composition root (#47). The tile
+          the brush lays down is a tool parameter like any other. */}
+      {params.tool === 'terrain' && params.terrainMode === 'paint' && params.paintVerb === 'tile' ? (
         <Panel
           title="Template sheet"
           aside={
@@ -244,7 +210,7 @@ export function ToolPanel({
               event.target.value = ''
             }}
           />
-          <TilePalette doc={doc} sheet={sheet} selected={state.tile} onSelect={(tile) => set({ tile })} />
+          <TilePalette doc={doc} sheet={sheet} selected={params.tile} onSelect={(tile) => set({ tile })} />
           {sheetWarning ? <Note tone="warn">{sheetWarning}</Note> : null}
         </Panel>
       ) : null}
@@ -521,23 +487,16 @@ export function CameraPanel({
 
 // --- coverage ---------------------------------------------------------------
 
-export function CoveragePanel({
-  doc,
-  revision,
-  onFix,
-  onSelect,
-}: {
-  doc: ReadonlyMapDoc
-  /**
-   * The store's revision counter. The document is mutated in place, so `doc`
-   * never changes identity and memoising on it alone would freeze this readout
-   * at whatever the map looked like when the panel first mounted.
-   */
-  revision: number
-  onFix: (id: string) => void
-  onSelect: (id: string) => void
-}) {
-  const report: CoverageReport = useMemo(() => analyseCoverage(doc, doc.camera), [doc, revision])
+/**
+ * Module scope, so `useDocument` memoises on the revision alone: an inline
+ * arrow is a new function every render and would re-analyse the whole map on
+ * any re-render at all. The document is mutated in place, so the revision is
+ * the only thing about it that ever changes identity.
+ */
+const coverageOf = (doc: ReadonlyMapDoc): CoverageReport => analyseCoverage(doc, doc.camera)
+
+export function CoveragePanel({ onFix, onSelect }: { onFix: (id: string) => void; onSelect: (id: string) => void }) {
+  const report = useDocument(coverageOf)
   const flagged = report.objects.filter((entry) => entry.readsWrong)
   const hiddenPercent =
     report.hiddenSurfaces.totalFaces === 0
