@@ -35,7 +35,14 @@
  * suite that has genuinely grown, not a workaround for a slow test.
  */
 
-const BUDGET_MS = 25_000
+/*
+ * Moved from 25 s to 30 s when the sketch feature landed (#107 step 4): a
+ * tenth package with its own vitest worker, measured at 25.3 s on a cold
+ * GitHub runner against the old ceiling — the same per-file fixed cost the
+ * note above describes, one file more. Still an order of magnitude over the
+ * suite's own work.
+ */
+const BUDGET_MS = 30_000
 
 export default function setup(): () => void {
   const start = performance.now()
