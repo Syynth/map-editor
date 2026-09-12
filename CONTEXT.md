@@ -178,3 +178,53 @@ Everything that draws — the placeholder generator, the artist's sheet or
 sprite loader — produces this, and everything that uploads or encodes — the
 runtime's textures, glTF export — accepts it, so pixels can move between
 them without either side depending on a canvas.
+
+## Structure
+
+One thing in a level that has a shape: a voxel volume, a sketch extrusion, a
+body of water. A level is a **scene graph** of structures — each one sits
+inside another (or at the root) and is placed relative to it — so a voxel
+volume can stand on an island and an island can stand in a voxel volume. What a
+structure can hold, how it is meshed, how it answers "what is under this
+point" and which tools address it are all questions its
+[Structure kind](#structure-kind) answers.
+
+## Structure kind
+
+What sort of [Structure](#structure) something is, and the vocabulary of
+handlers that sort brings with it: its data, its edits, its mesher, its
+surfaces, its tools, the kind of material it is dressed in. The first kinds
+are the [Voxel volume](#voxel-volume) and the [Sketch](#sketch).
+
+## Voxel volume
+
+A [Structure](#structure) made of cells stacked in layers on a grid — the
+ground the Terrain tool sculpts and paints. Resizable at its edges. Today it
+holds one height per column; it is meant to hold true voxel occupancy so that
+overhangs and caves are possible.
+
+## Sketch
+
+A [Structure](#structure) drawn rather than sculpted: a closed
+[Profile](#profile) on a [Sketch plane](#sketch-plane), extruded to a height.
+The CAD way of making an island, a plateau, a platform — any shape whose
+outline is the thing the artist means.
+
+## Sketch plane
+
+The flat surface a [Profile](#profile) is drawn on: horizontal, at a height,
+placed relative to the structure the [Sketch](#sketch) sits in.
+
+## Profile
+
+The closed outline on a [Sketch plane](#sketch-plane) that a
+[Sketch](#sketch) extrudes. Points and segments; re-editable after the fact,
+with the extrusion following.
+
+## Material kind
+
+Which language a material speaks. A **sheet material** is a block of tiles
+on a template sheet, chosen per cell — the [Voxel volume](#voxel-volume)'s
+kind. A **fill-and-edge material** is a fill texture tiled across a face and
+edge textures run along its outline with their own width, repeat and cap
+rules — the [Sketch](#sketch)'s kind, in the manner of Ferr2D.
