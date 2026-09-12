@@ -45,4 +45,18 @@ describe('CI gate workflow', () => {
   it('keeps check-bundle-size wired into the build step', () => {
     expect(steps[buildStepIndex]).toMatch(/run:\s*pnpm turbo run build\b[^\n]*\bcheck-bundle-size\b/)
   })
+
+  // A group keyed only by `github.ref` (as it once was) puts every push to
+  // `main` in the same group as every other: GitHub cancels a `pending` run
+  // whenever a third run queues behind it, so a fast merge-train can cancel
+  // an intermediate `main` SHA's pending run and leave it with no completed
+  // gate run at all — restricting `cancel-in-progress` to `pull_request`
+  // does not stop that, it only decides who does the cancelling. Keying the
+  // group by `github.sha` for non-PR events gives every push to `main` its
+  // own group, so no two `main` runs ever share one to queue behind or
+  // supersede within.
+  it('keys the concurrency group by sha (not just ref) outside pull requests', () => {
+    const concurrency = workflow.slice(workflow.indexOf('\nconcurrency:'), workflow.indexOf('\npermissions:'))
+    expect(concurrency).toMatch(/group:.*github\.event_name == 'pull_request'.*&&.*github\.ref.*\|\|.*github\.sha/)
+  })
 })

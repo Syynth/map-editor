@@ -19,13 +19,20 @@ on:
 # A rapid string of pushes to the same PR used to queue every run instead of
 # superseding it: each earlier run kept burning a runner for a result nobody
 # would read. Grouping by workflow+ref and cancelling the in-progress one
-# means only the newest push's run finishes. Restricted to `pull_request`
-# (#79): with the serial merge-train pushing straight to `main`, cancelling a
-# `main` run for the next push behind it can leave an intermediate `main` SHA
-# with no completed gate run at all — a PR's own commits are disposable in a
-# way `main`'s are not.
+# means only the newest push's run finishes — a PR's own commits are
+# disposable in a way `main`'s are not. That per-ref grouping is exactly what
+# `main` must NOT get: GitHub cancels a `pending` run whenever a third run
+# queues behind it (docs: "any existing pending job ... will be canceled"),
+# so restricting `cancel-in-progress` to `pull_request` alone (#79) is not
+# enough — with three quick merge-train pushes, SHA1 runs, SHA2 pends, SHA3
+# still cancels SHA2's pending run, leaving that intermediate `main` SHA with
+# no completed gate run. Keying the group by `github.sha` instead of
+# `github.ref` for non-PR events gives every push to `main` its own group, so
+# no `main` run ever shares a group with — and therefore never queues behind
+# or supersedes — another; `cancel-in-progress` only ever fires within a PR's
+# shared per-ref group.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The org default is already read-only, but that default lives in repo
