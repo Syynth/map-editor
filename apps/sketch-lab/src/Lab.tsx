@@ -3,9 +3,10 @@
 // The question: does profile → extrude → two-material dressing feel like
 // the right way to author an island, and which lip reads as Paper Mario?
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { meshSketch, type LipStyle, type ProfilePoint, type SketchMesh, type WallProfile } from '@map-editor/geometry'
+import { meshSketch, wallProfilePreset, type LipStyle, type ProfilePoint, type SketchMesh, type WallProfile } from '@map-editor/geometry'
 import { Field, Note, Panel, Segmented, Slider } from '@map-editor/ui'
 
+import { ProfileEditor } from './ProfileEditor'
 import { LabScene } from './scene'
 
 type Snap = 'grid' | 'half' | 'free'
@@ -56,7 +57,7 @@ export function Lab() {
   const [top, setTop] = useState<Edge>({ width: 0.5, segment: 2, repeat: 'stretch' })
   const [bottom, setBottom] = useState<Edge>({ width: 0.4, segment: 2, repeat: 'stretch' })
   const [variant, setVariant] = useState<LipStyle>(variantFromUrl)
-  const [profile, setProfile] = useState<WallProfile>({ flare: 0.8, shape: 'curve' })
+  const [profile, setProfile] = useState<WallProfile>(() => wallProfilePreset('curve', 0.8))
   const [tick, setTick] = useState(0)
   const drag = useRef<{ index: number } | { orbit: { x: number; y: number } } | null>(null)
   const shift = useRef(false)
@@ -254,18 +255,28 @@ export function Lab() {
             <Slider value={layers} min={1} max={16} step={1} onChange={setLayers} format={(v) => `${v} layers`} />
           </Field>
         </Panel>
-        <Panel title="Wall profile">
-          <Field label="Flare" hint="How far outside the top outline the base sits">
-            <Slider value={profile.flare} min={0} max={3} step={0.1} onChange={(flare) => setProfile({ ...profile, flare })} format={(v) => v.toFixed(1)} />
-          </Field>
-          <Field label="Shape">
+        <Panel title="Wall profile" aside={<span className="lab-mono">side view</span>}>
+          <ProfileEditor profile={profile} height={height} onChange={setProfile} />
+          <Note>Drag points; click between them to add one; Backspace deletes. The lip is pinned to the outline, the ground point slides sideways.</Note>
+          <Field label="Start from">
             <Segmented
-              value={profile.shape}
+              value={'none' as 'none' | 'plumb' | 'straight' | 'curve'}
               options={[
-                { value: 'straight', label: 'Straight', title: 'A straight taper from base to lip' },
-                { value: 'curve', label: 'Curve', title: 'Concave: most of the flare stays near the ground' },
+                { value: 'plumb', label: 'Plumb' },
+                { value: 'straight', label: 'Taper' },
+                { value: 'curve', label: 'Curve' },
               ]}
-              onChange={(shape) => setProfile({ ...profile, shape })}
+              onChange={(kind) => kind !== 'none' && setProfile(wallProfilePreset(kind, 0.8))}
+            />
+          </Field>
+          <Field label="Smooth">
+            <Segmented
+              value={profile.smooth ? 'on' : 'off'}
+              options={[
+                { value: 'off', label: 'Off' },
+                { value: 'on', label: 'On', title: 'Round the interior points, endpoints held' },
+              ]}
+              onChange={(v) => setProfile({ ...profile, smooth: v === 'on' })}
             />
           </Field>
         </Panel>
@@ -287,7 +298,7 @@ export function Lab() {
             {JSON.stringify(
               {
                 variant,
-                profile,
+                profile: profile.points.length + (profile.smooth ? ' pts, smooth' : ' pts'),
                 points: points.length,
                 corners: points.filter((p) => !p.smooth).length,
                 outline: outline ? outline.points.length : 0,

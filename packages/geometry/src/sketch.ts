@@ -61,15 +61,43 @@ export interface WallMaterialSpec {
  */
 export type LipStyle = 'flat' | 'skirt' | 'bevel'
 
+/** One point of a wall's side profile: how far outside the top outline the wall sits (`out`, world units; negative undercuts) at height fraction `t` (0 ground, 1 lip). */
+export interface WallProfilePoint {
+  readonly out: number
+  readonly t: number
+}
+
 /**
- * The wall's silhouette from the ground to the lip. `flare` is how far
- * outside the top outline the base sits, in world units; `shape` is how that
- * offset falls off with height — a straight taper, or a concave curve that
- * keeps most of the flare near the ground, the way a cut-earth cliff reads.
+ * The wall's silhouette from the ground to the lip, as a polyline in the side
+ * view swept around the outline: `points` ordered from the ground (`t` 0) to
+ * the lip (`t` 1), where `out` is 0 by definition — the lip IS the outline.
+ * A drawn thing, like the outline itself; `smooth` rounds the interior points
+ * the way smooth outline points are rounded.
  */
 export interface WallProfile {
-  readonly flare: number
-  readonly shape: 'straight' | 'curve'
+  readonly points: readonly WallProfilePoint[]
+  readonly smooth?: boolean
+}
+
+/** A starting profile: a straight taper, or a concave curve that keeps most of the flare near the ground, the way a cut-earth cliff reads. */
+export function wallProfilePreset(shape: 'straight' | 'curve' | 'plumb', flare: number): WallProfile {
+  switch (shape) {
+    case 'plumb':
+      return { points: [{ out: 0, t: 0 }, { out: 0, t: 1 }] }
+    case 'straight':
+      return { points: [{ out: flare, t: 0 }, { out: 0, t: 1 }] }
+    case 'curve':
+      return {
+        points: [
+          { out: flare, t: 0 },
+          { out: flare * 0.55, t: 0.2 },
+          { out: flare * 0.22, t: 0.45 },
+          { out: flare * 0.05, t: 0.75 },
+          { out: 0, t: 1 },
+        ],
+        smooth: true,
+      }
+  }
 }
 
 export interface SketchMeshOptions {
@@ -367,18 +395,53 @@ function buildRimOnCap(outline: Outline, y: number, outer: readonly Vec2[], spec
   return b.finish()
 }
 
-const STRAIGHT: WallProfile = { flare: 0, shape: 'straight' }
+const PLUMB: WallProfile = wallProfilePreset('plumb', 0)
 
-/** Outward offset of the wall at height fraction `t` (0 ground, 1 lip). */
-function flareAt(profile: WallProfile, t: number): number {
-  const k = 1 - Math.min(1, Math.max(0, t))
-  return profile.flare * (profile.shape === 'curve' ? k * k : k)
+/** The profile's polyline as drawn, or rounded (Chaikin on the open polyline, endpoints held) when it is smooth. */
+export function wallProfilePolyline(profile: WallProfile, rounds = 3): WallProfilePoint[] {
+  let pts = [...profile.points].sort((a, b) => a.t - b.t)
+  if (!profile.smooth || pts.length < 3) return pts
+  for (let r = 0; r < rounds; r++) {
+    const next: WallProfilePoint[] = [pts[0]]
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]
+      const b = pts[i + 1]
+      if (i > 0) next.push({ out: a.out * 0.75 + b.out * 0.25, t: a.t * 0.75 + b.t * 0.25 })
+      if (i < pts.length - 2) next.push({ out: a.out * 0.25 + b.out * 0.75, t: a.t * 0.25 + b.t * 0.75 })
+    }
+    next.push(pts[pts.length - 1])
+    pts = next
+  }
+  return pts
 }
 
-/** The outline at height fraction `t`, pushed out by the profile's flare there. */
-function ring(outline: Outline, profile: WallProfile, t: number): readonly Vec2[] {
-  const d = flareAt(profile, t)
+/** Outward offset of the wall at height fraction `t`, read off the polyline. */
+function flareAt(polyline: readonly WallProfilePoint[], t: number): number {
+  if (polyline.length === 0) return 0
+  if (t <= polyline[0].t) return polyline[0].out
+  for (let i = 0; i < polyline.length - 1; i++) {
+    const a = polyline[i]
+    const b = polyline[i + 1]
+    if (t <= b.t) {
+      const span = b.t - a.t
+      return span < 1e-9 ? b.out : a.out + ((t - a.t) / span) * (b.out - a.out)
+    }
+  }
+  return polyline[polyline.length - 1].out
+}
+
+/** The outline at height fraction `t`, pushed out by the profile's offset there. */
+function ring(outline: Outline, polyline: readonly WallProfilePoint[], t: number): readonly Vec2[] {
+  const d = flareAt(polyline, t)
   return d === 0 ? outline.points : inset(outline.points, -d)
+}
+
+/** The height fractions a strip between `t0` and `t1` needs rows at: its ends plus every profile point between them. */
+function rowsBetween(polyline: readonly WallProfilePoint[], t0: number, t1: number): number[] {
+  const rows = [t0]
+  for (const p of polyline) if (p.t > t0 + 1e-6 && p.t < t1 - 1e-6) rows.push(p.t)
+  rows.push(t1)
+  return rows
 }
 
 /**
@@ -390,10 +453,9 @@ function ring(outline: Outline, profile: WallProfile, t: number): readonly Vec2[
 function buildWallStrip(
   outline: Outline,
   height: number,
-  profile: WallProfile,
+  polyline: readonly WallProfilePoint[],
   t0: number,
   t1: number,
-  steps: number,
   u: (s: number) => number,
   v: (t: number) => number,
   lift = 0,
@@ -401,11 +463,12 @@ function buildWallStrip(
   const b = new PartBuilder()
   const pts = outline.points
   const n = pts.length
-  for (let row = 0; row < steps; row++) {
-    const ta = t0 + ((t1 - t0) * row) / steps
-    const tb = t0 + ((t1 - t0) * (row + 1)) / steps
-    const lower = ring(outline, profile, ta)
-    const upper = ring(outline, profile, tb)
+  const rows = rowsBetween(polyline, t0, t1)
+  for (let row = 0; row < rows.length - 1; row++) {
+    const ta = rows[row]
+    const tb = rows[row + 1]
+    const lower = ring(outline, polyline, ta)
+    const upper = ring(outline, polyline, tb)
     for (let i = 0; i < n; i++) {
       const j = (i + 1) % n
       const [nx, nz] = edgeNormal(pts, i)
@@ -434,21 +497,16 @@ function buildWallStrip(
   return b.finish()
 }
 
-function stepsFor(profile: WallProfile, t0: number, t1: number): number {
-  return profile.flare > 0 && profile.shape === 'curve' ? Math.max(1, Math.round((t1 - t0) * 8)) : 1
-}
-
 /** A band on the wall between heights `y0` and `y1`, texture v from `v0` at the bottom to `v1` at the top. */
-function buildWallBand(outline: Outline, height: number, profile: WallProfile, y0: number, y1: number, spec: EdgeSpec, v0: number, v1: number): MeshBuffers {
+function buildWallBand(outline: Outline, height: number, polyline: readonly WallProfilePoint[], y0: number, y1: number, spec: EdgeSpec, v0: number, v1: number): MeshBuffers {
   const t0 = y0 / height
   const t1 = y1 / height
   return buildWallStrip(
     outline,
     height,
-    profile,
+    polyline,
     t0,
     t1,
-    stepsFor(profile, t0, t1),
     (s) => bandU(spec, s, outline.perimeter),
     (t) => v0 + ((t - t0) / (t1 - t0 || 1)) * (v1 - v0),
     LIFT,
@@ -456,9 +514,8 @@ function buildWallBand(outline: Outline, height: number, profile: WallProfile, y
 }
 
 /** The wall body from the ground to `top`, texture in world units. */
-function buildWallBody(outline: Outline, height: number, profile: WallProfile, top: number, scale: number): MeshBuffers {
-  const t1 = top / height
-  return buildWallStrip(outline, height, profile, 0, t1, stepsFor(profile, 0, t1), (s) => s * scale, (t) => t * height * scale)
+function buildWallBody(outline: Outline, height: number, polyline: readonly WallProfilePoint[], top: number, scale: number): MeshBuffers {
+  return buildWallStrip(outline, height, polyline, 0, top / height, (s) => s * scale, (t) => t * height * scale)
 }
 
 /** A 45° chamfer from the outline at `y - size` up and in to the inset at `y`, carrying the top band. */
@@ -497,7 +554,7 @@ function buildBevel(outline: Outline, y: number, size: number, spec: EdgeSpec): 
 }
 
 /** The rim folded over the lip: the inner part lies on the cap, the outer hangs down the wall. */
-function buildSkirt(outline: Outline, y: number, profile: WallProfile, spec: EdgeSpec): { cap: MeshBuffers; wall: MeshBuffers } {
+function buildSkirt(outline: Outline, y: number, profile: readonly WallProfilePoint[], spec: EdgeSpec): { cap: MeshBuffers; wall: MeshBuffers } {
   const half = spec.width / 2
   // v runs 1 at the inner edge on the cap to 0 at the bottom of the hanging part.
   const cap = buildRimOnCap(outline, y, outline.points, { ...spec, width: half }, 0.5, 1)
@@ -519,7 +576,7 @@ export function meshSketch(profile: Profile, options: SketchMeshOptions): Sketch
   const outline = outlineOf(profile, options.rounds ?? 3)
   const h = options.height
   const { cap, wall, lip } = options
-  const wallProfile = options.profile ?? STRAIGHT
+  const wallProfile = wallProfilePolyline(options.profile ?? PLUMB)
   if (outline.points.length < 3) {
     return { outline, cap: EMPTY, rim: EMPTY, wallBody: EMPTY, wallTop: EMPTY, wallBottom: EMPTY }
   }
