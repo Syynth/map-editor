@@ -34,4 +34,4 @@ export { meshTerrainChunk } from './terrain'
 export type { MeshBuffers, TerrainChunkMesh } from './terrain'
 
 export { meshSketch, outlineOf, triangulate } from './sketch'
-export type { CapMaterialSpec, EdgeRepeat, EdgeSpec, LipStyle, Outline, Profile, ProfilePoint, SketchMesh, SketchMeshOptions, WallMaterialSpec } from './sketch'
+export type { CapMaterialSpec, EdgeRepeat, EdgeSpec, LipStyle, Outline, Profile, ProfilePoint, SketchMesh, SketchMeshOptions, WallMaterialSpec, WallProfile } from './sketch'

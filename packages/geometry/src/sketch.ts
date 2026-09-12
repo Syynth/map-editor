@@ -61,11 +61,23 @@ export interface WallMaterialSpec {
  */
 export type LipStyle = 'flat' | 'skirt' | 'bevel'
 
+/**
+ * The wall's silhouette from the ground to the lip. `flare` is how far
+ * outside the top outline the base sits, in world units; `shape` is how that
+ * offset falls off with height — a straight taper, or a concave curve that
+ * keeps most of the flare near the ground, the way a cut-earth cliff reads.
+ */
+export interface WallProfile {
+  readonly flare: number
+  readonly shape: 'straight' | 'curve'
+}
+
 export interface SketchMeshOptions {
   readonly height: number
   readonly cap: CapMaterialSpec
   readonly wall: WallMaterialSpec
   readonly lip: LipStyle
+  readonly profile?: WallProfile
   /** Chaikin rounds per smooth point; 3 is visually round at island scale. */
   readonly rounds?: number
 }
@@ -246,11 +258,20 @@ class PartBuilder {
     const [a, b, c] = corners
     const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2]
     const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2]
-    const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx
+    let cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx
     const flip = cx * n[0] + cy * n[1] + cz * n[2] < 0
-    const i0 = this.vertex(a, n, uvs[0])
-    const i1 = this.vertex(b, n, uvs[1])
-    const i2 = this.vertex(c, n, uvs[2])
+    if (flip) {
+      cx = -cx
+      cy = -cy
+      cz = -cz
+    }
+    // The face's own normal, so a flared wall shades as the slope it is; the
+    // hint only says which side is out.
+    const len = Math.hypot(cx, cy, cz)
+    const fn: readonly [number, number, number] = len > 1e-9 ? [cx / len, cy / len, cz / len] : n
+    const i0 = this.vertex(a, fn, uvs[0])
+    const i1 = this.vertex(b, fn, uvs[1])
+    const i2 = this.vertex(c, fn, uvs[2])
     if (flip) this.indices.push(i0, i2, i1)
     else this.indices.push(i0, i1, i2)
     this.faceAddr.push(0, segment, 0, 0)
@@ -346,72 +367,103 @@ function buildRimOnCap(outline: Outline, y: number, outer: readonly Vec2[], spec
   return b.finish()
 }
 
-/** A band on the wall face between heights `y0` and `y1`, texture v from `v0` at the bottom to `v1` at the top. */
-function buildWallBand(outline: Outline, y0: number, y1: number, spec: EdgeSpec, v0: number, v1: number, lift = LIFT): MeshBuffers {
+const STRAIGHT: WallProfile = { flare: 0, shape: 'straight' }
+
+/** Outward offset of the wall at height fraction `t` (0 ground, 1 lip). */
+function flareAt(profile: WallProfile, t: number): number {
+  const k = 1 - Math.min(1, Math.max(0, t))
+  return profile.flare * (profile.shape === 'curve' ? k * k : k)
+}
+
+/** The outline at height fraction `t`, pushed out by the profile's flare there. */
+function ring(outline: Outline, profile: WallProfile, t: number): readonly Vec2[] {
+  const d = flareAt(profile, t)
+  return d === 0 ? outline.points : inset(outline.points, -d)
+}
+
+/**
+ * A strip of the wall between height fractions `t0` and `t1`, as `steps`
+ * rows of quads following the profile; `v` maps a height fraction to the
+ * texture's v, so a band and the body can share one profile and differ only
+ * in how their texture runs up it.
+ */
+function buildWallStrip(
+  outline: Outline,
+  height: number,
+  profile: WallProfile,
+  t0: number,
+  t1: number,
+  steps: number,
+  u: (s: number) => number,
+  v: (t: number) => number,
+  lift = 0,
+): MeshBuffers {
   const b = new PartBuilder()
   const pts = outline.points
   const n = pts.length
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    const [nx, nz] = edgeNormal(pts, i)
-    const s0 = outline.arc[i]
-    const s1 = i + 1 === n ? outline.perimeter : outline.arc[j]
-    const u0 = bandU(spec, s0, outline.perimeter)
-    const u1 = bandU(spec, s1, outline.perimeter)
-    const ox = nx * lift
-    const oz = nz * lift
-    b.quad(
-      [
-        [pts[i][0] + ox, y0, pts[i][1] + oz],
-        [pts[j][0] + ox, y0, pts[j][1] + oz],
-        [pts[j][0] + ox, y1, pts[j][1] + oz],
-        [pts[i][0] + ox, y1, pts[i][1] + oz],
-      ],
-      [
-        [u0, v0],
-        [u1, v0],
-        [u1, v1],
-        [u0, v1],
-      ],
-      [nx, 0, nz],
-      i,
-    )
+  for (let row = 0; row < steps; row++) {
+    const ta = t0 + ((t1 - t0) * row) / steps
+    const tb = t0 + ((t1 - t0) * (row + 1)) / steps
+    const lower = ring(outline, profile, ta)
+    const upper = ring(outline, profile, tb)
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n
+      const [nx, nz] = edgeNormal(pts, i)
+      const s0 = outline.arc[i]
+      const s1 = i + 1 === n ? outline.perimeter : outline.arc[j]
+      const ox = nx * lift
+      const oz = nz * lift
+      b.quad(
+        [
+          [lower[i][0] + ox, ta * height, lower[i][1] + oz],
+          [lower[j][0] + ox, ta * height, lower[j][1] + oz],
+          [upper[j][0] + ox, tb * height, upper[j][1] + oz],
+          [upper[i][0] + ox, tb * height, upper[i][1] + oz],
+        ],
+        [
+          [u(s0), v(ta)],
+          [u(s1), v(ta)],
+          [u(s1), v(tb)],
+          [u(s0), v(tb)],
+        ],
+        [nx, 0, nz],
+        i,
+      )
+    }
   }
   return b.finish()
 }
 
+function stepsFor(profile: WallProfile, t0: number, t1: number): number {
+  return profile.flare > 0 && profile.shape === 'curve' ? Math.max(1, Math.round((t1 - t0) * 8)) : 1
+}
+
+/** A band on the wall between heights `y0` and `y1`, texture v from `v0` at the bottom to `v1` at the top. */
+function buildWallBand(outline: Outline, height: number, profile: WallProfile, y0: number, y1: number, spec: EdgeSpec, v0: number, v1: number): MeshBuffers {
+  const t0 = y0 / height
+  const t1 = y1 / height
+  return buildWallStrip(
+    outline,
+    height,
+    profile,
+    t0,
+    t1,
+    stepsFor(profile, t0, t1),
+    (s) => bandU(spec, s, outline.perimeter),
+    (t) => v0 + ((t - t0) / (t1 - t0 || 1)) * (v1 - v0),
+    LIFT,
+  )
+}
+
 /** The wall body from the ground to `top`, texture in world units. */
-function buildWallBody(outline: Outline, top: number, scale: number): MeshBuffers {
-  const b = new PartBuilder()
-  const pts = outline.points
-  const n = pts.length
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n
-    const [nx, nz] = edgeNormal(pts, i)
-    const s0 = outline.arc[i]
-    const s1 = i + 1 === n ? outline.perimeter : outline.arc[j]
-    b.quad(
-      [
-        [pts[i][0], 0, pts[i][1]],
-        [pts[j][0], 0, pts[j][1]],
-        [pts[j][0], top, pts[j][1]],
-        [pts[i][0], top, pts[i][1]],
-      ],
-      [
-        [s0 * scale, 0],
-        [s1 * scale, 0],
-        [s1 * scale, top * scale],
-        [s0 * scale, top * scale],
-      ],
-      [nx, 0, nz],
-      i,
-    )
-  }
-  return b.finish()
+function buildWallBody(outline: Outline, height: number, profile: WallProfile, top: number, scale: number): MeshBuffers {
+  const t1 = top / height
+  return buildWallStrip(outline, height, profile, 0, t1, stepsFor(profile, 0, t1), (s) => s * scale, (t) => t * height * scale)
 }
 
 /** A 45° chamfer from the outline at `y - size` up and in to the inset at `y`, carrying the top band. */
 function buildBevel(outline: Outline, y: number, size: number, spec: EdgeSpec): MeshBuffers {
+  // The bevel starts at the top outline: a flare below it is the body's.
   const b = new PartBuilder()
   const pts = outline.points
   const inner = inset(pts, size)
@@ -445,11 +497,11 @@ function buildBevel(outline: Outline, y: number, size: number, spec: EdgeSpec): 
 }
 
 /** The rim folded over the lip: the inner part lies on the cap, the outer hangs down the wall. */
-function buildSkirt(outline: Outline, y: number, spec: EdgeSpec): { cap: MeshBuffers; wall: MeshBuffers } {
+function buildSkirt(outline: Outline, y: number, profile: WallProfile, spec: EdgeSpec): { cap: MeshBuffers; wall: MeshBuffers } {
   const half = spec.width / 2
   // v runs 1 at the inner edge on the cap to 0 at the bottom of the hanging part.
   const cap = buildRimOnCap(outline, y, outline.points, { ...spec, width: half }, 0.5, 1)
-  const wall = buildWallBand(outline, y - half, y, spec, 0, 0.5)
+  const wall = buildWallBand(outline, y, profile, y - half, y, spec, 0, 0.5)
   return { cap, wall }
 }
 
@@ -467,6 +519,7 @@ export function meshSketch(profile: Profile, options: SketchMeshOptions): Sketch
   const outline = outlineOf(profile, options.rounds ?? 3)
   const h = options.height
   const { cap, wall, lip } = options
+  const wallProfile = options.profile ?? STRAIGHT
   if (outline.points.length < 3) {
     return { outline, cap: EMPTY, rim: EMPTY, wallBody: EMPTY, wallTop: EMPTY, wallBottom: EMPTY }
   }
@@ -477,19 +530,19 @@ export function meshSketch(profile: Profile, options: SketchMeshOptions): Sketch
         outline,
         cap: buildCap(outline, h, outline.points, cap.fillScale),
         rim: buildRimOnCap(outline, h, outline.points, cap.rim, 1, 0),
-        wallBody: buildWallBody(outline, h, wall.bodyScale),
-        wallTop: buildWallBand(outline, h - wall.top.width, h, wall.top, 0, 1),
-        wallBottom: buildWallBand(outline, 0, wall.bottom.width, wall.bottom, 0, 1),
+        wallBody: buildWallBody(outline, h, wallProfile, h, wall.bodyScale),
+        wallTop: buildWallBand(outline, h, wallProfile, h - wall.top.width, h, wall.top, 0, 1),
+        wallBottom: buildWallBand(outline, h, wallProfile, 0, wall.bottom.width, wall.bottom, 0, 1),
       }
     case 'skirt': {
-      const skirt = buildSkirt(outline, h, cap.rim)
+      const skirt = buildSkirt(outline, h, wallProfile, cap.rim)
       return {
         outline,
         cap: buildCap(outline, h, outline.points, cap.fillScale),
         rim: skirt.cap,
-        wallBody: buildWallBody(outline, h, wall.bodyScale),
+        wallBody: buildWallBody(outline, h, wallProfile, h, wall.bodyScale),
         wallTop: skirt.wall,
-        wallBottom: buildWallBand(outline, 0, wall.bottom.width, wall.bottom, 0, 1),
+        wallBottom: buildWallBand(outline, h, wallProfile, 0, wall.bottom.width, wall.bottom, 0, 1),
       }
     }
     case 'bevel': {
@@ -499,9 +552,9 @@ export function meshSketch(profile: Profile, options: SketchMeshOptions): Sketch
         outline,
         cap: buildCap(outline, h, capPoints, cap.fillScale),
         rim: buildRimOnCap(outline, h, capPoints, cap.rim, 1, 0),
-        wallBody: buildWallBody(outline, h - size, wall.bodyScale),
+        wallBody: buildWallBody(outline, h, wallProfile, h - size, wall.bodyScale),
         wallTop: buildBevel(outline, h, size, wall.top),
-        wallBottom: buildWallBand(outline, 0, wall.bottom.width, wall.bottom, 0, 1),
+        wallBottom: buildWallBand(outline, h, wallProfile, 0, wall.bottom.width, wall.bottom, 0, 1),
       }
     }
   }

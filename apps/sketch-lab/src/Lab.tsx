@@ -3,7 +3,7 @@
 // The question: does profile → extrude → two-material dressing feel like
 // the right way to author an island, and which lip reads as Paper Mario?
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { meshSketch, type LipStyle, type ProfilePoint, type SketchMesh } from '@map-editor/geometry'
+import { meshSketch, type LipStyle, type ProfilePoint, type SketchMesh, type WallProfile } from '@map-editor/geometry'
 import { Field, Note, Panel, Segmented, Slider } from '@map-editor/ui'
 
 import { LabScene } from './scene'
@@ -56,6 +56,7 @@ export function Lab() {
   const [top, setTop] = useState<Edge>({ width: 0.5, segment: 2, repeat: 'stretch' })
   const [bottom, setBottom] = useState<Edge>({ width: 0.4, segment: 2, repeat: 'stretch' })
   const [variant, setVariant] = useState<LipStyle>(variantFromUrl)
+  const [profile, setProfile] = useState<WallProfile>({ flare: 0.8, shape: 'curve' })
   const [tick, setTick] = useState(0)
   const drag = useRef<{ index: number } | { orbit: { x: number; y: number } } | null>(null)
   const shift = useRef(false)
@@ -64,9 +65,9 @@ export function Lab() {
   const mesh: SketchMesh | null = useMemo(
     () =>
       closed && points.length >= 3
-        ? meshSketch({ points }, { height, cap: { fillScale, rim }, wall: { bodyScale, top, bottom }, lip: variant })
+        ? meshSketch({ points }, { height, cap: { fillScale, rim }, wall: { bodyScale, top, bottom }, lip: variant, profile })
         : null,
-    [points, closed, height, fillScale, rim, bodyScale, top, bottom, variant],
+    [points, closed, height, fillScale, rim, bodyScale, top, bottom, variant, profile],
   )
 
   useEffect(() => {
@@ -224,6 +225,20 @@ export function Lab() {
               ? 'Drag a point to move it. S toggles smooth/corner on the selected point, Backspace deletes it. N starts a new profile.'
               : 'Click the plane to add points (Shift for a corner). Click the first point, double-click, or Enter to close.'}
           </Note>
+          {selected !== null && points[selected] ? (
+            <Field label={`Point ${selected + 1}`} hint="S toggles it too; Backspace deletes it">
+              <Segmented
+                value={points[selected].smooth ? 'smooth' : 'corner'}
+                options={[
+                  { value: 'smooth', label: 'Smooth', title: 'Rounded by the smoothing' },
+                  { value: 'corner', label: 'Corner', title: 'Keeps its exact position and angle' },
+                ]}
+                onChange={(kind) => setPoints((p) => p.map((pt, i) => (i === selected ? { ...pt, smooth: kind === 'smooth' } : pt)))}
+              />
+            </Field>
+          ) : (
+            <Note>Click a point to select it: blue is smooth, orange is a corner.</Note>
+          )}
           <Field label="Snap" hint="Hold Shift while dragging for free placement">
             <Segmented
               value={snap}
@@ -237,6 +252,21 @@ export function Lab() {
           </Field>
           <Field label="Height">
             <Slider value={layers} min={1} max={16} step={1} onChange={setLayers} format={(v) => `${v} layers`} />
+          </Field>
+        </Panel>
+        <Panel title="Wall profile">
+          <Field label="Flare" hint="How far outside the top outline the base sits">
+            <Slider value={profile.flare} min={0} max={3} step={0.1} onChange={(flare) => setProfile({ ...profile, flare })} format={(v) => v.toFixed(1)} />
+          </Field>
+          <Field label="Shape">
+            <Segmented
+              value={profile.shape}
+              options={[
+                { value: 'straight', label: 'Straight', title: 'A straight taper from base to lip' },
+                { value: 'curve', label: 'Curve', title: 'Concave: most of the flare stays near the ground' },
+              ]}
+              onChange={(shape) => setProfile({ ...profile, shape })}
+            />
           </Field>
         </Panel>
         <Panel title="Cap material">
@@ -257,6 +287,7 @@ export function Lab() {
             {JSON.stringify(
               {
                 variant,
+                profile,
                 points: points.length,
                 corners: points.filter((p) => !p.smooth).length,
                 outline: outline ? outline.points.length : 0,
