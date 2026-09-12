@@ -238,6 +238,43 @@ importers:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@22.20.2)(jsdom@26.1.0)(vite@8.3.0(@types/node@22.20.2)(esbuild@0.27.7))
 
+  apps/sketch-lab:
+    dependencies:
+      '@map-editor/geometry':
+        specifier: workspace:*
+        version: link:../../packages/geometry
+      '@map-editor/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      react-dom:
+        specifier: ^19.3.0
+        version: 19.3.0(react@19.3.0)
+      three:
+        specifier: ^0.186.0
+        version: 0.186.0
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@types/three':
+        specifier: 0.186.0
+        version: 0.186.0
+      '@vitejs/plugin-react':
+        specifier: ^6.1.1
+        version: 6.1.1(vite@8.3.0(@types/node@22.20.2)(esbuild@0.27.7))
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.3.0
+        version: 8.3.0(@types/node@22.20.2)(esbuild@0.27.7)
+
   packages/document:
     dependencies:
       '@map-editor/registry':
@@ -252,7 +289,7 @@ importers:
     devDependencies:
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -286,7 +323,7 @@ importers:
         version: 19.3.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -301,7 +338,7 @@ importers:
         version: 10.10.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -335,7 +372,7 @@ importers:
         version: 19.3.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -354,7 +391,7 @@ importers:
     devDependencies:
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -367,7 +404,7 @@ importers:
     devDependencies:
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -383,7 +420,7 @@ importers:
     devDependencies:
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -411,7 +448,7 @@ importers:
         version: 0.186.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -442,7 +479,7 @@ importers:
         version: 19.3.0(react@19.3.0)
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -464,7 +501,7 @@ importers:
         version: 0.186.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3

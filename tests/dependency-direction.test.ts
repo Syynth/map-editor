@@ -105,6 +105,8 @@ const PLACEMENT: Record<string, Placement> = {
 
   '@map-editor/editor': { kind: 'app' },
   '@map-editor/export-cli': { kind: 'app' },
+  // PROTOTYPE (sketch lab): an app like any other for the direction rule; throwaway.
+  '@map-editor/sketch-lab': { kind: 'app' },
 }
 
 interface PackageJson {

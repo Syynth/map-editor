@@ -16,6 +16,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @map-editor/editor dev",
+    "lab": "pnpm --filter @map-editor/sketch-lab dev",
     "gate": "turbo run test typecheck lint",
     "gate:full": "turbo run build test typecheck lint check-bundle-size",
     "preview": "pnpm --filter @map-editor/editor preview",
