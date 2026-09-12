@@ -28,9 +28,11 @@ ticket (a decision) or an ordinary issue (merely unbuilt). That sorting is a hum
 ```
 pnpm install --prefer-offline && pnpm turbo run test typecheck lint
 ```
-Twelve turbo tasks across seven packages and two apps; 60 tests (53 pre-existing + a
-5-test dependency-direction suite + 2 for `export-cli`). ~6 s cold, single-digit ms on a
-cache hit — the gate is fast enough that agents should run it on every iteration.
+Eleven turbo tasks across seven packages and one app (`apps/export-cli` was cut
+2026-09-11 — no native-canvas path exists yet, see `docs/decision-log.md`); 72 tests,
+counted from a fresh cold `pnpm turbo run test typecheck lint` rather than adjusted from
+the old total. ~6 s cold, single-digit ms on a cache hit — the gate is fast enough that
+agents should run it on every iteration.
 
 CI (`.github/workflows/gate.yml`) runs a superset of this on every PR and every push to
 `main`: it also builds `apps/editor` — the only package with a `build` script, and not
@@ -38,8 +40,14 @@ covered by the `test`/`typecheck`/`lint` tasks above, which depend only on `^bui
 its own step *before* linting, in a fresh checkout with no pre-existing `dist/`. That
 ordering is load-bearing, not incidental: see the workflow's header comment and
 `eslint.config.js`'s `ignores` comment for the bug a lint-before-build job would never
-catch. `pnpm gate` / `pnpm gate:full` in root `package.json` are the turbo-fronted entry
-points CI and a local run both call, so the two do not drift into separate command lists.
+catch. That same Build step now also enforces the 500 kB chunk ceiling (#57's
+`check-bundle-size`, `dependsOn: ["build"]`) — this doc is the only place a pump agent
+would learn the ceiling is gated at all. CI itself runs `pnpm gate` (the test/typecheck/
+lint task set above) plus `pnpm turbo run build check-bundle-size` as two separate steps,
+never `gate:full` — `gate:full` exists for local parity so a contributor can run the same
+superset in one command before pushing. Wrong-Node-version enforcement is root
+`package.json`'s `devEngines.runtime` (#55) — `engineStrict` in `pnpm-workspace.yaml`
+only gates a dependency's own declared engines, not this workspace's.
 
 `scripts/check-boundaries.mjs` is gone. `tests/dependency-direction.test.ts` replaces it:
 it builds the workspace graph from declared dependencies, asserts the decided direction
