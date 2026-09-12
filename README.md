@@ -87,6 +87,7 @@ node apps/export-cli/dist/cli.js in.json out.glb [--merge]
 A pnpm workspace, orchestrated by Turborepo.
 
 ```
+packages/registry/      command, tool, panel and keymap declarations; the availability DSL  — no deps at all
 packages/document/      document, commands, undo, ops, paint  — no three.js, no React
 packages/geometry/      meshers and the autotile template     — no three.js, no React
 packages/runtime/       the reference runtime: scene, billboards, camera, export
@@ -98,8 +99,8 @@ apps/editor/            React panels, tools and the app shell
 ```
 
 The import direction `registry <- document <- geometry <- runtime <- viewport <- editor-host`
-is enforced by two mechanisms rather than by a lint script (`registry` and
-`editor-host` are planned rungs the test holds as `planned`; not on disk yet).
+is enforced by two mechanisms rather than by a lint script (`editor-host` is a
+planned rung the test holds as `planned`; not on disk yet).
 `editor` — and any `apps/*` package — sits outside this ladder; apps may depend
 on any rung. pnpm's strict
 `node_modules` means a package can only import what its own `package.json`

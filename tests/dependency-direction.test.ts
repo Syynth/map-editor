@@ -80,7 +80,7 @@ function isPlanned(placement: Placement): boolean {
 const PLACEMENT: Record<string, Placement> = {
   'map-editor': { kind: 'root' },
 
-  '@map-editor/registry': { kind: 'layer', rank: 0, planned: true },
+  '@map-editor/registry': { kind: 'layer', rank: 0 },
   '@map-editor/document': { kind: 'layer', rank: 1 },
   // Visible only to apps, features, and (once it exists) the editor host: the
   // chrome vocabulary is the editor's, not the runtime's. Entries are

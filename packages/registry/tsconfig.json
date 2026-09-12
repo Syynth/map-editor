@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // Same as the root config and `document`'s: `vitest`'s own declarations
+    // reach for `DOM` and Node types this package deliberately does not load.
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // No `DOM`, no ambient `@types`. This is rung 0 of the ladder (#3): every
+    // other package sits on it, so anything it reached for — `window` for a
+    // focus-scoped context, Node for a preferences file — would be reachable
+    // from a worker, the headless editing session and the export CLI too. The
+    // scoped availability holder lives in `ui` for exactly that reason; the
+    // pure resolver here compiles without either.
+    "types": []
+  },
+
+  // No `references`: the only dependency is `@standard-schema/spec`, which
+  // ships zero bytes of runtime and is imported as types only.
+  "include": ["src"]
+}
