@@ -151,3 +151,12 @@ Each entry:
 - **WHAT:** Recorded on [#60](https://github.com/Syynth/map-editor/issues/60). The tour runs in CI and fails on what a machine judges reliably — console errors, a frame below a luminance floor, status-bar values, mesh and triangle counts — and uploads its screenshots as workflow artifacts for the human gate. No checked-in pixel baselines and no orphan baselines branch. Revisit pixel diffing when a stable GPU runner exists.
 - **WHY:** Both rendering bugs this project has had were caught by a human looking at screenshots, not by a pixel diff, and CI renders through SwiftShader, where GL output is not stable enough across runs for a diff without perpetual tolerance-tuning. A luminance floor catches the one class a machine can name — the black frame — without pretending to judge the rest.
 
+## Four map tickets closed with tentative defaults so building can start (#10, #14, #22, #23)
+- **WHEN:** 2026-09-11
+- **PROJECT:** map-editor
+- **SYSTEM:** cross-system
+- **SCOPE:** architectural
+- **STATUS:** tentative
+- **WHAT:** The last four open decision tickets on the map — verification strategy (#10), the keymap registry (#14), the `enq`-purity rule (#22), and the command argument schema (#23) — are closed with the dispatcher's recommended answers recorded as defaults. Each ticket holds its default and the reasoning. The map's route is clear and the actor migration is filed as the build handoff.
+- **WHY:** The owner's words: *"this is all dumb, i just want to switch to building the app."* After eight rulings in one sitting, a further six-question round on #10 was the wrong ratio of deciding to building. Recording explicit defaults is strictly better than building against implicit ones: every default is visible, attributed to the agent rather than the owner, and reversible by reopening the ticket. The defaults are not guesses — each follows from research already on the map (#4, #5, the Standard Schema and v6 measurements) and from rulings already made (#13, #35).
+
