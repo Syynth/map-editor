@@ -114,7 +114,7 @@ export interface PointerPress {
    * against a scene the drag may have moved; carrying the pick with the press
    * is what makes the replay land on the cell that was actually pressed.
    */
-  pick: PickResult | null
+  pick: EditorPick | null
 }
 
 export interface PointerMotion {
@@ -133,7 +133,22 @@ export interface PointerMotion {
  * the same way for the whole gesture. `null` when the ray misses the plane
  * (a near-horizontal camera) or the press hit nothing.
  */
-export interface StrokePick extends PickResult {
+/** A press or a hover: the raycast, plus the sketch point under the pointer if one is drawn there. */
+export interface EditorPick extends PickResult {
+  /**
+   * The overlay handle within a few pixels of the pointer, hit-tested where it
+   * is DRAWN: the dots are screen-sized and sit on the cap, so a raycast
+   * through one lands on the wall or the ground behind, nowhere near it.
+   */
+  handle: SketchHandle | null
+}
+
+export interface SketchHandle {
+  readonly structure: string
+  readonly index: number
+}
+
+export interface StrokePick extends EditorPick {
   plane: { x: number; z: number } | null
 }
 
@@ -153,7 +168,7 @@ export interface ViewportHandlers {
    * that ticket exists to remove.
    */
   heldKeys(): ReadonlySet<string>
-  onHover(pick: PickResult): void
+  onHover(pick: EditorPick): void
   onCameraChange(state: { yaw: number; pitch: number; distance: number; inBounds: boolean }): void
   onStats(stats: { fps: number; triangles: number; meshMs: number }): void
 }
@@ -188,6 +203,7 @@ export interface ViewportOptions {
 }
 
 export interface SketchOverlay {
+  readonly structure: string
   readonly points: ReadonlyArray<readonly [number, number, number]>
   readonly closed: boolean
   readonly selected: number | null
@@ -730,9 +746,34 @@ export class Viewport {
     }
   }
 
-  private pickAt(event: PointerEvent): PickResult {
+  private pickAt(event: PointerEvent): EditorPick {
     const [x, y] = this.ndc(event)
-    return this.picker.pick(this.scene, this.camera, x, y, event.ctrlKey || event.metaKey)
+    return { ...this.picker.pick(this.scene, this.camera, x, y, event.ctrlKey || event.metaKey), handle: this.handleAt(event) }
+  }
+
+  /** Within this many CSS pixels of a drawn point, the pointer is on it. */
+  private static readonly HANDLE_PX = 10
+
+  private handleAt(event: PointerEvent): SketchHandle | null {
+    const sketch = this.options.sketch
+    if (!sketch || this.playing) return null
+    const rect = this.canvas.getBoundingClientRect()
+    const px = event.clientX - rect.left
+    const py = event.clientY - rect.top
+    let best: SketchHandle | null = null
+    let bestDistance = Viewport.HANDLE_PX
+    sketch.points.forEach(([x, y, z], index) => {
+      const projected = new THREE.Vector3(x, y, z).project(this.camera)
+      if (projected.z > 1) return
+      const sx = ((projected.x + 1) / 2) * rect.width
+      const sy = ((1 - projected.y) / 2) * rect.height
+      const distance = Math.hypot(sx - px, sy - py)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        best = { structure: sketch.structure, index }
+      }
+    })
+    return best
   }
 
   private onPointerDown = (event: PointerEvent): void => {
@@ -745,7 +786,8 @@ export class Viewport {
     // be taken at the press to be the press's, and one raycast per click is
     // not worth arbitrating over.
     const pick = event.button === 0 ? this.pickAt(event) : null
-    this.strokePlaneY = pick?.point?.y ?? null
+    const handleY = pick?.handle ? this.options.sketch?.points[pick.handle.index]?.[1] : undefined
+    this.strokePlaneY = handleY ?? pick?.point?.y ?? null
     this.handlers.onPointerDown({
       x: event.clientX,
       y: event.clientY,

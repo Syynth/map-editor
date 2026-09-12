@@ -80,6 +80,8 @@ export interface PickSample {
    * camera; `point` is the fallback.
    */
   readonly plane?: { readonly x: number; readonly z: number } | null
+  /** The drawn sketch point under the pointer, hit-tested on screen by the viewport; absent from a pick without one. */
+  readonly handle?: { readonly structure: string; readonly index: number } | null
 }
 
 export const NO_PICK: PickSample = { surface: null, point: null, objectId: null }

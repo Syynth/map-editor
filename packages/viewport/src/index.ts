@@ -20,4 +20,4 @@
  */
 
 export { Viewport } from './viewport'
-export type { Gesture, PlaySession, PointerModifiers, PointerMotion, PointerPress, SketchOverlay, ViewportHandlers, ViewportOptions } from './viewport'
+export type { Gesture, PlaySession, PointerModifiers, PointerMotion, PointerPress, EditorPick, SketchHandle, SketchOverlay, ViewportHandlers, ViewportOptions } from './viewport'

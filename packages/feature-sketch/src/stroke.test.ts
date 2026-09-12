@@ -134,6 +134,20 @@ describe('editing an outline', () => {
     expect(selections.at(-1)).toBeNull()
   })
 
+  it('a handle the viewport found under the pointer wins over the surface the ray hit', () => {
+    const doc = drawn()
+    const { contract, selections } = stub(doc, { sketchMode: 'edit' })
+    const sketch = onlySketch(doc)
+    if (!sketch) throw new Error('no sketch')
+    // The ray went on to the ground far from point 1; the dot under the pointer was point 1.
+    const sample = { pick: { surface: null, point: { x: 40, z: 40 }, handle: { structure: sketch.id, index: 1 } }, modifiers: { shift: false, alt: false, ctrl: false } }
+    const handler = contract.stroke(sample)
+    handler?.begin(sample)
+    expect(selections.at(-1)).toEqual({ kind: 'sketchPoint', structure: sketch.id, index: 1 })
+    applyPatches(doc, [...(handler?.move({ ...sample, pick: { ...sample.pick, plane: { x: 9.2, z: 1.8 } } }) ?? [])])
+    expect(onlySketch(doc)?.points[1]).toMatchObject({ x: 9, z: 2 })
+  })
+
   it('a press on the cap away from any point grabs the whole sketch and moves it, snapped, points untouched', () => {
     const doc = drawn()
     const { contract } = stub(doc, { sketchMode: 'edit' })
