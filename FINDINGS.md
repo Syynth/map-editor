@@ -199,10 +199,12 @@ to depend on the revision, never on the document.
   linear to sRGB itself while the composer's `OutputPass` did it again, washing
   the sky to near-white.
 
-Both were found by looking at screenshots. The capture script is in CI's loop
-now (`.github/workflows/gate.yml`'s `visual` job, #56): it builds, drives the
-app, and fails on a console error, a below-floor whole-canvas luminance
-reading, or too few triangles reported in the status bar — see
+Both were found by looking at screenshots. The capture script is a CI
+workflow now (`.github/workflows/visual.yml`, #56; run by hand with
+`gh workflow run visual.yml --ref <branch>` since 2026-09-12, when it left
+the per-PR path for taking four minutes to the gate's one): it builds,
+drives the app, and fails on a console error, a below-floor whole-canvas
+luminance reading, or too few triangles reported in the status bar — see
 `scripts/tour.mjs` for the thresholds and the reasoning behind each.
 
 ### Bloom renders black under software GL

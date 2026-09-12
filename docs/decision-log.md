@@ -176,3 +176,35 @@ Each entry:
 - **WHAT:** Adversarial review and known-hard builds run on Opus; ordinary builds, the merge train, fixes, lessons and retro on Sonnet; the light lane on Haiku. Fable is reserved for work the owner judges critical — the actor migration was; nothing after it is by default.
 - **WHY:** The owner's words: *"maybe stick to opus instead of fable unless it's really critical."* Credit control: the review tier is the quality bar and needs a strong model, but the top tier on every review across every wave is spend the outcome does not need.
 
+
+## App frame: rail of subjects, Select first, per-tool context bar
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** editor-ui
+- **SCOPE:** architectural
+- **WHAT:** The frame is: a left rail of *subject* tools (Select, Terrain, Objects, Buildings, Fences; Level settings behind a gear at the bottom); a context bar showing the active tool's mode switch first, then its verbs with keys, then parameters, with each tool remembering its own settings; a stacked collapsible inspector; a status bar of hints. Select is the first tool and Esc returns to it; it is one polymorphic tool over voxel regions and objects (shape: marquee/lasso/brush; combine: replace/add/subtract; region verbs: move, expand, contract, invert). Camera is gestures in every tool, not a rail item. New terrain types, object kinds and styles are entries in the level's library, added from each subject's inspector section, not verbs. A slicer-style layer-view range (upper and lower bound) sits on the right edge of the viewport. Keys are a default preset in the keymap; other conventions are alternate binding lists.
+- **WHY:** Voxel regions are an underlying concept, so selection must be a region editor (expand, contract, move), not a click-an-object affordance. Subject tools match the brief's firm requirement for curated, named tools and the conventions of every reference art app the artist already knows; mode-first context bars keep each subject's verbs discoverable. Art apps differ in shortcuts, so the layout is a preset and the door stays open for Blender-like/Aseprite-like sets. The layer view lets the artist dial in on a single height the way slicers do. Mockup: `docs/design/select-first.html`.
+
+## Tool and verb buttons are icon-only; label and key live in the tooltip
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** editor-ui
+- **SCOPE:** moderate
+- **WHAT:** Every button in the rail and the bars is icon-only by default — tools, verbs, top-bar actions, mode switches, shape and combine rules, and library chips (materials, catalog entries, styles). The label and the keyboard shortcut are shown in a tooltip on hover or focus, never inline. Only readouts (a size) and menus that display a chosen value (a keymap preset) keep words. A preference ("Icons only" / "Icons + labels") turns inline labels on for those who want them; the default stays icon-only. (Amended the same day: the first draft exempted modes and chips; the owner's instruction was all of them.)
+- **WHY:** Icon-only bars keep the context bar dense enough that a tool's whole verb set fits without scrolling, matching the convention of the art apps the artist already uses; the tooltip carries the discoverability (name + key) without spending bar width on it.
+
+## UI overhaul first; selection and viewport plumbing follow it
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** editor-ui
+- **SCOPE:** moderate
+- **WHAT:** Build the new frame (rail, context bar, stacked inspector, status hints, layer-view slider) first, on top of PR #96 and against the host as it stands: Select drives the existing object tool, region verbs are greyed by `when` predicates, the layer slider ships as UI. Typed region selection on the view actor and the viewport's height clipping come after the frame is up. Buildings and Fences are dotted rail items without bars until their features exist.
+- **WHY:** The frame needs almost nothing the host lacks — it is layout over existing tool and view state — so building it first gives visible progress and makes the plumbing gaps concrete before they are designed.
+
+## The map needs real voxel data, not only a heightmap
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** document
+- **SCOPE:** architectural (future)
+- **WHAT:** The terrain today is a heightmap of columns (`TerrainData.height` in half-tiles, one value per cell). The document must eventually hold actual voxel data — occupancy per cell per layer — so that overhangs, caves, the brief's Blocks fallback and true 3D region selection are representable. Not scheduled; recorded so the frame and selection work do not bake the heightmap assumption in deeper than necessary.
+- **WHY:** Voxel regions are an underlying concept of the editor and a heightmap cannot represent them; the layer view and region selection are designed against voxels, and the document should catch up rather than the UI regress to columns.

@@ -254,11 +254,12 @@ The largest gap, and not where it looks.
       untested as components; what they now hold is wiring, since every control
       dispatches a declared command that is tested where it is handled.
 - [x] ~~Put `scripts/tour.mjs` in CI as a smoke test.~~ — [#56](https://github.com/Syynth/map-editor/issues/56):
-      a separate `visual` job in `.github/workflows/gate.yml` installs Chromium and runs
-      `pnpm tour`, which now fails CI on a console error, a below-floor luminance reading
-      (the black-frame signature from "Bloom renders black under software GL" below) or too
-      few triangles, on top of its own scripted assertions. Screenshots upload as a workflow
-      artifact on every run, pass or fail.
+      `.github/workflows/visual.yml` installs Chromium and runs `pnpm tour`, which fails
+      on a console error, a below-floor luminance reading (the black-frame signature from
+      "Bloom renders black under software GL" below) or too few triangles, on top of its
+      own scripted assertions. Screenshots upload as a workflow artifact on every run, pass
+      or fail. Since 2026-09-12 it runs on `workflow_dispatch` only, not per PR — it took
+      four minutes to the gate's one and was never a required check.
 - [x] ~~**Prerequisite:** make `tour.mjs` and `probe.mjs` portable.~~ —
       [#26](https://github.com/Syynth/map-editor/issues/26): both resolve
       Playwright's own bundled Chromium now (`CHROMIUM_PATH` stays as an
