@@ -33,7 +33,14 @@ apps/export-cli            headless glTF exporter. CUT 2026-09-11 — needed a n
 ```
 
 Direction: `registry <- document <- geometry <- runtime <- viewport <- editor-host`, with
-`ui` and `viewport-contrib` hanging off the side.
+`ui` and `viewport-contrib` hanging off the side, and feature packages (`feature-terrain`)
+sitting beside `editor-host` rather than on the ladder itself (#49). A feature may depend
+only on `registry`, `document`, `geometry`, `runtime`, `ui`, or `viewport-contrib`; the host
+and a feature never import each other, and only an app composes them together. `ui` has a
+restricted `visibleTo` set: it is visible only to apps (currently `editor`), the planned
+`editor-host` package, and feature packages, and it may depend only on `registry` — the
+React+Mantine package is the editor's design vocabulary, not the runtime's. This constraint
+is asserted by the dependency direction test.
 
 The rule that produced it: **a package exists when there is a consumer that must not be
 able to reach past it — not when there is a topic.** `exporter` and `schema` were both

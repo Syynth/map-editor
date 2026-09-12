@@ -143,3 +143,28 @@ Each entry:
 - **WHAT:** Recorded on the map's tickets, which hold the alternatives and reasoning. [#35](https://github.com/Syynth/map-editor/issues/35): features sit beside the host, both on the registry, only apps import features, and the registry holds the tool/stroke contract types. [#32](https://github.com/Syynth/map-editor/issues/32): raw RGBA is the texture crossing type, `runtime` never touches a canvas, and export takes an injected PNG encoder — no native code. [#34](https://github.com/Syynth/map-editor/issues/34): a barrel exports what has an outside consumer plus the types to name it; `runtime` narrows now, `document` with the document actor. [#36](https://github.com/Syynth/map-editor/issues/36): `sheet.ts` stays in `apps/editor` as the file-I/O edge until the file-I/O abstraction owns it.
 - **WHY:** All three followed the recommendation. #35 is the VS Code shape — extensions and workbench never import each other — and is what makes "replaceable from outside the tree" true by construction. #32 is what lets `fixtures` complete, gives "no canvas in runtime" a compiler check, and revives the headless exporter without the native dependency that got it cut. #34 keeps the write machinery from becoming a permanent public surface by accident of a move.
 
+## No pixel baselines yet: CI asserts structural signals and keeps screenshots as artifacts (#60)
+- **WHEN:** 2026-09-11
+- **PROJECT:** map-editor
+- **SYSTEM:** ci
+- **SCOPE:** moderate
+- **WHAT:** Recorded on [#60](https://github.com/Syynth/map-editor/issues/60). The tour runs in CI and fails on what a machine judges reliably — console errors, a frame below a luminance floor, status-bar values, mesh and triangle counts — and uploads its screenshots as workflow artifacts for the human gate. No checked-in pixel baselines and no orphan baselines branch. Revisit pixel diffing when a stable GPU runner exists.
+- **WHY:** Both rendering bugs this project has had were caught by a human looking at screenshots, not by a pixel diff, and CI renders through SwiftShader, where GL output is not stable enough across runs for a diff without perpetual tolerance-tuning. A luminance floor catches the one class a machine can name — the black frame — without pretending to judge the rest.
+
+## Four map tickets closed with tentative defaults so building can start (#10, #14, #22, #23)
+- **WHEN:** 2026-09-11
+- **PROJECT:** map-editor
+- **SYSTEM:** cross-system
+- **SCOPE:** architectural
+- **STATUS:** tentative
+- **WHAT:** The last four open decision tickets on the map — verification strategy (#10), the keymap registry (#14), the `enq`-purity rule (#22), and the command argument schema (#23) — are closed with the dispatcher's recommended answers recorded as defaults. Each ticket holds its default and the reasoning. The map's route is clear and the actor migration is filed as the build handoff.
+- **WHY:** The owner's words: *"this is all dumb, i just want to switch to building the app."* After eight rulings in one sitting, a further six-question round on #10 was the wrong ratio of deciding to building. Recording explicit defaults is strictly better than building against implicit ones: every default is visible, attributed to the agent rather than the owner, and reversible by reopening the ticket. The defaults are not guesses — each follows from research already on the map (#4, #5, the Standard Schema and v6 measurements) and from rulings already made (#13, #35).
+
+## Wayfinding is retired; finish the refactor on the pump, then build features together
+- **WHEN:** 2026-09-11
+- **PROJECT:** map-editor
+- **SYSTEM:** cross-system
+- **SCOPE:** architectural
+- **WHAT:** No more wayfinder maps or decision tickets. The refactor — the actor migration (#66), emit and references (#46), and the tail (#48, #56) — is finished on the autonomous pump with adversarial review and the protected `main`. After that, feature work is the owner and the assistant building directly, in conversation, with no orchestration ceremony. The decision log stays.
+- **WHY:** The owner's words: *"i tried the wayfinding thing, i have decided i hate it, and i just want to finish the refactor so we can make the editor good"* and *"once the refactor is done, i want to switch to just you and i building features together."* The map did its job — the architecture is decided and recorded — and the cost of continuing to run every question through it exceeded its value once the decisions were made. The refactor still benefits from the pump's review loop because it is large, mechanical, and dangerous to get wrong; feature work does not.
+
