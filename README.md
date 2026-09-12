@@ -82,8 +82,10 @@ apps/editor/        React panels, tools and the app shell
 ```
 
 The import direction `registry <- document <- geometry <- runtime <- viewport <- editor-host`
-is enforced by two mechanisms rather than by a lint script. (`editor` and any future
-browser/mobile companion apps sit outside this ladder; they may depend on any rung.) pnpm's strict
+is enforced by two mechanisms rather than by a lint script (`registry` and
+`editor-host` are planned rungs the test holds as `planned`; not on disk yet).
+`editor` — and any `apps/*` package — sits outside this ladder; apps may depend
+on any rung. pnpm's strict
 `node_modules` means a package can only import what its own `package.json`
 declares — with one hole: a name the ROOT `package.json` declares hoists into
 the root `node_modules`, so a package that never declared it can still resolve
@@ -102,9 +104,9 @@ consume; the editor renders through it, so the preview and the game cannot drift
 apart.
 
 `packages/ui` sits off the ladder at `document`'s rung — it may depend only on
-`registry`, and is visible only to apps (presently `editor`, and the future
-`editor-host`). This property is asserted by the dependency direction test
-with a `visibleTo` allowlist.
+`registry`, and is visible only to apps (currently `editor`) and to the planned
+`editor-host` package. This property is asserted by the dependency direction
+test with a `visibleTo` allowlist.
 
 ## Two things worth knowing before reading the code
 
