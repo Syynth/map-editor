@@ -16,13 +16,17 @@ on:
   push:
     branches: [main]
 
-# A rapid string of pushes to the same PR (or to main) used to queue every run
-# instead of superseding it: each earlier run kept burning a runner for a
-# result nobody would read. Grouping by workflow+ref and cancelling the
-# in-progress one means only the newest push's run finishes.
+# A rapid string of pushes to the same PR used to queue every run instead of
+# superseding it: each earlier run kept burning a runner for a result nobody
+# would read. Grouping by workflow+ref and cancelling the in-progress one
+# means only the newest push's run finishes. Restricted to `pull_request`
+# (#79): with the serial merge-train pushing straight to `main`, cancelling a
+# `main` run for the next push behind it can leave an intermediate `main` SHA
+# with no completed gate run at all — a PR's own commits are disposable in a
+# way `main`'s are not.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # The org default is already read-only, but that default lives in repo
 # settings, not in this file — a future org-wide change (or a fork whose

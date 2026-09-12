@@ -35,4 +35,14 @@ describe('CI gate workflow', () => {
     expect(buildStepIndex).not.toBe(lintingStepIndex)
     expect(buildStepIndex).toBeLessThan(lintingStepIndex)
   })
+
+  // #79: nothing else in this suite would notice `check-bundle-size` (#57)
+  // dropping out of the Build step's `run:` line — the two assertions above
+  // only look for `build`. It rides in the same turbo invocation as `build`
+  // (not its own step) because it dependsOn apps/editor's own `build` task,
+  // so turbo's graph, not runner step ordering, is what makes it wait for
+  // `dist/`; see the "Build" step's own comment in gate.yml.
+  it('keeps check-bundle-size wired into the build step', () => {
+    expect(steps[buildStepIndex]).toMatch(/run:\s*pnpm turbo run build\b[^\n]*\bcheck-bundle-size\b/)
+  })
 })
