@@ -67,3 +67,27 @@ the geometry.
 One continuous interaction with a tool, from press to release. A stroke may
 span many frames and touch a cell many times, but it produces exactly one
 [Edit](#edit).
+
+## Sheet
+
+The terrain texture atlas: a grid of square tiles laid out material-by-material, where position on the sheet defines what a tile is, the way RPG Maker autotile sheets work. Each material owns a block 4 tiles wide and 5 tiles tall — the top 4 rows hold the 16 autotile variants (chosen by a mask of which neighbours share the material), and row 5 holds cliff edges and ramps.
+
+The sheet is generated as a placeholder or supplied by the artist. Its layout is documented in `packages/geometry/src/template.ts` and is what lets the artist never tag tiles by hand.
+
+## Sprite
+
+A named asset in the sprite library: a visual object placed on the [Map](#map) — trees, NPCs, signs, props. A sprite's definition includes its [facings](#facing), the footprint the runtime sizes the quad from, and whether it emits light. One sprite is one object instance; the term does not refer to individual images or frames.
+
+A sprite's key is stored in the [Map](#map) and resolved at runtime to fetch its images and metadata. This naming lives in the document package so that fixtures and the runtime can communicate through the same type without importing each other.
+
+## Facing
+
+One directional image variant of a [Sprite](#sprite): a single [RgbaImage](#rgbaimage) rendered when the object is viewed from a particular yaw. A sprite may have 1, 2, 4, or 8 facings depending on how much directional art the artist supplied. The runtime picks the facing to display based on camera angle, with optional mirroring, transitions, and hysteresis to prevent flicker.
+
+Index 0 always faces the camera at the default yaw (the artist's front).
+
+## RgbaImage
+
+Raw pixel data crossing the texture and render boundary: width, height, and a single `Uint8ClampedArray` buffer of row-major RGBA bytes, four per pixel.
+
+Everything that draws — the placeholder generator in fixtures, the artist's sheet or sprite loader in the editor — produces this type, and everything that uploads or encodes — the runtime's textures, glTF export — accepts it. This type lives in `packages/document` because it is data, not rendering, the way [Sprite](#sprite) asset keys are; the package stays free of DOM APIs so the runtime compiles without them and headless callers can supply pixels from anywhere.
