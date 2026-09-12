@@ -118,6 +118,25 @@ empirically in this repo, and all of them are on the wayfinder map
   found by looking at screenshots while 53 unit tests passed. `pnpm tour` drives the app
   and captures a walkthrough; use it.
 - **Never `git stash`** — all worktrees share one stash stack.
+- **When a PR closes an issue or lands a feature, grep for docs that still describe the old
+  state as current** — README.md, docs/*.md, and this file's own prerequisite notes — and
+  update them in the same PR. Five reviews in one wave found stale docs asserting the
+  opposite of what had just shipped (a feature marked as a future prerequisite that the PR
+  itself delivered); the pump reads these docs to decide process, so drift here misdirects
+  the next agent, not just the next reader.
+- **Order gate/CI steps so each step's stated precondition actually holds when it runs** —
+  e.g. build the artifact before the lint step whose header comment claims to catch stale
+  build output. A step that runs before the thing it inspects exists will stay green even
+  after the regression it cites comes back, and no one will notice until it does.
+- **Before deleting or narrowing a lint/config rule you believe is redundant with another
+  check, prove it with a probe case** — add the exact violation it exists to catch and watch
+  each remaining check either catch it or miss it. `no-global-assign` on browser globals in
+  TS looked covered by `tsc` and by `no-undef`'s shutoff; a probe file showed neither catches
+  it, so deleting the block would have been a silent regression.
+- **A PR body may only claim verification you actually performed** — package versions read
+  from `node_modules`, hashes computed from a real `corepack` run, screenshots or captures
+  attached to the PR. State only what you checked, and never say a file is attached when it
+  isn't; a reviewer trusts the body as much as the diff.
 
 ## Verification: how the human drives it
 
