@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 
 import {
+  MAX_HEIGHT,
+  MIN_HEIGHT,
   SURFACE_CLIFF,
   cellIndex,
   countDormant,
@@ -40,6 +42,7 @@ import {
   Frame,
   Hint,
   Kbd,
+  LayerRange,
   Overlay,
   Pill,
   StatusHints,
@@ -85,6 +88,19 @@ function dormantPaint(doc: ReadonlyMapDoc): { top: number; cliff: number } {
     const level = Number(key.split(',')[3])
     return level < doc.terrain.height[cellIndex(doc.size, x, y)]
   })
+}
+
+/**
+ * The tallest thing in the map, in half-tiles: the top of the layer view's
+ * slider. The map's own height rather than the document's ceiling, which is
+ * ten times taller than any map here and made the slider useless. Per
+ * revision, like `dormantPaint`, since a sculpt can raise it.
+ */
+function tallestPoint(doc: ReadonlyMapDoc): number {
+  let top = MIN_HEIGHT
+  for (const height of doc.terrain.height) if (height > top) top = height
+  for (const water of doc.terrain.water) if (water > top) top = water
+  return top
 }
 
 /** What a refusal says, flattened to one line; `null` when there was none. */
@@ -162,6 +178,7 @@ export default function App() {
 
   const doc = useDocument(wholeDocument)
   const dormant = useDocument(dormantPaint)
+  const tallest = useDocument(tallestPoint)
   // The revision itself, for the effects that fire on ANY change: the document
   // is mutated in place, so it is the only thing about it that moves.
   const revision = useSyncExternalStore(reader.subscribe, reader.getSnapshot)
@@ -312,8 +329,9 @@ export default function App() {
       play,
       hover: params.tool === 'terrain' ? hover : null,
       selectedObjectId: view.selectedObjectId,
+      layers: view.layers,
     })
-  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selectedObjectId, hover, hoverCells])
+  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selectedObjectId, view.layers, hover, hoverCells])
 
   useEffect(() => {
     viewportRef.current?.refreshAtmosphere()
@@ -436,6 +454,14 @@ export default function App() {
   const selected = view.selectedObjectId ? doc.objects[view.selectedObjectId] ?? null : null
   const deleteKbd = chordFor('selection.delete', undefined, platform)
   const hints = hintsFor(params)
+  // The layer view. The slider spans the map's own height with a little
+  // headroom (room to paint a layer above the top), never the document's
+  // ceiling. `null` on the actor is the whole range, which is what the top
+  // of the slider means — so a map that grows taller stays wholly visible.
+  const layerTop = Math.min(MAX_HEIGHT, Math.max(4, tallest + 2))
+  const layers = view.layers ? { lo: Math.min(view.layers.lo, layerTop), hi: Math.min(view.layers.hi, layerTop) } : { lo: MIN_HEIGHT, hi: layerTop }
+  const setLayers = (range: { lo: number; hi: number }) =>
+    report('view.set', host.dispatch('view.set', { layers: range.lo === MIN_HEIGHT && range.hi >= layerTop ? null : range }))
 
   return (
     <Frame
@@ -517,6 +543,11 @@ export default function App() {
               </Pill>
             </Overlay>
           ) : null}
+          {!playing ? (
+            <Overlay at="right">
+              <LayerRange max={layerTop} lo={layers.lo} hi={layers.hi} onChange={setLayers} />
+            </Overlay>
+          ) : null}
           {playing ? (
             <Overlay at="bottom-center">
               <Pill>
@@ -578,6 +609,11 @@ export default function App() {
               <span>{hover && hover.kind === SURFACE_CLIFF ? 'paints by absolute level' : `${hoverCells.length} cells`}</span>
             ) : null}
             <span title="Painted work that is currently hidden by geometry, and would come back">dormant paint {dormant.top + dormant.cliff}</span>
+            {view.layers ? (
+              <span className="ui-num" title="The layer view is narrowed; double-click the slider to see everything">
+                layers {view.layers.lo}–{view.layers.hi}
+              </span>
+            ) : null}
             <span className={`ui-num ${camera.inBounds ? '' : 'is-warn'}`}>
               yaw {Math.round(camera.yaw)}° · pitch {Math.round(camera.pitch)}° · {camera.distance.toFixed(1)}u
             </span>

@@ -803,6 +803,115 @@ body {
   color: var(--ui-warn);
 }
 
+/* --- layer view (slicer-style range on the stage's right edge) ------------ */
+
+.ui-overlay.is-right {
+  right: 14px;
+  top: 44px;
+  bottom: 44px;
+  pointer-events: auto;
+}
+
+.ui-layers {
+  position: relative;
+  width: 36px;
+  height: 100%;
+  opacity: 0.45;
+  transition: opacity 0.15s;
+  user-select: none;
+}
+
+.ui-layers:hover,
+.ui-layers.is-narrow {
+  opacity: 1;
+}
+
+.ui-layers-track {
+  position: absolute;
+  left: 16px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--ui-line-2);
+}
+
+.ui-layers-range {
+  position: absolute;
+  left: 16px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--ui-accent);
+}
+
+.ui-layers-tick {
+  position: absolute;
+  left: 12px;
+  width: 12px;
+  height: 1px;
+  background: var(--ui-ink-3);
+}
+
+.ui-layers-tick i {
+  position: absolute;
+  right: 16px;
+  top: -7px;
+  font: 500 10px var(--ui-font-mono);
+  font-style: normal;
+  color: var(--ui-ink-3);
+}
+
+.ui-layers-handle {
+  position: absolute;
+  left: 6px;
+  width: 24px;
+  height: 10px;
+  margin-top: -5px;
+  padding: 0;
+  border-radius: 3px;
+  background: var(--ui-ink);
+  border: 1px solid var(--ui-panel);
+  cursor: ns-resize;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  touch-action: none;
+}
+
+.ui-layers-handle::after {
+  content: attr(data-layer);
+  position: absolute;
+  left: 30px;
+  top: -3px;
+  font: 500 10.5px var(--ui-font-mono);
+  color: var(--ui-ink-2);
+  background: rgba(27, 30, 37, 0.9);
+  border: 1px solid var(--ui-line);
+  border-radius: 3px;
+  padding: 1px 4px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.ui-layers:hover .ui-layers-handle::after,
+.ui-layers.is-narrow .ui-layers-handle::after {
+  opacity: 1;
+}
+
+.ui-layers-handle:hover,
+.ui-layers-handle:active {
+  background: var(--ui-accent);
+}
+
+.ui-layers-cap {
+  position: absolute;
+  left: -2px;
+  bottom: -22px;
+  width: 40px;
+  text-align: center;
+  font: 500 10px var(--ui-font-mono);
+  color: var(--ui-ink-3);
+  letter-spacing: 0.04em;
+}
+
 /* --- viewport overlays ---------------------------------------------------- */
 
 .ui-overlay {

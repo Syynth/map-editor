@@ -14,7 +14,7 @@
  */
 
 import { Slider as MantineSlider, Tooltip } from '@mantine/core'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type PointerEvent, type ReactNode } from 'react'
 
 import { Icon, type IconName } from './icons'
 
@@ -500,10 +500,82 @@ export function Hint({ kbd, children }: { kbd?: string; children: ReactNode }) {
 
 // --- viewport overlays ---------------------------------------------------------
 
-export function Overlay({ at, children }: { at: 'top-left' | 'top-center' | 'bottom-center' | 'bottom-right'; children: ReactNode }) {
+export function Overlay({ at, children }: { at: 'top-left' | 'top-center' | 'bottom-center' | 'bottom-right' | 'right'; children: ReactNode }) {
   return <div className={`ui-overlay is-${at}`}>{children}</div>
 }
 
 export function Pill({ warn, children }: { warn?: boolean; children: ReactNode }) {
   return <span className={`ui-pill ${warn ? 'is-warn' : ''}`}>{children}</span>
+}
+
+// --- layer view ----------------------------------------------------------------
+
+/**
+ * The layer view's control: a slicer's layer slider on the stage's right
+ * edge (`docs/design/select-first.html`). Two handles, `lo` and `hi`, in the
+ * document's height unit; dragging either moves it, alt-dragging moves both
+ * to scrub one band, double-clicking resets to the whole range. Dim until
+ * narrowed, so it disappears until wanted.
+ */
+export function LayerRange({
+  max,
+  lo,
+  hi,
+  onChange,
+  title = 'Layers',
+}: {
+  max: number
+  lo: number
+  hi: number
+  onChange: (range: { lo: number; hi: number }) => void
+  title?: string
+}) {
+  const trackRef = useRef<HTMLDivElement>(null)
+  const narrow = lo > 0 || hi < max
+  const y = (layer: number) => `${100 - (layer / max) * 100}%`
+  const tick = Math.max(1, Math.round(max / 8 / 5) * 5)
+  const labels: number[] = []
+  for (let layer = 0; layer <= max; layer += tick) labels.push(layer)
+
+  const grab = (which: 'lo' | 'hi') => (event: PointerEvent<HTMLElement>) => {
+    const track = trackRef.current
+    if (!track) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    const both = event.altKey
+    const start = { lo, hi }
+    const rect = track.getBoundingClientRect()
+    const toLayer = (clientY: number) => Math.max(0, Math.min(max, Math.round(((rect.bottom - clientY) / rect.height) * max)))
+    const startLayer = toLayer(event.clientY)
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      const layer = toLayer(moveEvent.clientY)
+      if (both) {
+        const span = start.hi - start.lo
+        const nextLo = Math.max(0, Math.min(max - span, start.lo + layer - startLayer))
+        onChange({ lo: nextLo, hi: nextLo + span })
+      } else if (which === 'hi') onChange({ lo, hi: Math.max(lo, layer) })
+      else onChange({ lo: Math.min(hi, layer), hi })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  return (
+    <div className={`ui-layers ${narrow ? 'is-narrow' : ''}`} title={`${title} — drag a handle; ⌥ drag moves both; double-click resets`} onDoubleClick={() => onChange({ lo: 0, hi: max })}>
+      <div className="ui-layers-track" ref={trackRef} />
+      <div className="ui-layers-range" style={{ top: y(hi), height: `${((hi - lo) / max) * 100}%` }} />
+      {labels.map((layer) => (
+        <div key={layer} className="ui-layers-tick" style={{ top: y(layer) }}>
+          <i>{layer}</i>
+        </div>
+      ))}
+      <button type="button" className="ui-layers-handle" data-layer={hi} style={{ top: y(hi) }} onPointerDown={grab('hi')} aria-label={`Top of the layer view: ${hi}`} />
+      <button type="button" className="ui-layers-handle" data-layer={lo} style={{ top: y(lo) }} onPointerDown={grab('lo')} aria-label={`Bottom of the layer view: ${lo}`} />
+      <span className="ui-layers-cap">{title.toUpperCase()}</span>
+    </div>
+  )
 }

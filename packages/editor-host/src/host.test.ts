@@ -361,6 +361,19 @@ describe('view and selection', () => {
     expect(context.showGrid).toBe(true)
   })
 
+  it('holds the layer view range, validated against the document bounds, cleared with null', () => {
+    const { host, dispatch } = makeHost()
+    expect(host.children.view.getSnapshot().context.layers).toBeNull()
+    expect(dispatch('view.set', { layers: { lo: 1, hi: 6 } })).toEqual({ ok: true })
+    expect(host.children.view.getSnapshot().context.layers).toEqual({ lo: 1, hi: 6 })
+    expect(dispatch('view.set', { layers: { lo: 7, hi: 6 } })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('view.set', { layers: { lo: 0, hi: 99 } })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('view.set', { layers: { lo: 0.5, hi: 6 } })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(host.children.view.getSnapshot().context.layers).toEqual({ lo: 1, hi: 6 })
+    expect(dispatch('view.set', { layers: null })).toEqual({ ok: true })
+    expect(host.children.view.getSnapshot().context.layers).toBeNull()
+  })
+
   it('rejects an explicitly undefined toggle and keeps the previous value', () => {
     const { host, dispatch } = makeHost()
     expect(host.children.view.getSnapshot().context.showGrid).toBe(true)

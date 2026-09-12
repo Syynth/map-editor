@@ -62,7 +62,11 @@ export class Picker {
       }
     }
 
-    const terrainHits = this.raycaster.intersectObjects(scene.terrainMeshes(), false)
+    // Solid terrain only. Water is a surface the editor looks THROUGH: every
+    // tool edits the ground under it, and the preview is drawn there, so a
+    // pick that stopped at the water would name the wrong cell — the one
+    // under the pointer on the surface rather than the one under the ray.
+    const terrainHits = this.raycaster.intersectObjects(scene.solidTerrainMeshes(), false)
     const terrainHit = terrainHits[0]
 
     let terrainResult: PickResult | null = null

@@ -20,9 +20,10 @@
 
 import * as THREE from 'three'
 
-import { allChunkKeys, type ReadonlyMapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
+import { HALF, allChunkKeys, type ReadonlyMapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
 import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
 import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
+import { layerView, withinLayers, type LayerRange } from './layers'
 import { Sky, sunDirection } from './sky'
 
 function buildGeometry(buffers: MeshBuffers): THREE.BufferGeometry {
@@ -87,6 +88,9 @@ export class RuntimeScene {
   private hemisphere = new THREE.HemisphereLight(0xffffff, 0x444444, 1)
   private pointLights = new Map<string, THREE.PointLight>()
   private doc: ReadonlyMapDoc
+
+  /** The height range the artist is looking at, or `null` for all of it. See `layers.ts`. */
+  private layers: LayerRange | null = null
 
   constructor(doc: ReadonlyMapDoc, assets: SceneAssets) {
     this.doc = doc
@@ -214,9 +218,16 @@ export class RuntimeScene {
   }
 
   /** Rebuild the given chunks. Pass nothing to rebuild everything. */
+  /** Narrow (or widen) the height range drawn. The caller rebuilds the chunks; this only records it. */
+  setLayerRange(range: LayerRange | null): void {
+    this.layers = range
+  }
+
   rebuildChunks(keys?: string[]): void {
     const list = keys ?? allChunkKeys(this.doc.size.width, this.doc.size.height)
     const start = performance.now()
+    // What the mesher reads: the document, or its layer view while a range is set.
+    const source = layerView(this.doc, this.layers)
 
     // A full rebuild is authoritative about which chunks exist, so it also has
     // to drop the ones that no longer do. Replacing a map with a smaller one
@@ -232,7 +243,7 @@ export class RuntimeScene {
     for (const key of list) {
       this.dropChunk(key)
 
-      const mesh = meshTerrainChunk(this.doc, key)
+      const mesh = meshTerrainChunk(source, key)
       if (mesh.solid.triangleCount === 0 && !mesh.water) continue
 
       const solid = new THREE.Mesh(buildGeometry(mesh.solid), this.terrainMaterial)
@@ -281,6 +292,11 @@ export class RuntimeScene {
 
   terrainMeshes(): THREE.Mesh[] {
     return this.terrainGroup.children.filter((child): child is THREE.Mesh => (child as THREE.Mesh).isMesh)
+  }
+
+  /** The ground alone — what a pick lands on; the water surface is looked through. */
+  solidTerrainMeshes(): THREE.Mesh[] {
+    return this.terrainMeshes().filter((mesh) => mesh.userData.surface !== 'water')
   }
 
   /** Reconcile object views against the document. */
@@ -338,7 +354,12 @@ export class RuntimeScene {
   }
 
   updateObjects(cameraYaw: number, dt: number, context: ObjectViewContext): void {
-    for (const view of this.views.values()) view.update(cameraYaw, dt, context)
+    for (const view of this.views.values()) {
+      view.update(cameraYaw, dt, context)
+      // An object outside the layer range is hidden the same way a hidden
+      // object is — after `update`, which sets visibility from the object.
+      if (this.layers !== null && !withinLayers(this.layers, view.object.position[1], HALF)) view.group.visible = false
+    }
   }
 
   objectViews(): ObjectView[] {

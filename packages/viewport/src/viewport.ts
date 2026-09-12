@@ -42,6 +42,7 @@ import {
   type ObjectViewContext,
   type PickResult,
   type SceneAssets,
+  type LayerRange,
 } from '@map-editor/runtime'
 import type { RgbaImage, SpriteAsset } from '@map-editor/document'
 
@@ -176,6 +177,8 @@ export interface ViewportOptions {
   /** Hovered surface, highlighted. */
   hover: SurfaceAddress | null
   selectedObjectId: string | null
+  /** The height range drawn, in half-tiles, or `null` for all of it — the layer view. */
+  layers: LayerRange | null
 }
 
 const DEFAULT_OPTIONS: ViewportOptions = {
@@ -185,6 +188,7 @@ const DEFAULT_OPTIONS: ViewportOptions = {
   play: null,
   hover: null,
   selectedObjectId: null,
+  layers: null,
 }
 
 /**
@@ -346,8 +350,16 @@ export class Viewport {
 
   setOptions(options: Partial<ViewportOptions>): void {
     const wasPlaying = this.playing
+    const wasLayers = this.options.layers
     this.options = { ...this.options, ...options }
     if (this.playing !== wasPlaying) this.togglePlay(this.options.play)
+    // The range changes what every chunk looks like, so it is a full rebuild
+    // — the one other thing besides a document swap that is.
+    const layers = this.options.layers
+    if (layers?.lo !== wasLayers?.lo || layers?.hi !== wasLayers?.hi) {
+      this.scene.setLayerRange(layers)
+      this.scene.rebuildChunks()
+    }
   }
 
   /** A session is running. The flag this replaced was a second copy of the same fact. */
@@ -526,7 +538,9 @@ export class Viewport {
     // On the ground, under any water: the water surface neither writes depth
     // nor draws before the overlays (see the scene's water material), so a
     // preview on a lake bed shows through the water rather than under it.
-    const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => h * 0.5 + lift)
+    // Under the layer view, the preview sits on the cap the column was cut to.
+    const layers = this.options.layers
+    const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => (layers === null ? h : Math.min(h, layers.hi)) * 0.5 + lift)
     out.push(
       x, c00, y, x, c01, y + 1, x + 1, c11, y + 1,
       x, c00, y, x + 1, c11, y + 1, x + 1, c10, y,

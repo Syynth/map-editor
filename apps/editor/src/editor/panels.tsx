@@ -369,8 +369,8 @@ export function CoverageProperties({ onFix, onSelect }: { onFix: (id: string) =>
           {flagged.map((entry) => (
             <Item
               key={entry.id}
-              name={entry.name}
-              meta={entry.suggestion}
+              name={<span title={entry.suggestion ?? undefined}>{entry.name}</span>}
+              meta={entry.edgeOn ? 'edge-on' : 'reads wrong'}
               onClick={() => onSelect(entry.id)}
               trailing={entry.edgeOn ? <Action title="Billboard it" onClick={() => onFix(entry.id)} /> : undefined}
             />

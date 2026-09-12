@@ -53,6 +53,7 @@ export {
   InspectorHead,
   Item,
   Kbd,
+  LayerRange,
   List,
   Overlay,
   Pill,
