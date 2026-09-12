@@ -1,0 +1,650 @@
+<meta charset="utf-8">
+<title>Select First</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #15171c; --bg2: #1b1e25; --panel: #242833; --panel2: #2c3140;
+    --line: #353b4a; --line2: #414859;
+    --ink: #e8eaf0; --ink2: #aab0c0; --ink3: #7b8294;
+    --accent: #e9a23b; --accent-ink: #1a1206; --accent-dim: rgba(233,162,59,.16);
+    --warn: #e5636f; --ok: #7bc47f;
+    --font: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-sm: 4px; --r-md: 6px;
+    --top: 44px; --ctx: 40px; --rail: 52px; --insp: 300px; --status: 28px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:focus-visible, [tabindex]:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  svg { display: block; }
+  kbd, .kbd { font: 500 10.5px/1 var(--mono); color: var(--ink3); background: var(--bg2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 2px 4px 1px; white-space: nowrap; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ---------- frame ---------- */
+  .app { display: grid; height: 100vh; min-height: 620px; min-width: 900px;
+    grid-template-columns: var(--rail) 1fr var(--insp);
+    grid-template-rows: var(--top) var(--ctx) 1fr var(--status);
+    grid-template-areas: "top top top" "rail ctx insp" "rail view insp" "status status status"; }
+  .top { grid-area: top; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--bg2); border-bottom: 1px solid var(--line); }
+  .rail { grid-area: rail; background: var(--bg2); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 4px; }
+  .ctx { grid-area: ctx; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; }
+  .view { grid-area: view; position: relative; background: #0f1115; overflow: hidden; }
+  .insp { grid-area: insp; background: var(--bg2); border-left: 1px solid var(--line); overflow-y: auto; }
+  .status { grid-area: status; background: var(--bg2); border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 12px; color: var(--ink3); font-size: 12px; }
+
+  /* ---------- top bar ---------- */
+  .brand { font-weight: 600; color: var(--ink2); letter-spacing: .01em; }
+  .crumb { color: var(--ink3); }
+  .crumb b { color: var(--ink); font-weight: 500; }
+  .dirty { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 2px; }
+  .grow { flex: 1; }
+  .group { display: flex; align-items: center; gap: 2px; }
+  .sep { width: 1px; height: 22px; background: var(--line); margin: 0 6px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border-radius: var(--r-md); color: var(--ink2); }
+  .btn:hover { background: var(--panel); color: var(--ink); }
+  .btn.icon { padding: 0 6px; }
+  .btn .kbd { margin-left: 2px; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 0 12px 0 9px; }
+  .btn.primary:hover { background: #f0ad4b; }
+  .btn.primary .kbd { color: var(--accent-ink); background: rgba(0,0,0,.12); border-color: rgba(0,0,0,.18); }
+
+  /* ---------- rail ---------- */
+  .tool { position: relative; width: 40px; height: 40px; border-radius: var(--r-md); display: grid; place-items: center; color: var(--ink2); }
+  .tool:hover { background: var(--panel); color: var(--ink); }
+  .tool.on { background: var(--panel2); color: var(--accent); }
+  .tool.on::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 2px; border-radius: 1px; background: var(--accent); }
+  .tool .k { display: none; position: absolute; right: 4px; bottom: 3px; font: 500 9px/1 var(--mono); color: var(--ink3); }
+  .tool.on .k { color: var(--accent); opacity: .8; }
+  .tool.soon::after { content: ""; position: absolute; left: 6px; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--ink3); opacity: .6; }
+  .rail .gap { flex: 1; }
+  .rail hr { width: 24px; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+
+  /* ---------- context bar ---------- */
+  .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); margin-right: -2px; }
+  .seg { display: inline-flex; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 2px; gap: 2px; }
+  .seg button { height: 22px; padding: 0 9px; border-radius: 4px; color: var(--ink2); display: inline-flex; align-items: center; gap: 5px; }
+  .seg button:hover { color: var(--ink); }
+  .seg button.on { background: var(--panel2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+  .seg button.on .kbd { color: var(--accent); border-color: var(--line2); }
+  .verb { height: 28px; padding: 0 8px; border-radius: var(--r-md); display: inline-flex; align-items: center; gap: 6px; color: var(--ink2); }
+  .verb:hover { background: var(--panel2); color: var(--ink); }
+  .verb.on { background: var(--accent-dim); color: var(--accent); }
+  .verb.on .kbd { color: var(--accent); }
+  .verb { width: 30px; padding: 0; justify-content: center; }
+  .verb .vl, .btn .vl { display: none; }
+  body.labels .verb { width: auto; padding: 0 8px; }
+  body.labels .verb .vl, body.labels .btn .vl { display: inline; }
+  .tip { position: fixed; z-index: 9; pointer-events: none; background: #0f1115; border: 1px solid var(--line2); border-radius: 4px; padding: 4px 7px; font-size: 12px; color: var(--ink); display: flex; gap: 8px; align-items: center; opacity: 0; transition: opacity .1s; box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+  .tip.show { opacity: 1; }
+  .tip:empty { display: none; }
+  .vsep { width: 1px; height: 22px; background: var(--line2); flex: none; }
+  .chip { height: 26px; padding: 0 9px; border-radius: 13px; border: 1px solid var(--line2); color: var(--ink2); display: inline-flex; align-items: center; gap: 6px; }
+  .chip:hover { color: var(--ink); border-color: var(--ink3); }
+  .chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .chip .sw { width: 10px; height: 10px; border-radius: 2px; }
+  .field { display: inline-flex; align-items: center; gap: 7px; }
+  .slider { position: relative; width: 96px; height: 4px; background: var(--line2); border-radius: 2px; cursor: pointer; }
+  .slider i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent); border-radius: 2px; }
+  .slider b { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--panel); }
+  .val { font: 500 12px var(--mono); color: var(--ink2); min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
+  .dd { height: 26px; padding: 0 8px; border-radius: var(--r-sm); border: 1px solid var(--line2); background: var(--bg2); color: var(--ink2); display: inline-flex; align-items: center; gap: 6px; }
+  .dd:hover { color: var(--ink); border-color: var(--ink3); }
+
+  /* ---------- viewport overlays ---------- */
+  canvas { position: absolute; inset: 0; }
+  .ov { position: absolute; pointer-events: none; font-size: 11.5px; color: var(--ink3); }
+  .ov.tl { left: 10px; top: 8px; display: flex; gap: 6px; align-items: center; }
+  .ov.br { right: 10px; bottom: 8px; display: flex; gap: 10px; }
+  .ov .pill { pointer-events: auto; background: rgba(27,30,37,.85); border: 1px solid var(--line); border-radius: 12px; padding: 3px 9px; color: var(--ink2); backdrop-filter: blur(4px); }
+  .ov .pill.cam { display: inline-flex; gap: 8px; }
+  .ov .pill .kbd { font-size: 9.5px; }
+
+  /* ---------- layer view (slicer-style range) ---------- */
+  .slicer { position: absolute; right: 14px; top: 44px; bottom: 44px; width: 36px; opacity: .45; transition: opacity .15s; }
+  .slicer:hover, .slicer.narrow { opacity: 1; }
+  .slicer .track { position: absolute; left: 16px; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: var(--line2); }
+  .slicer .range { position: absolute; left: 16px; width: 4px; border-radius: 2px; background: var(--accent); }
+  .slicer .tick { position: absolute; left: 12px; width: 12px; height: 1px; background: var(--ink3); }
+  .slicer .tick i { position: absolute; right: 16px; top: -7px; font: 500 10px var(--mono); color: var(--ink3); }
+  .slicer .h { position: absolute; left: 6px; width: 24px; height: 10px; margin-top: -5px; border-radius: 3px; background: var(--ink); border: 1px solid var(--panel); cursor: ns-resize; box-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  .slicer .h::after { content: attr(data-l); position: absolute; left: 30px; top: -3px; font: 500 10.5px var(--mono); color: var(--ink2); background: rgba(27,30,37,.9); border: 1px solid var(--line); border-radius: 3px; padding: 1px 4px; opacity: 0; transition: opacity .12s; }
+  .slicer:hover .h::after, .slicer.narrow .h::after { opacity: 1; }
+  .slicer .h:hover, .slicer .h.drag { background: var(--accent); }
+  .slicer .cap { position: absolute; left: -2px; bottom: -22px; width: 40px; text-align: center; font: 500 10px var(--mono); color: var(--ink3); letter-spacing: .04em; }
+  .mat { display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: var(--r-sm); color: var(--ink2); }
+  .mat:hover { background: var(--panel); color: var(--ink); }
+  .mat.on { background: var(--accent-dim); color: var(--accent); }
+  .mat .sw { width: 16px; height: 16px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); }
+  .mat .n { font: 500 11.5px var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; }
+  .mat.add { color: var(--ink3); border: 1px dashed var(--line2); }
+  .mat.add:hover { color: var(--ink); border-color: var(--ink3); }
+
+  /* ---------- inspector ---------- */
+  .sec { border-bottom: 1px solid var(--line); }
+  .sec summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 12px 0 10px; color: var(--ink); font-weight: 600; font-size: 12.5px; user-select: none; }
+  .sec summary::-webkit-details-marker { display: none; }
+  .sec summary::before { content: ""; width: 0; height: 0; border: 4px solid transparent; border-left: 5px solid var(--ink3); margin-right: 2px; transition: transform .12s; }
+  .sec[open] summary::before { transform: rotate(90deg) translateX(1px); }
+  .sec summary .sum { margin-left: auto; font-weight: 400; color: var(--ink3); font-size: 11.5px; }
+  .sec summary .sum.acc { color: var(--accent); }
+  .sec .body { padding: 2px 12px 12px 22px; display: grid; gap: 7px; }
+  .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; min-height: 24px; color: var(--ink2); }
+  .row .v { color: var(--ink); font: 500 12px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .row .v.mut { color: var(--ink3); }
+  .acts { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+  .act { height: 26px; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line2); background: var(--panel); color: var(--ink2); display: inline-flex; align-items: center; gap: 6px; }
+  .act:hover { color: var(--ink); border-color: var(--ink3); }
+  .act.acc { border-color: transparent; background: var(--accent-dim); color: var(--accent); }
+  .act.danger { color: var(--warn); }
+  .swatches { display: flex; gap: 5px; flex-wrap: wrap; }
+  .swatch { width: 22px; height: 22px; border-radius: 4px; border: 1px solid rgba(0,0,0,.35); }
+  .swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .list { display: grid; gap: 2px; margin-left: -10px; }
+  .item { display: grid; grid-template-columns: 16px 1fr auto; align-items: center; gap: 8px; height: 26px; padding: 0 8px; border-radius: var(--r-sm); color: var(--ink2); }
+  .item:hover { background: var(--panel); color: var(--ink); }
+  .item.on { background: var(--accent-dim); color: var(--accent); }
+  .item .n { font: 500 11.5px var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; }
+  .item .ic { width: 10px; height: 10px; border-radius: 50%; }
+  .hint { color: var(--ink3); font-size: 11.5px; line-height: 1.45; }
+  .insp .head { height: 36px; display: flex; align-items: center; padding: 0 12px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); border-bottom: 1px solid var(--line); }
+
+  /* ---------- status ---------- */
+  .status .hints { display: flex; gap: 14px; overflow: hidden; white-space: nowrap; }
+  .status .hints span { display: inline-flex; gap: 5px; align-items: center; }
+  .status .right { display: flex; gap: 14px; align-items: center; flex: none; }
+  .status .ok { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); display: inline-block; margin-right: 5px; }
+
+  /* ---------- notes below the frame ---------- */
+  .notes { max-width: 68ch; padding: 40px 32px 64px; color: var(--ink2); }
+  .notes h2 { font-size: 15px; margin: 0 0 4px; color: var(--ink); text-wrap: balance; }
+  .notes p.lede { margin: 0 0 20px; color: var(--ink3); }
+  .notes dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 10px 18px; }
+  .notes dt { color: var(--ink); font-weight: 600; }
+  .notes dd { margin: 0; }
+  .notes .kbd { font-size: 10px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <span class="brand">map-editor</span>
+    <span class="crumb">/ <b>Meadow Crossing</b></span><span class="dirty" title="Unsaved changes"></span>
+    <span class="grow"></span>
+    <div class="group">
+      <button class="btn icon" data-tip="Undo" data-key="⌘Z"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5M4 9h10.5a5 5 0 0 1 0 10H11"/></svg></button>
+      <button class="btn icon" data-tip="Redo" data-key="⇧⌘Z"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5M20 9H9.5a5 5 0 0 0 0 10H13"/></svg></button>
+      <span class="sep"></span>
+      <button class="btn icon" data-tip="Reset view" data-key="H"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 4v16M4 12h16"/><circle cx="12" cy="12" r="5.5"/></svg><span class="vl">Reset view</span></button>
+      <button class="btn icon" data-tip="Sweep — record a camera pass" data-key=""><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3"/></svg><span class="vl">Sweep</span></button>
+    </div>
+    <span class="grow"></span>
+    <button class="btn">Export <span class="kbd">⌘E</span></button>
+    <button class="btn primary"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4l14 8-14 8z"/></svg>Play <span class="kbd">⌘↩</span></button>
+  </header>
+
+  <nav class="rail" id="rail" aria-label="Tools"></nav>
+  <div class="ctx" id="ctx"></div>
+
+  <main class="view" id="view">
+    <canvas id="scene"></canvas>
+    <div class="ov tl"><span class="pill num" id="dims">24 × 18 · 5 layers</span></div>
+    <div class="slicer" id="slicer" title="Layer view — drag the handles; ⌥ drag moves both; double-click resets"></div>
+    <div class="ov br">
+      <span class="pill cam"><span><span class="kbd">⌥ drag</span> orbit</span><span><span class="kbd">right drag</span> pan</span><span><span class="kbd">scroll</span> zoom</span></span>
+    </div>
+  </main>
+
+  <aside class="insp" id="insp"></aside>
+
+  <footer class="status">
+    <div class="hints" id="hints"></div>
+    <div class="right">
+      <span class="num" id="coord">x 7 · z 5 · h 2</span>
+      <span class="num">1.0×</span>
+      <span class="num" id="slicelbl" title="Layer view">layers 0–4</span>
+      <span><i class="ok"></i>Autosaved 12 s ago</span>
+    </div>
+  </footer>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<section class="notes">
+  <h2>What moved, and why</h2>
+  <p class="lede">The frame is the same five regions as before. What changed is what each region is <em>for</em>.</p>
+  <dl>
+    <dt>Rail = subjects</dt><dd>Select, Terrain, Objects, Buildings, Fences. Each is a thing the artist works on, not a verb. The dot marks subjects that are planned but not built. Level settings live behind the gear at the bottom.</dd>
+    <dt>Select is first</dt><dd>It is the one tool that addresses what already exists, whatever made it. Voxel regions are its main subject: a shape (marquee, lasso, brush), a combine rule (replace, add, subtract), and verbs that act on the region itself (move, expand, contract, invert). Clicking an object selects it through the same tool.</dd>
+    <dt>Context bar = the active tool's controls</dt><dd>Mode switch first, then verbs with their keys, then parameters. Switching tools swaps the whole bar; each tool remembers its own settings.</dd>
+    <dt>Inspector = stacked, collapsible</dt><dd>Sections open for what the current tool cares about. Level is always there, closed, at the bottom.</dd>
+    <dt>Camera is not a tool</dt><dd>Orbit, pan and zoom are gestures in every tool. Reset view and Sweep sit in the top bar with the other level-wide actions.</dd>
+    <dt>Library, not verbs</dt><dd>New terrain types, object kinds and styles are entries in the level's library. Each subject's inspector shows its slice of it (Palette, Catalog) with an add row; the bar's chips are a view of the same list, so a new material is paintable the moment it exists. Level-wide import lives behind the gear.</dd>
+    <dt>Layer view</dt><dd>The slider on the right edge of the viewport is a slicer's layer range: two handles, upper and lower. Columns above the top are cut off, columns below the bottom ghost out, objects outside the range hide. <span class="kbd">⌥ drag</span> moves both handles to scrub one layer. It stays dim until narrowed.</dd>
+    <dt>Icons by default</dt><dd>Tool and verb buttons are icon-only; the label and the key live in the tooltip. Modes and library chips keep their words, because those are names, not actions. A preference under the Level gear turns labels on for anyone who wants them.</dd>
+    <dt>Keys are a preset</dt><dd>Every binding is data in the keymap. The Level bar exposes the preset (<span class="kbd">Default</span>, Blender-like, Aseprite-like) so conventions from other apps can be swapped in without touching the tools.</dd>
+  </dl>
+</section>
+
+<script>
+(() => {
+  // ---------- state ----------
+  const S = {
+    tool: 'select',
+    select: { target: 'auto', shape: 'marquee', combine: 'replace', verb: 'move' },
+    terrain: { mode: 'sculpt', verb: 'raise', stroke: 'brush', size: 3, strength: 60, paint: 'grass' },
+    objects: { mode: 'place', kind: 'tree', facing: 'left', snap: 'grid' },
+    buildings: { mode: 'footprint', style: 'cottage', floors: 1 },
+    fences: { style: 'picket', mode: 'draw' },
+    level: { keymap: 'Default', labels: 'off' },
+    hover: null,
+    sel: new Set(),
+    slice: { lo: 0, hi: 4 },
+  }
+  const key = (x, z) => x + ',' + z
+  const MAXL = 4
+  ;[[7,5],[8,5],[9,5],[7,6],[8,6],[9,6],[8,7],[9,7],[8,8],[9,8]].forEach(([x,z]) => S.sel.add(key(x,z)))
+
+  // ---------- world ----------
+  const W = 24, H = 18
+  const heights = []
+  for (let z = 0; z < H; z++) { heights.push([]); for (let x = 0; x < W; x++) {
+    let h = 1.6 + 1.4 * Math.sin(x * .55 + 1) * Math.cos(z * .45) + (x > 16 && z < 7 ? 1.6 : 0) + (x < 5 && z > 11 ? 1.2 : 0)
+    heights[z].push(Math.max(0, Math.min(4, Math.round(h))))
+  } }
+  const isPath = (x, z) => Math.abs(z - (8 + Math.sin(x * .5) * 1.6)) < .9
+  const objects = [
+    ['tree', 3, 4], ['tree', 5, 11], ['tree', 14, 3], ['tree', 17, 9], ['tree', 20, 14], ['tree', 9, 15], ['tree', 21, 4],
+    ['rock', 12, 8], ['rock', 6, 6], ['bush', 16, 12], ['bush', 2, 9], ['sign', 10, 9],
+  ]
+
+  // ---------- icons ----------
+  const I = {
+    select: '<path d="M5 3l14 9-7 1.5L8 21 5 3z" fill="currentColor"/>',
+    terrain: '<path d="M2 18 8 6l4 6 2.5-3L21 18Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+    objects: '<path d="M12 3l5 7h-3l4 6H6l4-6H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 16v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+    buildings: '<path d="M3 11 12 4l9 7v9H3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 20v-6h6v6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>',
+    fences: '<path d="M5 7v13M12 7v13M19 7v13M2 11h20M2 16h20M3.5 8 5 5l1.5 3M10.5 8 12 5l1.5 3M17.5 8 19 5l1.5 3" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>',
+    level: '<circle cx="12" cy="12" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1l2.1-2.1M17 7l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
+  }
+  const VI = {
+    move: '<path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/>',
+    nudge: '<path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/>',
+    expand: '<rect x="8.5" y="8.5" width="7" height="7"/><path d="M3 3l4 4M3 7V3h4M21 3l-4 4M21 7V3h-4M3 21l4-4M3 17v4h4M21 21l-4-4M21 17v4h-4"/>',
+    contract: '<rect x="8.5" y="8.5" width="7" height="7"/><path d="M3 3l4 4M7 3v4H3M21 3l-4 4M17 3v4h4M3 21l4-4M7 21v-4H3M21 21l-4-4M17 21v-4h4"/>',
+    invert: '<circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/>',
+    clear: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+    raise: '<path d="M4 20h16M12 16V5M8 9l4-4 4 4"/>',
+    lower: '<path d="M4 20h16M12 4v11M8 11l4 4 4-4"/>',
+    flatten: '<path d="M3 14h18M6 18h12M12 4v6M9 7l3 3 3-3"/>',
+    smooth: '<path d="M3 15c3-7 6-7 9 0s6 7 9 0M3 20h18"/>',
+    rotate: '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>',
+    scale: '<path d="M3 21 21 3M21 3h-7M21 3v7M3 21h7M3 21v-7"/>',
+  }
+  const vsvg = (id) => `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${VI[id]}</svg>`
+  const svg = (d, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24">${d}</svg>`
+  const kbd = (k) => `<span class="kbd">${k}</span>`
+
+  const TOOLS = [
+    { id: 'select', title: 'Select', key: 'V' },
+    { id: 'terrain', title: 'Terrain', key: 'T' },
+    { id: 'objects', title: 'Objects', key: 'O' },
+    { id: 'buildings', title: 'Buildings', key: 'B', soon: true },
+    { id: 'fences', title: 'Fences', key: 'F', soon: true },
+  ]
+  const MATUSE = { grass: 318, dirt: 22, path: 61, stone: 14, sand: 17, water: 0 }
+  const PALETTE = { grass: '#4f8a46', dirt: '#8a6a45', path: '#b08f5e', stone: '#7d8494', sand: '#c9b27f', water: '#3f7ea6' }
+
+  // ---------- helpers for markup ----------
+  const seg = (path, opts) => `<span class="seg">${opts.map(([v, label, k]) =>
+    `<button data-set="${path}" data-val="${v}" class="${get(path) === v ? 'on' : ''}">${label}${k ? kbd(k) : ''}</button>`).join('')}</span>`
+  const verbs = (path, opts) => opts.map(([v, label, k]) =>
+    `<button class="verb ${get(path) === v ? 'on' : ''}" data-set="${path}" data-val="${v}" data-tip="${label}" data-key="${k}">${vsvg(v)}<span class="vl">${label}</span></button>`).join('')
+  const chips = (path, opts) => opts.map(([v, label, sw]) =>
+    `<button class="chip ${get(path) === v ? 'on' : ''}" data-set="${path}" data-val="${v}">${sw ? `<i class="sw" style="background:${sw}"></i>` : ''}${label}</button>`).join('')
+  const slider = (path, val, max, unit = '') => `<span class="field"><span class="slider" data-slide="${path}" data-max="${max}"><i style="width:${val / max * 100}%"></i><b style="left:${val / max * 100}%"></b></span><span class="val">${val}${unit}</span></span>`
+  const lbl = (t) => `<span class="lbl">${t}</span>`
+  const get = (path) => path.split('.').reduce((o, k) => o[k], S)
+  const set = (path, v) => { const p = path.split('.'); const k = p.pop(); p.reduce((o, k) => o[k], S)[k] = v }
+
+  // ---------- context bar per tool ----------
+  const BAR = {
+    select: () => [
+      seg('select.target', [['auto', 'Auto'], ['voxels', 'Voxels'], ['objects', 'Objects']]),
+      seg('select.shape', [['marquee', 'Marquee', 'M'], ['lasso', 'Lasso', 'L'], ['brush', 'Brush', 'B']]),
+      seg('select.combine', [['replace', 'Replace'], ['add', 'Add', '⇧'], ['subtract', 'Subtract', '⌥']]),
+      '<span class="vsep"></span>',
+      verbs('select.verb', [['move', 'Move', 'G'], ['expand', 'Expand', ']'], ['contract', 'Contract', '['], ['invert', 'Invert', '⌘I']]),
+      `<button class="verb" data-act="clear" data-tip="Clear selection" data-key="Esc">${vsvg('clear')}<span class="vl">Clear</span></button>`,
+    ],
+    terrain: () => [
+      seg('terrain.mode', [['sculpt', 'Sculpt', '1'], ['paint', 'Paint', '2']]),
+      '<span class="vsep"></span>',
+      ...(S.terrain.mode === 'sculpt'
+        ? [verbs('terrain.verb', [['raise', 'Raise', 'Q'], ['lower', 'Lower', 'W'], ['flatten', 'Flatten', 'E'], ['smooth', 'Smooth', 'R']])]
+        : [chips('terrain.paint', Object.entries(PALETTE).map(([k, c]) => [k, k[0].toUpperCase() + k.slice(1), c]))]),
+      '<span class="vsep"></span>',
+      lbl('Stroke'), seg('terrain.stroke', [['brush', 'Brush'], ['line', 'Line'], ['fill', 'Fill']]),
+      lbl('Size'), slider('terrain.size', S.terrain.size, 8),
+      ...(S.terrain.mode === 'sculpt' ? [lbl('Strength'), slider('terrain.strength', S.terrain.strength, 100, '%')] : []),
+    ],
+    objects: () => [
+      seg('objects.mode', [['place', 'Place', '1'], ['arrange', 'Arrange', '2']]),
+      '<span class="vsep"></span>',
+      ...(S.objects.mode === 'place'
+        ? [chips('objects.kind', [['tree', 'Tree'], ['pine', 'Pine'], ['rock', 'Rock'], ['bush', 'Bush'], ['sign', 'Signpost'], ['lamp', 'Lamp']]), `<button class="dd">More… ${kbd('⌘K')}</button>`]
+        : [verbs('objects.verb', [['nudge', 'Nudge', 'G'], ['rotate', 'Rotate', 'R'], ['scale', 'Scale', 'S']])]),
+      '<span class="vsep"></span>',
+      lbl('Facing'), seg('objects.facing', [['left', '◀'], ['right', '▶']]),
+      lbl('Snap'), seg('objects.snap', [['grid', 'Grid'], ['half', '½'], ['free', 'Free']]),
+    ],
+    buildings: () => [
+      seg('buildings.mode', [['footprint', 'Footprint', '1'], ['walls', 'Walls', '2'], ['roof', 'Roof', '3']]),
+      '<span class="vsep"></span>',
+      lbl('Style'), chips('buildings.style', [['cottage', 'Cottage'], ['shop', 'Shop'], ['inn', 'Inn'], ['shrine', 'Shrine']]),
+      '<span class="vsep"></span>',
+      lbl('Floors'), seg('buildings.floors', [[1, '1'], [2, '2'], [3, '3']]),
+    ],
+    fences: () => [
+      seg('fences.mode', [['draw', 'Draw', '1'], ['gate', 'Gate', '2']]),
+      '<span class="vsep"></span>',
+      lbl('Style'), chips('fences.style', [['picket', 'Picket'], ['rail', 'Split rail'], ['stone', 'Stone wall'], ['hedge', 'Hedge']]),
+      '<span class="vsep"></span>',
+      `<span class="hint">Click to start, click to add corners, double-click to finish</span>`,
+    ],
+    level: () => [
+      lbl('Size'), `<span class="val num" style="min-width:auto">24 × 18</span>`, `<button class="dd">Resize…</button>`,
+      '<span class="vsep"></span>',
+      lbl('Sky'), chips('level.sky', [['day', 'Day', '#7fb2e0'], ['dusk', 'Dusk', '#d98a5e'], ['night', 'Night', '#2f3a63']]),
+      '<span class="vsep"></span>',
+      lbl('Shortcuts'), `<button class="dd" title="Keymap preset — every binding is editable">${S.level.keymap} ▾</button>`,
+      '<span class="vsep"></span>',
+      `<button class="dd" title="Materials, object kinds, building and fence styles this level knows about">Library…</button>`,
+      '<span class="vsep"></span>',
+      lbl('Buttons'), seg('level.labels', [['off', 'Icons'], ['on', 'Icons + labels']]),
+    ],
+  }
+
+  // ---------- inspector per tool ----------
+  const section = (title, body, { open = true, sum = '', acc = false } = {}) =>
+    `<details class="sec" ${open ? 'open' : ''}><summary>${title}<span class="sum ${acc ? 'acc' : ''}">${sum}</span></summary><div class="body">${body}</div></details>`
+  const row = (l, v, mut = false) => `<div class="row"><span>${l}</span><span class="v ${mut ? 'mut' : ''}">${v}</span></div>`
+  const acts = (list) => `<div class="acts">${list.map(([t, k, cls = '']) => `<button class="act ${cls}">${t}${k ? kbd(k) : ''}</button>`).join('')}</div>`
+  const levelSection = (open = false) => section('Level', [
+    row('Size', '24 × 18'), row('Layers', '5'), row('Sky', 'Day'), row('Sun', '38°'),
+    row('Camera bounds', 'Fit to level', true),
+    acts([['Edit bounds…'], ['Resize…']]),
+  ].join(''), { open })
+
+  const selBounds = () => {
+    if (!S.sel.size) return null
+    let x0 = 99, x1 = -1, z0 = 99, z1 = -1, h0 = 9, h1 = -1
+    for (const k of S.sel) { const [x, z] = k.split(',').map(Number); x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); h0 = Math.min(h0, heights[z][x]); h1 = Math.max(h1, heights[z][x]) }
+    return { x0, x1, z0, z1, h0, h1 }
+  }
+  const INSP = {
+    select: () => {
+      const b = selBounds()
+      const body = b ? [
+        row('Kind', 'Voxel region'), row('Columns', S.sel.size), row('Bounds x', `${b.x0} – ${b.x1}`), row('Bounds z', `${b.z0} – ${b.z1}`), row('Height', b.h0 === b.h1 ? `${b.h0}` : `${b.h0} – ${b.h1}`),
+        acts([['Raise', '⇧Q', 'acc'], ['Lower', '⇧W'], ['Flatten', '⇧E'], ['Paint…'], ['Delete', '⌫', 'danger']]),
+        `<div class="hint">Region ops apply to the whole selection at once. Save it as a named region to reuse it later.</div>`,
+        acts([['Save as region…']]),
+      ].join('') : `<div class="hint">Nothing selected. Drag a marquee, or click an object.</div>`
+      return section('Selection', body, { sum: b ? `${S.sel.size} voxels` : 'empty', acc: !!b })
+        + section('Saved regions', `<div class="list">${[['Village green', 42], ['Cliff top', 18], ['Pond edge', 9]].map(([n, c]) => `<button class="item"><i class="ic" style="background:var(--accent)"></i><span>${n}</span><span class="n">${c}</span></button>`).join('')}</div>`, { open: false, sum: '3' })
+        + levelSection()
+    },
+    terrain: () => (S.terrain.mode === 'sculpt'
+      ? section('Brush', [row('Size', `${S.terrain.size} cells`), row('Strength', `${S.terrain.strength}%`), row('Falloff', 'Smooth'), row('Step', '1 layer'), `<div class="hint">Hold ⇧ while sculpting to constrain to the current layer.</div>`].join(''), { sum: S.terrain.verb[0].toUpperCase() + S.terrain.verb.slice(1) })
+      : section('Palette', `<div class="list">${Object.entries(PALETTE).map(([k, c]) => `<button class="mat ${S.terrain.paint === k ? 'on' : ''}" data-set="terrain.paint" data-val="${k}"><i class="sw" style="background:${c}"></i><span>${k[0].toUpperCase() + k.slice(1)}</span><span class="n">${MATUSE[k]}</span></button>`).join('')}<button class="mat add"><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></button></div>`
+          + `<div class="hint" style="margin-top:4px">Selected: <b style="color:var(--ink)">${S.terrain.paint[0].toUpperCase() + S.terrain.paint.slice(1)}</b></div>` + row('Top', S.terrain.paint + '_top.png', true) + row('Side', S.terrain.paint === 'water' ? '— (flat)' : 'cliff_side.png', true) + row('Tint', PALETTE[S.terrain.paint].toUpperCase()) + row('Blend edges', 'On') + acts([['Edit textures…'], ['Duplicate']]), { sum: S.terrain.paint }))
+      + section('Layers', `<div class="list">${[4, 3, 2, 1, 0].map((l) => `<button class="item ${l === 2 ? 'on' : ''}"><i class="ic" style="background:${l === 2 ? 'var(--accent)' : 'var(--line2)'}"></i><span>Layer ${l}</span><span class="n">${[38, 91, 160, 112, 31][4 - l]}</span></button>`).join('')}</div>`, { open: false, sum: 'Layer 2' })
+      + levelSection(),
+    objects: () => section('Catalog', `<div class="list">${[['Tree', 7, '#4f9a55'], ['Pine', 0, '#3f7d48'], ['Rock', 2, '#8b929f'], ['Bush', 2, '#5aa860'], ['Signpost', 1, '#b08f5e'], ['Lamp', 0, '#ffd97a']].map(([n, c, col]) => `<button class="item ${S.objects.kind === n.toLowerCase() ? 'on' : ''}" data-set="objects.kind" data-val="${n.toLowerCase()}"><i class="ic" style="background:${col}"></i><span>${n}</span><span class="n">${c ? '×' + c : '—'}</span></button>`).join('')}<button class="mat add" style="margin-top:4px"><span style="font-size:15px;text-align:center">+</span><span>Import sprite…</span><span class="n">⌘I</span></button></div>`, { sum: '12 placed' })
+      + section('Facing & flip', [row('Default facing', S.objects.facing === 'left' ? 'Left ◀' : 'Right ▶'), row('Mirror on place', 'Off'), row('Billboard', 'Always face camera'), `<div class="hint">Flip the sprite, not the placement. Position and footprint stay put.</div>`].join(''))
+      + levelSection(),
+    buildings: () => section('Building', [row('Style', S.buildings.style), row('Footprint', '3 × 2'), row('Floors', S.buildings.floors), row('Roof', 'Gable'), row('Door', 'South'), acts([['Rotate', 'R'], ['Mirror', 'M']])].join(''), { sum: 'planned' })
+      + levelSection(),
+    fences: () => section('Fence', [row('Style', S.fences.style), row('Post every', '1 cell'), row('Follow terrain', 'On'), row('Gate width', '1 cell')].join(''), { sum: 'planned' })
+      + levelSection(),
+    level: () => levelSection(true) + section('Camera bounds', [row('Mode', 'Fit to level'), row('Margin', '2 cells'), row('Min zoom', '0.5×'), row('Max zoom', '2.0×'), acts([['Preview in Play', '⌘↩', 'acc']])].join(''))
+      + section('Export', [row('Format', 'level.json + sheet.png'), row('Last export', '2 h ago', true), acts([['Export now', '⌘E']])].join(''), { open: false }),
+  }
+
+  const HINTS = {
+    select: () => [['drag', 'marquee'], ['click', 'select object / cell'], ['⇧', 'add'], ['⌥', 'subtract'], ['G', 'move'], ['] [', 'expand / contract'], ['Esc', 'clear']],
+    terrain: () => S.terrain.mode === 'sculpt' ? [['drag', S.terrain.verb], ['⇧ drag', 'constrain to layer'], ['⌥', 'invert verb'], ['[ ]', 'brush size']] : [['drag', 'paint ' + S.terrain.paint], ['⌥ click', 'pick color'], ['[ ]', 'brush size']],
+    objects: () => S.objects.mode === 'place' ? [['click', 'place ' + S.objects.kind], ['drag', 'place along a line'], ['X', 'flip'], ['R', 'rotate'], ['Esc', 'back to Select']] : [['drag', 'nudge'], ['R', 'rotate'], ['S', 'scale'], ['⌫', 'delete']],
+    buildings: () => [['drag', 'draw footprint'], ['R', 'rotate'], ['Esc', 'back to Select']],
+    fences: () => [['click', 'add corner'], ['double-click', 'finish'], ['Esc', 'back to Select']],
+    level: () => [['Level settings apply to the whole map']],
+  }
+
+  // ---------- render ----------
+  const $ = (id) => document.getElementById(id)
+  function renderRail() {
+    $('rail').innerHTML = TOOLS.map((t) => `<button class="tool ${S.tool === t.id ? 'on' : ''} ${t.soon ? 'soon' : ''}" data-tool="${t.id}" data-tip="${t.title}${t.soon ? ' (planned)' : ''}" data-key="${t.key}">${svg(I[t.id])}</button>`).join('')
+      + `<span class="gap"></span><hr><button class="tool ${S.tool === 'level' ? 'on' : ''}" data-tool="level" data-tip="Level settings" data-key=",">${svg(I.level)}</button>`
+  }
+  function renderBar() { document.body.classList.toggle('labels', S.level.labels === 'on'); $('ctx').innerHTML = BAR[S.tool]().join('') }
+  function renderInsp() { $('insp').innerHTML = `<div class="head">${TOOLS.concat({ id: 'level', title: 'Level' }).find((t) => t.id === S.tool).title}</div>` + INSP[S.tool]() }
+  function renderHints() { $('hints').innerHTML = HINTS[S.tool]().map(([k, t]) => t ? `<span>${kbd(k)}${t}</span>` : `<span>${k}</span>`).join('') }
+  function renderAll() { renderRail(); renderBar(); renderInsp(); renderHints(); draw() }
+
+  // ---------- events ----------
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-tool]'); if (t) { S.tool = t.dataset.tool; renderAll(); return }
+    const s = e.target.closest('[data-set]'); if (s) {
+      const v = s.dataset.val; set(s.dataset.set, isNaN(v) ? v : Number(v))
+      if (s.dataset.set === 'select.verb') applyVerb(v)
+      renderBar(); renderInsp(); renderHints(); draw(); return
+    }
+    const a = e.target.closest('[data-act]'); if (a && a.dataset.act === 'clear') { S.sel.clear(); renderInsp(); draw() }
+  })
+  document.addEventListener('mousedown', (e) => {
+    const sl = e.target.closest('[data-slide]'); if (!sl) return
+    const move = (ev) => { const r = sl.getBoundingClientRect(); const f = Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)); set(sl.dataset.slide, Math.max(1, Math.round(f * Number(sl.dataset.max)))); renderBar(); renderInsp(); draw() }
+    move(e); const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+  })
+  const neighbors = (x, z) => [[x + 1, z], [x - 1, z], [x, z + 1], [x, z - 1]].filter(([a, b]) => a >= 0 && b >= 0 && a < W && b < H)
+  function applyVerb(v) {
+    if (v === 'expand') { const add = []; for (const k of S.sel) { const [x, z] = k.split(',').map(Number); neighbors(x, z).forEach(([a, b]) => add.push(key(a, b))) } add.forEach((k) => S.sel.add(k)); S.select.verb = 'move' }
+    if (v === 'contract') { const del = []; for (const k of S.sel) { const [x, z] = k.split(',').map(Number); if (neighbors(x, z).some(([a, b]) => !S.sel.has(key(a, b)))) del.push(k) } del.forEach((k) => S.sel.delete(k)); S.select.verb = 'move' }
+    if (v === 'invert') { const n = new Set(); for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) if (!S.sel.has(key(x, z))) n.add(key(x, z)); S.sel = n; S.select.verb = 'move' }
+  }
+  window.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey) { if (e.key.toLowerCase() === 'i' && S.tool === 'select') { e.preventDefault(); applyVerb('invert'); renderInsp(); draw() } return }
+    const k = e.key
+    const tool = { v: 'select', t: 'terrain', o: 'objects', b: 'buildings', f: 'fences', ',': 'level' }[k.toLowerCase()]
+    if (k === 'PageUp' || k === 'PageDown') { e.preventDefault(); const d = k === 'PageUp' ? 1 : -1; if (e.shiftKey) S.slice.lo = Math.max(0, Math.min(S.slice.hi, S.slice.lo + d)); else S.slice.hi = Math.max(S.slice.lo, Math.min(MAXL, S.slice.hi + d)); renderSlicer(); draw(); return }
+    if (k === 'Escape') { if (S.tool === 'select') S.sel.clear(); S.tool = 'select'; renderAll(); return }
+    if (tool && !(S.tool === 'select' && k === 'b')) { S.tool = tool; renderAll(); return }
+    if (S.tool === 'terrain') {
+      const verb = { q: 'raise', w: 'lower', e: 'flatten', r: 'smooth' }[k.toLowerCase()]; if (verb) { S.terrain.mode = 'sculpt'; S.terrain.verb = verb }
+      if (k === '1') S.terrain.mode = 'sculpt'; if (k === '2') S.terrain.mode = 'paint'
+      if (k === ']') S.terrain.size = Math.min(8, S.terrain.size + 1); if (k === '[') S.terrain.size = Math.max(1, S.terrain.size - 1)
+    }
+    if (S.tool === 'select') {
+      if (k === ']') applyVerb('expand'); if (k === '[') applyVerb('contract')
+      const shape = { m: 'marquee', l: 'lasso', b: 'brush' }[k.toLowerCase()]; if (shape) S.select.shape = shape
+    }
+    renderBar(); renderInsp(); renderHints(); draw()
+  })
+
+  // ---------- canvas ----------
+  const cv = $('scene'), view = $('view'), ctx = cv.getContext('2d')
+  let TW = 44, TH = 22, TU = 12, OX = 0, OY = 0
+  function layout() {
+    const r = view.getBoundingClientRect(), dpr = window.devicePixelRatio || 1
+    cv.width = r.width * dpr; cv.height = r.height * dpr; cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px'; ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    TW = Math.max(24, Math.min(48, Math.floor(Math.min(r.width * .92 / ((W + H) / 2), r.height * .78 / ((W + H) / 4)))))
+    TH = TW / 2; TU = Math.round(TW * .3)
+    OX = r.width / 2 - (W - H) * TW / 4; OY = r.height / 2 - (W + H) * TH / 4 + 24
+  }
+  const cell = (x, z, h = 0) => [OX + (x - z) * TW / 2, OY + (x + z) * TH / 2 - h * TU]
+  const diamond = (sx, sy) => { ctx.beginPath(); ctx.moveTo(sx, sy - TH / 2); ctx.lineTo(sx + TW / 2, sy); ctx.lineTo(sx, sy + TH / 2); ctx.lineTo(sx - TW / 2, sy); ctx.closePath() }
+  function drawObject(kind, sx, sy, alpha = 1) {
+    ctx.save(); ctx.globalAlpha = alpha
+    ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(sx, sy + 2, TW * .22, TH * .22, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.lineWidth = 1.5; ctx.lineJoin = 'round'
+    const k = TW / 44
+    if (kind === 'tree' || kind === 'pine') {
+      ctx.fillStyle = '#6b4a2b'; ctx.strokeStyle = '#3d2915'; ctx.beginPath(); ctx.rect(sx - 3 * k, sy - 16 * k, 6 * k, 18 * k); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#4f9a55'; ctx.strokeStyle = '#2f6b38'
+      ctx.beginPath(); ctx.arc(sx, sy - 24 * k, 15 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#63b06a'; ctx.beginPath(); ctx.arc(sx - 3 * k, sy - 34 * k, 10 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    } else if (kind === 'rock') {
+      ctx.fillStyle = '#8b929f'; ctx.strokeStyle = '#4b515c'; ctx.beginPath(); ctx.moveTo(sx - 12 * k, sy); ctx.lineTo(sx - 8 * k, sy - 11 * k); ctx.lineTo(sx + 3 * k, sy - 14 * k); ctx.lineTo(sx + 12 * k, sy - 5 * k); ctx.lineTo(sx + 9 * k, sy + 2 * k); ctx.closePath(); ctx.fill(); ctx.stroke()
+    } else if (kind === 'bush') {
+      ctx.fillStyle = '#5aa860'; ctx.strokeStyle = '#2f6b38'; ctx.beginPath(); ctx.arc(sx - 6 * k, sy - 6 * k, 8 * k, 0, Math.PI * 2); ctx.arc(sx + 5 * k, sy - 7 * k, 9 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    } else if (kind === 'sign') {
+      ctx.fillStyle = '#8a6a45'; ctx.strokeStyle = '#3d2915'; ctx.beginPath(); ctx.rect(sx - 1.5 * k, sy - 20 * k, 3 * k, 22 * k); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#c9b27f'; ctx.beginPath(); ctx.rect(sx - 10 * k, sy - 26 * k, 20 * k, 10 * k); ctx.fill(); ctx.stroke()
+    } else if (kind === 'lamp') {
+      ctx.fillStyle = '#4b515c'; ctx.strokeStyle = '#23272f'; ctx.beginPath(); ctx.rect(sx - 1.5 * k, sy - 28 * k, 3 * k, 30 * k); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#ffd97a'; ctx.beginPath(); ctx.arc(sx, sy - 30 * k, 4 * k, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    }
+    ctx.restore()
+  }
+  function draw() {
+    const r = view.getBoundingClientRect(); const w = r.width, h = r.height
+    const g = ctx.createLinearGradient(0, 0, 0, h); g.addColorStop(0, '#0f1115'); g.addColorStop(.55, '#151920'); g.addColorStop(1, '#0f1115')
+    ctx.fillStyle = g; ctx.fillRect(0, 0, w, h)
+    // faint working grid on the ground plane, outside the level too
+    ctx.strokeStyle = 'rgba(255,255,255,.035)'; ctx.lineWidth = 1
+    for (let i = -6; i <= W + 6; i++) { const [a, b] = cell(i, -6), [c, d] = cell(i, H + 6); ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke() }
+    for (let i = -6; i <= H + 6; i++) { const [a, b] = cell(-6, i), [c, d] = cell(W + 6, i); ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke() }
+
+    const hovered = S.hover
+    for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+      const real = heights[z][x]; const cut = real > S.slice.hi; const below = real < S.slice.lo
+      const hgt = cut ? S.slice.hi : real; const [sx, sy] = cell(x, z, hgt); const base = hgt * TU + 5
+      const path = isPath(x, z)
+      ctx.globalAlpha = below ? .22 : 1
+      // walls (dirt) then top (grass or path), paper-mario flat shading with a 1px darker edge
+      ctx.fillStyle = '#5c4630'; ctx.beginPath(); ctx.moveTo(sx - TW / 2, sy); ctx.lineTo(sx, sy + TH / 2); ctx.lineTo(sx, sy + TH / 2 + base); ctx.lineTo(sx - TW / 2, sy + base); ctx.closePath(); ctx.fill()
+      ctx.fillStyle = '#4a3826'; ctx.beginPath(); ctx.moveTo(sx + TW / 2, sy); ctx.lineTo(sx, sy + TH / 2); ctx.lineTo(sx, sy + TH / 2 + base); ctx.lineTo(sx + TW / 2, sy + base); ctx.closePath(); ctx.fill()
+      const lum = 30 + hgt * 4
+      ctx.fillStyle = path ? `hsl(36 34% ${lum + 22}%)` : `hsl(${108 + hgt * 4} 32% ${lum}%)`
+      diamond(sx, sy); ctx.fill(); ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.lineWidth = 1; ctx.stroke()
+      if (cut) { // the slicer's cut face: a hatched, cooler top so it reads as "there is more above"
+        ctx.save(); diamond(sx, sy); ctx.clip(); ctx.fillStyle = 'rgba(120,130,150,.45)'; ctx.fill()
+        ctx.strokeStyle = 'rgba(232,234,240,.35)'; ctx.lineWidth = 1
+        for (let i = -TW; i < TW; i += 6) { ctx.beginPath(); ctx.moveTo(sx + i, sy - TH); ctx.lineTo(sx + i + TH * 2, sy + TH); ctx.stroke() }
+        ctx.restore()
+      }
+      ctx.globalAlpha = 1
+      if (hovered && hovered[0] === x && hovered[1] === z && S.tool !== 'level') { ctx.strokeStyle = 'rgba(232,234,240,.55)'; ctx.lineWidth = 1.5; diamond(sx, sy); ctx.stroke() }
+      if (!cut && !below) objects.filter((o) => o[1] === x && o[2] === z).forEach((o) => drawObject(o[0], sx, sy))
+      if (hovered && hovered[0] === x && hovered[1] === z && S.tool === 'objects' && S.objects.mode === 'place') drawObject(S.objects.kind, sx, sy, .55)
+    }
+    // selection overlay: fill the tops, outline only the boundary edges
+    if (S.sel.size) {
+      ctx.save(); ctx.fillStyle = 'rgba(233,162,59,.34)'
+      const vis = (x, z) => Math.min(heights[z][x], S.slice.hi)
+      for (const k of S.sel) { const [x, z] = k.split(',').map(Number); const [sx, sy] = cell(x, z, vis(x, z)); diamond(sx, sy); ctx.fill() }
+      ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 2; ctx.lineJoin = 'round'
+      for (const k of S.sel) {
+        const [x, z] = k.split(',').map(Number); const [sx, sy] = cell(x, z, vis(x, z))
+        const N = [sx, sy - TH / 2], E = [sx + TW / 2, sy], Sp = [sx, sy + TH / 2], Wp = [sx - TW / 2, sy]
+        const edge = (a, b, nx, nz) => { if (!S.sel.has(key(nx, nz))) { ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke() } }
+        edge(N, E, x, z - 1); edge(E, Sp, x + 1, z); edge(Sp, Wp, x, z + 1); edge(Wp, N, x - 1, z)
+      }
+      if (S.tool === 'select' && S.select.verb === 'move') {
+        const b = selBounds(); const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2; const [gx, gy] = cell(cx, cz, b.h1)
+        ctx.fillStyle = '#e9a23b'; ctx.strokeStyle = '#1a1206'; ctx.lineWidth = 1
+        ctx.beginPath(); ctx.arc(gx, gy, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+        ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 2
+        ;[[TW / 2, TH / 2], [-TW / 2, TH / 2], [TW / 2, -TH / 2], [-TW / 2, -TH / 2]].forEach(([dx, dy]) => { ctx.beginPath(); ctx.moveTo(gx + dx * .35, gy + dy * .35); ctx.lineTo(gx + dx * .9, gy + dy * .9); ctx.stroke(); ctx.beginPath(); ctx.arc(gx + dx * .9, gy + dy * .9, 2.5, 0, Math.PI * 2); ctx.fillStyle = '#e9a23b'; ctx.fill() })
+      }
+      ctx.restore()
+    }
+    // tool cursors
+    if (hovered) {
+      const [x, z] = hovered; const [sx, sy] = cell(x, z, heights[z][x])
+      ctx.save(); ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3])
+      if (S.tool === 'terrain') { const rr = S.terrain.size / 2 + .5; ctx.beginPath(); ctx.ellipse(sx, sy, rr * TW / 2 * 1.1, rr * TH / 2 * 1.1, 0, 0, Math.PI * 2); ctx.stroke() }
+      if (S.tool === 'buildings') { ctx.setLineDash([]); ctx.fillStyle = 'rgba(233,162,59,.25)'; for (let dz = 0; dz < 2; dz++) for (let dx = 0; dx < 3; dx++) { const [a, b] = cell(x + dx, z + dz, heights[z][x]); diamond(a, b); ctx.fill(); ctx.stroke() } }
+      if (S.tool === 'fences') { ctx.setLineDash([]); ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(sx - TW / 2, sy); ctx.lineTo(sx, sy - TH / 2); ctx.stroke(); ctx.fillStyle = '#e9a23b'; ;[[sx - TW / 2, sy], [sx, sy - TH / 2]].forEach(([a, b]) => { ctx.beginPath(); ctx.arc(a, b, 3, 0, Math.PI * 2); ctx.fill() }) }
+      if (S.tool === 'select' && S.select.shape === 'brush') { ctx.beginPath(); ctx.ellipse(sx, sy, TW * .9, TH * .9, 0, 0, Math.PI * 2); ctx.stroke() }
+      ctx.restore()
+    }
+  }
+  function pick(ev) {
+    const r = cv.getBoundingClientRect(); const mx = ev.clientX - r.left, my = ev.clientY - r.top
+    // walk from the tallest candidate down so raised columns pick their own top
+    for (let h = 4; h >= 0; h--) {
+      const a = (mx - OX) / (TW / 2), b = (my + h * TU - OY) / (TH / 2)
+      const x = Math.floor((a + b) / 2), z = Math.floor((b - a) / 2)
+      if (x >= 0 && z >= 0 && x < W && z < H && heights[z][x] === h) return [x, z]
+    }
+    return null
+  }
+  cv.addEventListener('mousemove', (ev) => { const p = pick(ev); const same = (p && S.hover && p[0] === S.hover[0] && p[1] === S.hover[1]) || (!p && !S.hover); S.hover = p; if (p) $('coord').textContent = `x ${p[0]} · z ${p[1]} · h ${heights[p[1]][p[0]]}`; if (!same) draw() })
+  cv.addEventListener('mouseleave', () => { S.hover = null; draw() })
+  cv.addEventListener('click', (ev) => {
+    const p = pick(ev); if (!p) return; const [x, z] = p
+    if (S.tool === 'select') {
+      const k = key(x, z); const combine = ev.shiftKey ? 'add' : ev.altKey ? 'subtract' : S.select.combine
+      if (combine === 'replace') { S.sel.clear(); S.sel.add(k) } else if (combine === 'add') S.sel.add(k); else S.sel.delete(k)
+      if (S.select.shape === 'brush') neighbors(x, z).forEach(([a, b]) => combine === 'subtract' ? S.sel.delete(key(a, b)) : S.sel.add(key(a, b)))
+      renderInsp()
+    } else if (S.tool === 'terrain' && S.terrain.mode === 'sculpt') {
+      const d = S.terrain.verb === 'raise' ? 1 : S.terrain.verb === 'lower' ? -1 : 0
+      const rr = S.terrain.size / 2 + .5
+      for (let dz = -3; dz <= 3; dz++) for (let dx = -3; dx <= 3; dx++) { const a = x + dx, b = z + dz; if (a < 0 || b < 0 || a >= W || b >= H) continue; if (Math.hypot(dx, dz) <= rr - .5) heights[b][a] = Math.max(0, Math.min(4, heights[b][a] + d)) }
+    } else if (S.tool === 'objects' && S.objects.mode === 'place') {
+      objects.push([S.objects.kind, x, z]); S.tool = 'select'; S.sel = new Set([key(x, z)]); renderAll(); return
+    }
+    draw()
+  })
+  // tooltips: label + key, on hover or focus, for every icon-only control
+  const tip = $('tip'); let tipTimer = 0
+  const showTip = (el) => {
+    tip.innerHTML = `<span>${el.dataset.tip}</span>${el.dataset.key ? kbd(el.dataset.key) : ''}`
+    const r = el.getBoundingClientRect(); const tw = tip.offsetWidth
+    let x = r.left + r.width / 2 - tw / 2; x = Math.max(6, Math.min(window.innerWidth - tw - 6, x))
+    const below = r.bottom + 8 + tip.offsetHeight < window.innerHeight
+    tip.style.left = x + 'px'; tip.style.top = (below ? r.bottom + 8 : r.top - tip.offsetHeight - 8) + 'px'
+    tip.classList.add('show')
+  }
+  const hideTip = () => { clearTimeout(tipTimer); tip.classList.remove('show') }
+  document.addEventListener('mouseover', (e) => { const el = e.target.closest('[data-tip]'); if (!el) return; clearTimeout(tipTimer); tipTimer = setTimeout(() => showTip(el), 220) })
+  document.addEventListener('mouseout', (e) => { if (e.target.closest('[data-tip]')) hideTip() })
+  document.addEventListener('focusin', (e) => { const el = e.target.closest('[data-tip]'); if (el) showTip(el) })
+  document.addEventListener('focusout', hideTip)
+  document.addEventListener('mousedown', hideTip)
+
+  // layer view: a slicer-style range on the right edge of the viewport
+  const slicer = $('slicer')
+  function renderSlicer() {
+    const H = slicer.clientHeight; const y = (l) => H - (l / MAXL) * H
+    const narrow = S.slice.lo > 0 || S.slice.hi < MAXL
+    slicer.classList.toggle('narrow', narrow)
+    slicer.innerHTML = `<div class="track"></div><div class="range" style="top:${y(S.slice.hi)}px;height:${y(S.slice.lo) - y(S.slice.hi)}px"></div>`
+      + Array.from({ length: MAXL + 1 }, (_, l) => `<div class="tick" style="top:${y(l)}px"><i>${l}</i></div>`).join('')
+      + `<div class="h" data-h="hi" data-l="${S.slice.hi}" style="top:${y(S.slice.hi)}px"></div><div class="h" data-h="lo" data-l="${S.slice.lo}" style="top:${y(S.slice.lo)}px"></div><div class="cap">LAYERS</div>`
+    $('slicelbl').textContent = S.slice.lo === S.slice.hi ? `layer ${S.slice.lo}` : `layers ${S.slice.lo}–${S.slice.hi}`
+  }
+  slicer.addEventListener('mousedown', (e) => {
+    const h = e.target.closest('.h'); if (!h) return; e.preventDefault()
+    const which = h.dataset.h, both = e.altKey, start = { ...S.slice }, r = slicer.getBoundingClientRect()
+    const toLayer = (cy) => Math.max(0, Math.min(MAXL, Math.round((r.bottom - cy) / r.height * MAXL)))
+    const startL = toLayer(e.clientY)
+    const move = (ev) => {
+      const l = toLayer(ev.clientY)
+      if (both) { const d = l - startL; const span = start.hi - start.lo; const lo = Math.max(0, Math.min(MAXL - span, start.lo + d)); S.slice = { lo, hi: lo + span } }
+      else if (which === 'hi') S.slice.hi = Math.max(S.slice.lo, l); else S.slice.lo = Math.min(S.slice.hi, l)
+      renderSlicer(); draw()
+    }
+    const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up) }
+    window.addEventListener('mousemove', move); window.addEventListener('mouseup', up)
+  })
+  slicer.addEventListener('dblclick', () => { S.slice = { lo: 0, hi: MAXL }; renderSlicer(); draw() })
+  window.addEventListener('resize', () => { layout(); renderSlicer(); draw() })
+  layout(); renderAll(); renderSlicer()
+})()
+</script>
