@@ -8,6 +8,9 @@ import { UiProvider } from '@map-editor/ui'
 import App from './editor/App'
 import { loadAutosave } from './editor/autosave'
 import { features } from './features'
+// The vocabulary's stylesheet — Mantine's base plus the frame — then the
+// app's own remainder, which only paints what the vocabulary does not.
+import '@map-editor/ui/styles.css'
 import './editor/styles.css'
 
 const root = document.getElementById('root')

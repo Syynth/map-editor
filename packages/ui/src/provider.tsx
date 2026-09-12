@@ -6,13 +6,12 @@
  * same palette while they are being retired.
  */
 
-// Mantine's base stylesheet is NOT imported yet. It has to be imported from
-// this package (#12: only `ui` depends on Mantine — the app cannot resolve
-// it, by design), but a side-effect `.css` import here has no module shape
-// for the consumers that compile this file under their own tsconfig, and
-// there are no project references until #46 lands. Until then the provider
-// supplies the theme and the CSS variables; Mantine-backed primitives follow
-// the moment #46 merges.
+// Mantine's base stylesheet is not imported from this module. It is the first
+// line of `styles.css` next door, which an app loads as
+// `@map-editor/ui/styles.css` — a CSS `@import` resolved from this package's
+// own directory, which is the only place `@mantine/core` resolves (#12). A
+// side-effect `.css` import from a `.tsx` would instead be bundled away by
+// tsup into a file nothing loads.
 
 import { MantineProvider } from '@mantine/core'
 import type { ReactNode } from 'react'
