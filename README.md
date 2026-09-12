@@ -31,8 +31,9 @@ headless browser because the placeholder generator draws with a 2D canvas and
 the repo has ruled against giving Node one. Run it whenever the sample map's
 materials or texel density, or a sprite's footprint, change — two tests
 (`tests/baked-fixtures.test.ts`, `packages/fixtures/src/baked.test.ts`) fail
-until you do. A headless consumer reads the PNGs with a pure-JS decoder and
-hands the pixels to `RuntimeScene` / `exportGltf` as `RgbaImage`s; the runtime
+until you do. The bake exists for a headless consumer that does not exist
+yet (#48): once built, it would read the PNGs with a pure-JS decoder and hand
+the pixels to `RuntimeScene` / `exportGltf` as `RgbaImage`s, since the runtime
 itself never touches a canvas.
 
 ## What works

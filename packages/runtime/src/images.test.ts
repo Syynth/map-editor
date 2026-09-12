@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import * as THREE from 'three'
-import type { GLTFWriter } from 'three/examples/jsm/exporters/GLTFExporter.js'
+import { GLTFExporter, type GLTFWriter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
 import type { RgbaImage, SpriteAsset } from '@map-editor/document'
 import { rgbaTexture } from './billboard'
@@ -169,5 +169,35 @@ describe('embedPngImages', () => {
     embedPngImages(() => Promise.resolve(new Uint8Array(4)))(writer)
     expect(() => internals.processImage({ src: 'x' }, THREE.RGBAFormat, false)).toThrow(/DataTexture/)
     expect(() => internals.processImage(gradient(1, 1), THREE.RedFormat, false)).toThrow(/RGBAFormat/)
+  })
+})
+
+describe('WriterInternals', () => {
+  it("matches a real GLTFWriter's shape at the point a plugin registers", () => {
+    // The cast to `WriterInternals` is unchecked (see the doc comment on the
+    // interface), so nothing here is compile-checked against three's actual
+    // writer. This pins the real shape down at runtime instead. `parse` runs
+    // every plugin factory synchronously, before `writeAsync`, so the writer
+    // can be captured with no `FileReader` shim and without waiting for (or
+    // needing) export to finish — it would reject for lack of one, and
+    // three's own `.catch(onError)` swallows that.
+    let captured: WriterInternals | undefined
+    const exporter = new GLTFExporter()
+    exporter.register((writer) => {
+      captured = writer as unknown as WriterInternals
+      return {}
+    })
+    exporter.parse(
+      new THREE.Scene(),
+      () => {},
+      () => {},
+      { binary: true },
+    )
+
+    expect(typeof captured?.processImage).toBe('function')
+    expect(Array.isArray(captured?.pending)).toBe(true)
+    expect(typeof captured?.byteOffset).toBe('number')
+    expect(typeof captured?.processBuffer).toBe('function')
+    expect(typeof captured?.json).toBe('object')
   })
 })

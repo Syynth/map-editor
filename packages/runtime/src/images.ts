@@ -99,11 +99,17 @@ interface BufferViewDef {
  * The slice of `GLTFWriter` the override below touches. three's typings stop
  * at the plugin hooks, and no hook runs *instead of* `processImage` — every
  * hook runs after the writer has already drawn the image onto its own canvas
- * (GLTFExporter.js, `processTexture` → `processImage`, three 0.186.0). The
- * plugin factory does receive the writer itself, though, so replacing the
+ * (GLTFExporter.js, `processTextureAsync` → `processImage`, three 0.186.0).
+ * The plugin factory does receive the writer itself, though, so replacing the
  * method on the instance is the one seam that exists. These five members are
- * what three's own `processBufferViewImage` uses to land an image, named here
- * so a three upgrade that renames one fails to compile rather than at export.
+ * what three's own `processBufferViewImage` uses to land an image — named
+ * here so the override reads like it targets a typed API, but the writer
+ * only reaches this file as `writer as unknown as WriterInternals`, an
+ * unchecked cast. A three upgrade that renames one of these does not fail to
+ * compile: it fails as a `TypeError` thrown mid-export, inside the promise
+ * `writeAsync` awaits, which three's own `.catch(onError)` swallows into
+ * whatever `onError` does with it. The real-writer test in `images.test.ts`
+ * exists to catch that drift some other way.
  */
 export interface WriterInternals {
   json: { images?: ImageDef[]; bufferViews?: BufferViewDef[] }
@@ -122,9 +128,14 @@ export interface WriterInternals {
  * rather than in `exportGltf` so it can be exercised against a stand-in writer
  * without mocking the exporter wholesale.
  *
- * `flipY` is honoured the way three honours it: a texture uploaded with
- * `flipY` has its rows reversed on the way into the file, because glTF puts
- * `v = 0` at the top of the image and three's UVs put it at the bottom.
+ * `flipY` is NOT honoured the way three honours it for a `DataTexture`: three's
+ * own `processImage` draws one with `ctx.putImageData` (GLTFExporter.js:1496),
+ * which ignores the `ctx.translate` / `ctx.scale` flip it sets up for `flipY`
+ * just above (1465–1467) — three never actually flips a `DataTexture`. The
+ * flip here instead preserves the orientation the pre-#47 `CanvasTexture` /
+ * `drawImage` path produced, which is what the mesher's UVs are still built
+ * against. Do not "simplify" this to match three's (non-)behavior — the two
+ * are unrelated; this one exists for the mesher, not for parity with three.
  */
 export function embedPngImages(encodePng: PngEncoder): (writer: GLTFWriter) => GLTFExporterPlugin {
   return (writer) => {
