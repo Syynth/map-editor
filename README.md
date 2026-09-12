@@ -81,8 +81,9 @@ packages/fixtures/  generated sample documents
 apps/editor/        React panels, tools and the app shell
 ```
 
-The import direction `document <- geometry <- runtime <- viewport <- editor` is
-enforced by two mechanisms rather than by a lint script. pnpm's strict
+The import direction `registry <- document <- geometry <- runtime <- viewport <- editor-host`
+is enforced by two mechanisms rather than by a lint script. (`editor` and any future
+browser/mobile companion apps sit outside this ladder; they may depend on any rung.) pnpm's strict
 `node_modules` means a package can only import what its own `package.json`
 declares — with one hole: a name the ROOT `package.json` declares hoists into
 the root `node_modules`, so a package that never declared it can still resolve
