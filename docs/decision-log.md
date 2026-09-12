@@ -190,7 +190,7 @@ Each entry:
 - **PROJECT:** map-editor
 - **SYSTEM:** editor-ui
 - **SCOPE:** moderate
-- **WHAT:** Every tool button (rail) and verb button (context bar, top-bar actions) is icon-only by default. The button's label and its keyboard shortcut are shown in a tooltip on hover or focus, never inline. Mode switches and library chips (materials, catalog entries, styles) keep their text, since those are names rather than actions. A preference ("Icons" / "Icons + labels") turns inline labels on for those who want them; the default stays icon-only.
+- **WHAT:** Every button in the rail and the bars is icon-only by default — tools, verbs, top-bar actions, mode switches, shape and combine rules, and library chips (materials, catalog entries, styles). The label and the keyboard shortcut are shown in a tooltip on hover or focus, never inline. Only readouts (a size) and menus that display a chosen value (a keymap preset) keep words. A preference ("Icons only" / "Icons + labels") turns inline labels on for those who want them; the default stays icon-only. (Amended the same day: the first draft exempted modes and chips; the owner's instruction was all of them.)
 - **WHY:** Icon-only bars keep the context bar dense enough that a tool's whole verb set fits without scrolling, matching the convention of the art apps the artist already uses; the tooltip carries the discoverability (name + key) without spending bar width on it.
 
 ## UI overhaul first; selection and viewport plumbing follow it

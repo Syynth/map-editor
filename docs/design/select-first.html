@@ -73,6 +73,12 @@
   .verb.on { background: var(--accent-dim); color: var(--accent); }
   .verb.on .kbd { color: var(--accent); }
   .verb { width: 30px; padding: 0; justify-content: center; }
+  .seg button.ic { width: 28px; padding: 0; justify-content: center; }
+  .chip.ic { width: 30px; padding: 0; justify-content: center; border-radius: var(--r-md); }
+  .chip.ic .sw { width: 14px; height: 14px; border-radius: 3px; }
+  body.labels .seg button.ic, body.labels .chip.ic { width: auto; padding: 0 9px; }
+  .seg button .vl, .chip .vl { display: none; }
+  body.labels .seg button .vl, body.labels .chip .vl { display: inline; }
   .verb .vl, .btn .vl { display: none; }
   body.labels .verb { width: auto; padding: 0 8px; }
   body.labels .verb .vl, body.labels .btn .vl { display: inline; }
@@ -222,7 +228,7 @@
     <dt>Camera is not a tool</dt><dd>Orbit, pan and zoom are gestures in every tool. Reset view and Sweep sit in the top bar with the other level-wide actions.</dd>
     <dt>Library, not verbs</dt><dd>New terrain types, object kinds and styles are entries in the level's library. Each subject's inspector shows its slice of it (Palette, Catalog) with an add row; the bar's chips are a view of the same list, so a new material is paintable the moment it exists. Level-wide import lives behind the gear.</dd>
     <dt>Layer view</dt><dd>The slider on the right edge of the viewport is a slicer's layer range: two handles, upper and lower. Columns above the top are cut off, columns below the bottom ghost out, objects outside the range hide. <span class="kbd">⌥ drag</span> moves both handles to scrub one layer. It stays dim until narrowed.</dd>
-    <dt>Icons by default</dt><dd>Tool and verb buttons are icon-only; the label and the key live in the tooltip. Modes and library chips keep their words, because those are names, not actions. A preference under the Level gear turns labels on for anyone who wants them.</dd>
+    <dt>Icons by default</dt><dd>Everything in the rail and the bars is icon-only — tools, verbs, modes, shapes, combine rules, library chips; the label and the key live in the tooltip. Only readouts (24 × 18) and menus that display a value (Shortcuts: Default) keep words. A preference under the Level gear turns labels on for anyone who wants them.</dd>
     <dt>Keys are a preset</dt><dd>Every binding is data in the keymap. The Level bar exposes the preset (<span class="kbd">Default</span>, Blender-like, Aseprite-like) so conventions from other apps can be swapped in without touching the tools.</dd>
   </dl>
 </section>
@@ -282,6 +288,48 @@
     rotate: '<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>',
     scale: '<path d="M3 21 21 3M21 3h-7M21 3v7M3 21h7M3 21v-7"/>',
   }
+  const MI = {
+    auto: '<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>',
+    voxels: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+    objects: '<path d="M12 4l4 6h-2.5l3.5 5H7l3.5-5H8z"/><path d="M12 15v5"/>',
+    marquee: '<rect x="4" y="4" width="16" height="16" rx="1" stroke-dasharray="3 3"/>',
+    lasso: '<path d="M12 4c5 0 8 2.5 8 5.5S17 15 12 15 4 12.5 4 9.5 7 4 12 4z"/><path d="M7 14c-1 2-1 4 1 6"/>',
+    brush: '<circle cx="12" cy="12" r="6" stroke-dasharray="3 3"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>',
+    replace: '<rect x="5" y="5" width="14" height="14" rx="1"/>',
+    add: '<rect x="4" y="4" width="11" height="11" rx="1"/><path d="M17 13v8M13 17h8"/>',
+    subtract: '<rect x="4" y="4" width="11" height="11" rx="1"/><path d="M13 17h8"/>',
+    sculpt: '<path d="M3 18 9 7l4 6 2.5-3L20 18Z"/>',
+    paint: '<path d="M4 4h12v5H4z"/><path d="M16 6h3v5h-7v3"/><rect x="10" y="14" width="4" height="7"/>',
+    line: '<path d="M4 20 20 4"/><circle cx="4" cy="20" r="1.5" fill="currentColor"/><circle cx="20" cy="4" r="1.5" fill="currentColor"/>',
+    fill: '<path d="M6 11 13 4l7 7-7 7z"/><path d="M4 21c0-2 2-4 2-4s2 2 2 4a2 2 0 0 1-4 0z" fill="currentColor"/>',
+    place: '<path d="M12 21s-6-6-6-11a6 6 0 0 1 12 0c0 5-6 11-6 11z"/><path d="M12 7v6M9 10h6"/>',
+    arrange: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h5.5V14"/>',
+    left: '<path d="M15 5 7 12l8 7z" fill="currentColor"/>',
+    right: '<path d="M9 5l8 7-8 7z" fill="currentColor"/>',
+    grid: '<path d="M4 4h16v16H4zM4 12h16M12 4v16"/>',
+    half: '<path d="M4 4h16v16H4zM4 12h16M12 4v16M4 8h16M4 16h16M8 4v16M16 4v16" opacity=".9"/>',
+    free: '<circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M5 5l3 3M19 5l-3 3M5 19l3-3M19 19l-3-3" opacity=".6"/>',
+    footprint: '<rect x="4" y="7" width="16" height="12" rx="1" stroke-dasharray="3 3"/>',
+    walls: '<path d="M3 6h18v12H3zM3 10h18M3 14h18M9 6v4M15 10v4M9 14v4"/>',
+    roof: '<path d="M3 15 12 5l9 10"/><path d="M6 15v4h12v-4"/>',
+    draw: '<path d="M4 20l4-1L19 8l-3-3L5 16z"/><path d="M14 7l3 3"/>',
+    gate: '<path d="M4 20V8M20 20V8M4 12h16M4 17h16M8 8v12M16 8v12M4 8l4-3M20 8l-4-3"/>',
+    tree: '<path d="M12 3l5 7h-3l4 6H6l4-6H7z"/><path d="M12 16v5"/>',
+    pine: '<path d="M12 3l4 5h-2l3 4h-2l3 4H6l3-4H7l3-4H8z"/><path d="M12 16v5"/>',
+    rock: '<path d="M4 17l3-8 5-3 6 3 2 8z"/>',
+    bush: '<path d="M5 17a4 4 0 0 1 3-7 5 5 0 0 1 9 1 3.5 3.5 0 0 1 2 6z"/>',
+    sign: '<path d="M12 21V8"/><path d="M5 4h12l3 3-3 3H5z"/>',
+    lamp: '<path d="M12 21V9"/><path d="M9 9h6l-1-5h-4z"/><circle cx="12" cy="4" r="1" fill="currentColor"/><path d="M8 21h8"/>',
+    cottage: '<path d="M3 11 12 4l9 7v9H3z"/><path d="M9 20v-6h6v6"/>',
+    shop: '<path d="M3 9l2-5h14l2 5"/><path d="M3 9c0 2 2 3 3 3s3-1 3-3c0 2 2 3 3 3s3-1 3-3c0 2 2 3 3 3s3-1 3-3"/><path d="M5 12v8h14v-8M10 20v-5h4v5"/>',
+    inn: '<path d="M3 11 12 4l9 7v9H3z"/><path d="M7 20v-5h4v5M13 15h4v3h-4z"/><path d="M12 4V1h4l-4 2"/>',
+    shrine: '<path d="M3 6h18M5 9h14M7 9v11M17 9v11M7 15h10"/>',
+    picket: '<path d="M5 8v12M12 8v12M19 8v12M2 12h20M2 16h20M3.5 8 5 5l1.5 3M10.5 8 12 5l1.5 3M17.5 8 19 5l1.5 3"/>',
+    rail: '<path d="M5 6v14M19 6v14M5 9h14M5 15h14"/>',
+    stone: '<path d="M3 20h18M3 20v-4h8v4M11 20v-4h10v4M6 16v-4h9v4M15 16v-4h6v4M3 12V8h6v4M9 12V8h8v4"/>',
+    hedge: '<path d="M4 20V11a3 3 0 0 1 5-2 3 3 0 0 1 6 0 3 3 0 0 1 5 2v9z"/><path d="M4 20h16"/>',
+  }
+  const msvg = (id) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${MI[id]}</svg>`
   const vsvg = (id) => `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${VI[id]}</svg>`
   const svg = (d, s = 18) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24">${d}</svg>`
   const kbd = (k) => `<span class="kbd">${k}</span>`
@@ -297,12 +345,13 @@
   const PALETTE = { grass: '#4f8a46', dirt: '#8a6a45', path: '#b08f5e', stone: '#7d8494', sand: '#c9b27f', water: '#3f7ea6' }
 
   // ---------- helpers for markup ----------
-  const seg = (path, opts) => `<span class="seg">${opts.map(([v, label, k]) =>
-    `<button data-set="${path}" data-val="${v}" class="${get(path) === v ? 'on' : ''}">${label}${k ? kbd(k) : ''}</button>`).join('')}</span>`
+  const seg = (path, opts) => `<span class="seg">${opts.map(([v, label, k]) => MI[v]
+    ? `<button data-set="${path}" data-val="${v}" class="ic ${get(path) === v ? 'on' : ''}" data-tip="${label}" data-key="${k ?? ''}">${msvg(v)}<span class="vl">${label}</span></button>`
+    : `<button data-set="${path}" data-val="${v}" class="${get(path) === v ? 'on' : ''}">${label}${k ? kbd(k) : ''}</button>`).join('')}</span>`
   const verbs = (path, opts) => opts.map(([v, label, k]) =>
     `<button class="verb ${get(path) === v ? 'on' : ''}" data-set="${path}" data-val="${v}" data-tip="${label}" data-key="${k}">${vsvg(v)}<span class="vl">${label}</span></button>`).join('')
   const chips = (path, opts) => opts.map(([v, label, sw]) =>
-    `<button class="chip ${get(path) === v ? 'on' : ''}" data-set="${path}" data-val="${v}">${sw ? `<i class="sw" style="background:${sw}"></i>` : ''}${label}</button>`).join('')
+    `<button class="chip ic ${get(path) === v ? 'on' : ''}" data-set="${path}" data-val="${v}" data-tip="${label}" data-key="">${sw ? `<i class="sw" style="background:${sw}"></i>` : msvg(v)}<span class="vl">${label}</span></button>`).join('')
   const slider = (path, val, max, unit = '') => `<span class="field"><span class="slider" data-slide="${path}" data-max="${max}"><i style="width:${val / max * 100}%"></i><b style="left:${val / max * 100}%"></b></span><span class="val">${val}${unit}</span></span>`
   const lbl = (t) => `<span class="lbl">${t}</span>`
   const get = (path) => path.split('.').reduce((o, k) => o[k], S)
@@ -311,9 +360,9 @@
   // ---------- context bar per tool ----------
   const BAR = {
     select: () => [
-      seg('select.target', [['auto', 'Auto'], ['voxels', 'Voxels'], ['objects', 'Objects']]),
-      seg('select.shape', [['marquee', 'Marquee', 'M'], ['lasso', 'Lasso', 'L'], ['brush', 'Brush', 'B']]),
-      seg('select.combine', [['replace', 'Replace'], ['add', 'Add', '⇧'], ['subtract', 'Subtract', '⌥']]),
+      seg('select.target', [['auto', 'Target: whatever is under the cursor'], ['voxels', 'Target: voxels only'], ['objects', 'Target: objects only']]),
+      seg('select.shape', [['marquee', 'Marquee select', 'M'], ['lasso', 'Lasso select', 'L'], ['brush', 'Brush select', 'B']]),
+      seg('select.combine', [['replace', 'Replace selection'], ['add', 'Add to selection', '⇧'], ['subtract', 'Subtract from selection', '⌥']]),
       '<span class="vsep"></span>',
       verbs('select.verb', [['move', 'Move', 'G'], ['expand', 'Expand', ']'], ['contract', 'Contract', '['], ['invert', 'Invert', '⌘I']]),
       `<button class="verb" data-act="clear" data-tip="Clear selection" data-key="Esc">${vsvg('clear')}<span class="vl">Clear</span></button>`,
@@ -325,7 +374,7 @@
         ? [verbs('terrain.verb', [['raise', 'Raise', 'Q'], ['lower', 'Lower', 'W'], ['flatten', 'Flatten', 'E'], ['smooth', 'Smooth', 'R']])]
         : [chips('terrain.paint', Object.entries(PALETTE).map(([k, c]) => [k, k[0].toUpperCase() + k.slice(1), c]))]),
       '<span class="vsep"></span>',
-      lbl('Stroke'), seg('terrain.stroke', [['brush', 'Brush'], ['line', 'Line'], ['fill', 'Fill']]),
+      lbl('Stroke'), seg('terrain.stroke', [['brush', 'Brush stroke'], ['line', 'Line stroke'], ['fill', 'Flood fill']]),
       lbl('Size'), slider('terrain.size', S.terrain.size, 8),
       ...(S.terrain.mode === 'sculpt' ? [lbl('Strength'), slider('terrain.strength', S.terrain.strength, 100, '%')] : []),
     ],
@@ -336,8 +385,8 @@
         ? [chips('objects.kind', [['tree', 'Tree'], ['pine', 'Pine'], ['rock', 'Rock'], ['bush', 'Bush'], ['sign', 'Signpost'], ['lamp', 'Lamp']]), `<button class="dd">More… ${kbd('⌘K')}</button>`]
         : [verbs('objects.verb', [['nudge', 'Nudge', 'G'], ['rotate', 'Rotate', 'R'], ['scale', 'Scale', 'S']])]),
       '<span class="vsep"></span>',
-      lbl('Facing'), seg('objects.facing', [['left', '◀'], ['right', '▶']]),
-      lbl('Snap'), seg('objects.snap', [['grid', 'Grid'], ['half', '½'], ['free', 'Free']]),
+      lbl('Facing'), seg('objects.facing', [['left', 'Face left'], ['right', 'Face right']]),
+      lbl('Snap'), seg('objects.snap', [['grid', 'Snap to grid'], ['half', 'Snap to half grid'], ['free', 'Free placement']]),
     ],
     buildings: () => [
       seg('buildings.mode', [['footprint', 'Footprint', '1'], ['walls', 'Walls', '2'], ['roof', 'Roof', '3']]),
@@ -362,7 +411,7 @@
       '<span class="vsep"></span>',
       `<button class="dd" title="Materials, object kinds, building and fence styles this level knows about">Library…</button>`,
       '<span class="vsep"></span>',
-      lbl('Buttons'), seg('level.labels', [['off', 'Icons'], ['on', 'Icons + labels']]),
+      lbl('Buttons'), seg('level.labels', [['off', 'Icons only'], ['on', 'Icons + labels']]),
     ],
   }
 
