@@ -27,7 +27,40 @@
 
   // `vite.config.ts` is listed so the app's own config is typechecked here
   // rather than by the repo root, which no longer compiles any application
-  // code. No `references`, for the reason spelled out in `geometry`'s tsconfig:
-  // a referenced project must be `composite`, and `composite` forbids `noEmit`.
-  "include": ["src", "vite.config.ts"]
+  // code.
+  //
+  // `references` (#46) — one per workspace dependency, same as every
+  // `packages/*` config. The app is not itself referenced back by the root
+  // solution: being referenced requires `composite`, which requires emitting
+  // declarations into the same `dist/` this app's own bundler empties on
+  // every build, and nothing imports an app, so there is no declaration
+  // surface to publish.
+  //
+  // What the references buy here, measured rather than assumed: TypeScript's
+  // project-reference source redirect is applied by the LANGUAGE SERVICE but
+  // not by a batch `tsc -p`. So `pnpm lint` — typescript-eslint drives the
+  // project service — resolves `@map-editor/*` to source and stays green in a
+  // checkout that has never been built, while `pnpm --filter
+  // @map-editor/editor typecheck` resolves the `exports` map's `types`
+  // condition and reports `TS2307: Cannot find module '@map-editor/geometry'`
+  // the moment that package's `dist/` is absent. Both verified by moving a
+  // `dist/` aside. That asymmetry is exactly what is wanted: an editor stays
+  // useful unbuilt, and the gate still typechecks this app against the
+  // declarations the packages really emit, which is what turbo's
+  // `typecheck -> ^build` edge is for. `vite build` is the third leg: it
+  // resolves the `default` condition, so the production bundle is assembled
+  // from `packages/*/dist/*.js` and fails outright if one is missing.
+  "include": ["src", "vite.config.ts"],
+
+  "references": [
+    { "path": "../../packages/document" },
+    { "path": "../../packages/editor-host" },
+    { "path": "../../packages/feature-terrain" },
+    { "path": "../../packages/fixtures" },
+    { "path": "../../packages/geometry" },
+    { "path": "../../packages/registry" },
+    { "path": "../../packages/runtime" },
+    { "path": "../../packages/ui" },
+    { "path": "../../packages/viewport" }
+  ]
 }

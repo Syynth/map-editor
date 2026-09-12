@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromiumArgs, stripGpuFlag, wantsGpu } from './chromium-launch.mjs'
+import { buildWorkspacePackages } from './build-workspace.mjs'
 import { meanLuminance } from './luminance.mjs'
 
 // Thresholds below were read off a real green run against the sample map
@@ -51,6 +52,11 @@ const APP = fileURLToPath(new URL('../apps/editor', import.meta.url))
 const GPU = wantsGpu()
 const OUT = stripGpuFlag()[0] ?? 'shots/tour'
 mkdirSync(OUT, { recursive: true })
+
+// The packages' `dist/` has to exist before the bundle below can be assembled;
+// see scripts/build-workspace.mjs for why, and why it lives there rather than
+// in each of the three scripts that need it.
+buildWorkspacePackages()
 
 console.log('Building...')
 const build = spawnSync('npx', ['vite', 'build'], { cwd: APP, stdio: ['ignore', 'ignore', 'inherit'] })

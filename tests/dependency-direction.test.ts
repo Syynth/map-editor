@@ -269,6 +269,46 @@ function violation(from: string, to: string): string | null {
   }
 }
 
+/**
+ * Every way `exports` fails to name one explicit file, as messages.
+ *
+ * #20's second gap: pnpm's strict node_modules stops an UNDECLARED import,
+ * but says nothing about a declared entry point that is itself a wildcard. A
+ * `"./*"` or `"./src/*"` subpath (or a missing `exports` field, which lets
+ * Node fall back to the package root) reopens the deep import #3 closed, so
+ * every key has to name one explicit file.
+ *
+ * A string-valued `exports` (`"./src/index.ts"`) is Node's shorthand for
+ * `{ ".": "./src/index.ts" }` — one fixed file, with no key for a `*` to vary
+ * against — so it is exactly as explicit as the object form and is accepted
+ * the same way; a literal `*` inside that string still reopens the deep
+ * import, so it is still caught.
+ *
+ * RECURSIVE since #46, which made an entry point a condition object rather
+ * than a string: `development` (source, what Vite and vitest resolve),
+ * `types` (`./dist/*.d.ts`) and `default` (`./dist/*.js`). The previous
+ * implementation inspected string values exactly one level down, so a
+ * wildcard inside a condition object was "not a string" and read as no
+ * violation at all — see the table-driven test below, which fails against it.
+ *
+ * A `*` in a CONDITION name is reported too. No real condition contains one,
+ * so the only thing that reaches that branch is a subpath key nested where a
+ * condition belongs, which is a wildcard by another spelling.
+ */
+function exportsProblems(exports: unknown, at = 'exports'): string[] {
+  if (typeof exports === 'string')
+    return exports.includes('*')
+      ? [`${at} is "${exports}", a wildcard, which lets a consumer reach any file by path instead of the declared entry point`]
+      : []
+  if (typeof exports !== 'object' || exports === null || Array.isArray(exports))
+    return [`${at} is not an entry-point map, so a consumer can reach any file by path`]
+  return Object.entries(exports as Record<string, unknown>).flatMap(([key, value]) =>
+    key.includes('*')
+      ? [`${at}["${key}"] is a wildcard, which lets a consumer reach any file under it by path instead of the declared entry point`]
+      : exportsProblems(value, `${at}["${key}"]`),
+  )
+}
+
 const projects = discover()
 const placed = Object.entries(PLACEMENT)
 
@@ -417,37 +457,35 @@ describe('workspace dependency direction', () => {
   })
 
   it("keeps every package's exports map explicit", () => {
-    // #20's second gap: pnpm's strict node_modules stops an UNDECLARED
-    // import, but says nothing about a declared entry point that is itself a
-    // wildcard. A `"./*"` or `"./src/*"` subpath (or a missing `exports`
-    // field, which lets Node fall back to the package root) reopens the deep
-    // import #3 closed, so every key has to name one explicit file.
-    //
-    // A string-valued `exports` (`"./src/index.ts"`) is Node's shorthand for
-    // `{ ".": "./src/index.ts" }` — one fixed file, with no key for a `*` to
-    // vary against — so it is exactly as explicit as the object form and is
-    // accepted the same way; a literal `*` inside that string still reopens
-    // the deep import, so it is still caught.
     const violations = projects
       .filter((project) => project.dir !== '.')
-      .flatMap((project) => {
-        const { exports } = readPackageJson(project.dir)
-        if (typeof exports === 'string')
-          return exports.includes('*')
-            ? [
-                `${project.dir}/package.json: exports is "${exports}", a wildcard, which lets a consumer reach any file by path instead of the declared entry point`,
-              ]
-            : []
-        if (typeof exports !== 'object' || exports === null || Array.isArray(exports))
-          return [`${project.dir}/package.json: has no "exports" map, so a consumer can reach any file by path`]
-        return Object.entries(exports as Record<string, unknown>)
-          .filter(([key, value]) => key.includes('*') || (typeof value === 'string' && value.includes('*')))
-          .map(
-            ([key]) =>
-              `${project.dir}/package.json: exports["${key}"] is a wildcard, which lets a consumer reach any file under it by path instead of the declared entry point`,
-          )
-      })
+      .flatMap((project) =>
+        exportsProblems(readPackageJson(project.dir).exports).map((problem) => `${project.dir}/package.json: ${problem}`),
+      )
     expect(violations).toEqual([])
+  })
+
+  // Table-driven against `exportsProblems` itself, for the reason the feature
+  // test above gives: no `package.json` on disk contains a wildcard, so the
+  // assertion above passes just as happily against a check that has stopped
+  // looking. These cases are the proof it has not — the fourth and fifth are
+  // the ones the pre-#46 implementation let through.
+  it('still catches a wildcard wherever #46 moved it', () => {
+    expect(exportsProblems(undefined), 'no exports field at all').not.toEqual([])
+    expect(exportsProblems('./src/*.ts'), 'string-valued wildcard').not.toEqual([])
+    expect(exportsProblems({ './*': './src/index.ts' }), 'wildcard subpath key').not.toEqual([])
+
+    // The shape #46 introduced. Every consumer that resolves the
+    // `development` condition — Vite's dev server and vitest — reaches this
+    // one, and the old check saw a non-string value one level down and
+    // reported nothing.
+    const conditions = { development: './src/index.ts', types: './dist/index.d.ts', default: './dist/index.js' }
+    expect(exportsProblems({ '.': { ...conditions, development: './src/*.ts' } }), 'wildcard in development').not.toEqual([])
+    expect(exportsProblems({ '.': { ...conditions, default: './dist/*.js' } }), 'wildcard in default').not.toEqual([])
+
+    // ...and the real shape must still read as clean, or the check above is
+    // just failing everything.
+    expect(exportsProblems({ '.': conditions, './package.json': './package.json' })).toEqual([])
   })
 
   it('has an acyclic workspace graph', () => {

@@ -96,12 +96,101 @@ move rather than to the whole restructure. Order follows the dependency directio
 - [x] Replace the `@core` / `@runtime` / `@editor` path aliases with workspace package
       names. They are declared twice — in `tsconfig.json` and `vite.config.ts` — and drift
       silently.
-- [ ] Per-package `tsconfig.json` with project references; the root config currently
-      covers everything with `noEmit: true`. Half done: every package has its own
-      `tsconfig.json`, but none carries `references`, because a referenced project must
-      be `composite` and `composite` forbids `noEmit`. Taking the references means
-      deciding build emit first — the next box.
-- [ ] Build emit (tsup or unbuild) where a package needs to be consumable.
+- [x] ~~Per-package `tsconfig.json` with project references; the root config currently
+      covers everything with `noEmit: true`.~~ — [#46](https://github.com/Syynth/map-editor/issues/46),
+      implementing [#33](https://github.com/Syynth/map-editor/issues/33). Every `packages/*`
+      config is `composite` and emits; each carries `references` to its workspace
+      dependencies; the root `tsconfig.json` is a solution file referencing all ten, so
+      `tsc -b` builds the graph in one command. See "How a package is built" below.
+- [x] ~~Build emit (tsup or unbuild) where a package needs to be consumable.~~ —
+      [#46](https://github.com/Syynth/map-editor/issues/46): **tsup**, applied uniformly.
+
+### How a package is built (#46)
+
+Two commands per package, one for each half of `dist/`:
+
+```
+tsup --config ../../tsup.config.ts   # dist/*.js  (ESM, sourcemapped)
+tsc  -p tsconfig.json                # dist/*.d.ts (+ .d.ts.map, .tsbuildinfo)
+```
+
+**Why tsc owns the declarations.** `composite: true` is what makes `references` legal at
+all, and `composite` forces `declaration` emit. Letting the bundler generate a second,
+independently-derived set of `.d.ts` next to tsc's would be two sources of truth for the
+same file, so tsup runs with `dts: false` and tsc with `emitDeclarationOnly`.
+
+**Why a bundler owns the JS.** This repo's source uses extensionless relative specifiers
+(`./billboard`), which Node's ESM resolver does not resolve — the same fact that already
+forces `apps/export-cli` to bundle (see its `vite.config.ts`). tsc's emit preserves the
+specifier verbatim, so a tsc-emitted `dist/index.js` would be unloadable by the very
+consumer "built as if publishable" is about.
+
+**Why tsup and not unbuild.** With declarations already owned by tsc, the job left is
+"transpile and bundle ESM, externalising declared dependencies". tsup is a thin wrapper
+over esbuild that does exactly that. unbuild's distinguishing features are mkdist and its
+own `rollup-plugin-dts` declaration pipeline — the second being precisely the duplicated
+source of truth this split exists to avoid. Cost paid: tsup brings `esbuild`, whose
+`postinstall` is declined explicitly in `pnpm-workspace.yaml` (`allowBuilds`), because the
+platform binary arrives as a real optional dependency and the script has nothing to do.
+
+**One config, not ten.** `tsup.config.ts` lives at the repo root and derives each
+package's entry list from that package's own `exports` map, so a new subpath export cannot
+forget to add an entry and no package can drift to a different `format` or `target`. It is
+listed in `turbo.json`'s `globalDependencies` for the same reason
+`scripts/check-bundle-size.mjs` is: it is an input to ten `build` tasks and lives in none
+of their packages. Verified — with the entry removed, editing the file still replays a
+cache hit on all twelve tasks; with it listed, the same edit misses on all twelve.
+
+**Two tsconfigs per package.** `tsconfig.json` is the BUILD config: `composite`, emitting,
+`references` to its dependencies, and excluding `*.test.ts` — a test is not part of the
+published surface, and `fixtures`' own test reaches `../baked/manifest.json`, outside
+`rootDir`. `tsconfig.typecheck.json` is the CHECKING config: `noEmit`, tests included, and
+deliberately **no** `references`, so it resolves `@map-editor/*` through the `exports`
+map's `types` condition and reads the declarations that were really emitted.
+
+### What consumers resolve (#46)
+
+`exports` points at built output, with a `development` condition for source:
+
+```json
+"." : {
+  "development": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "default": "./dist/index.js"
+}
+```
+
+- **Vite's dev server and vitest** resolve `development` and get source, so iteration
+  never requires a build. Vite's default `resolve.conditions` carries the
+  `development|production` token, which is what selects it. Verified: renaming the
+  condition key breaks the whole suite's resolution of that package.
+- **`vite build`** (both apps) resolves `production`, misses, and falls through to
+  `default` — so the editor's production bundle and `apps/export-cli/dist/cli.js` are
+  assembled from `packages/*/dist/*.js`. This is what makes turbo's
+  `build -> ^build` edge load-bearing: with a dependency unbuilt, the app build fails with
+  `Rolldown failed to resolve import "@map-editor/document"`.
+- **`tsc`** resolves `types`. A batch `tsc -p` does *not* apply the project-reference
+  source redirect, so every `typecheck` task reads real `.d.ts` and reports `TS2307` the
+  moment a dependency's `dist/` is missing — `typecheck -> ^build` is load-bearing too.
+  The language service *does* apply the redirect, which is why `pnpm lint`
+  (typescript-eslint drives the project service) and an editor still work in a checkout
+  that has never been built.
+- **`packages/eslint-rules` is the one exception**: its `exports` stays on source. It is
+  tooling, off the ladder, and `eslint.config.js` imports it through Node's type stripping
+  (`erasableSyntaxOnly`) before anything in the repo has been built — an entry point that
+  pointed at `dist/` would make `pnpm lint` depend on a build. It is still `composite` and
+  still emits, so `tsc -b` and the root solution cover it like everything else.
+- **`apps/*` are not referenced by the root solution.** Being referenced requires
+  `composite`, which requires emitting declarations into the same `dist/` each app's own
+  bundler empties — and nothing imports an app, so there is no declaration surface to
+  publish. Their own configs still carry `references`.
+
+**Per-package `test` tasks stay unbuilt (A9 fog, revisited and left as fog).** Now that
+every package builds, a per-package `test` task is *possible*; it is not cheap. The whole
+suite is one root `vitest run` whose 25 s budget (#10) is measured by a `globalSetup`
+teardown across the single process — twelve vitest processes would lose that measurement
+and add twelve startups to a suite that finishes in ~1.3 s. Revisit if a package ever
+needs an environment (`jsdom`, say) the root run does not give it.
 - [x] `apps/export-cli` produces a `.glb` with **no WebGL context** — *built, then cut:
       it needed `@napi-rs/canvas`, a native binary, because both `textures.ts` and three's
       GLTFExporter draw through a 2D canvas; revived by #48.* The texture half was #47:

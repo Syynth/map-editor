@@ -1,6 +1,12 @@
 node_modules/
 dist/
 .turbo/
+
+# `tsc -b` from the repo root (see tsconfig.json's solution `references`, #46)
+# writes one of these for the root project itself, outside any `dist/`. Every
+# package's own is redirected into its `dist/` by `tsBuildInfoFile`, so this
+# pattern is the catch-all for the ones that are not.
+*.tsbuildinfo
 *.local
 .DS_Store
 shots/

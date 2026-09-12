@@ -28,8 +28,16 @@
     "types": ["node"]
   },
 
-  // No `references`, matching every other package: nothing here emits, and
-  // resolution reaches `document`, `fixtures` and `runtime` through their own
-  // `exports` maps.
-  "include": ["src", "vite.config.ts"]
+  // `references` (#46), matching `apps/editor` — see that config for why an
+  // app carries them but is not referenced back by the root solution. This
+  // app's `vite build` still resolves `document`, `fixtures` and `runtime`
+  // through the `exports` map's `default` condition, so `dist/cli.js` really
+  // is assembled from their built output.
+  "include": ["src", "vite.config.ts"],
+
+  "references": [
+    { "path": "../../packages/document" },
+    { "path": "../../packages/fixtures" },
+    { "path": "../../packages/runtime" }
+  ]
 }

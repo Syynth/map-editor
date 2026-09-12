@@ -42,9 +42,13 @@ is fast enough that agents should run it on every iteration.
 
 CI (`.github/workflows/gate.yml`) runs a superset of this on every PR and every push to
 `main`: it also builds `apps/editor` and, since #48 revived it, `apps/export-cli` — the
-two packages with a `build` script, neither covered by the `test`/`typecheck`/`lint`
-tasks above, which depend only on `^build` — as its own step *before* linting, in a
-fresh checkout with no pre-existing `dist/`. That ordering is load-bearing, not
+only two of the twelve packages with a `build` script that nothing else depends on, so
+the `test`/`typecheck`/`lint` tasks above, which depend only on `^build`, never reach
+them — as its own step *before* linting, in a fresh checkout with no pre-existing
+`dist/`. Since #46 gave every `packages/*` package a `build` of its own, the gate is no
+longer build-free: `pnpm turbo run test typecheck lint` enqueues 49 tasks of which 10
+are `build`, because `^build` now materialises every package's `dist/` before anything
+is checked. That ordering is load-bearing, not
 incidental: see the workflow's header comment and
 `eslint.config.js`'s `ignores` comment for the bug a lint-before-build job would never
 catch. That same Build step now also enforces the 500 kB chunk ceiling (#57's

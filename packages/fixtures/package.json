@@ -4,18 +4,28 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./textures": "./src/textures.ts",
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./textures": {
+      "development": "./src/textures.ts",
+      "types": "./dist/textures.d.ts",
+      "default": "./dist/textures.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "build": "tsup --config ../../tsup.config.ts && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json"
   },
   "dependencies": {
     "@map-editor/document": "workspace:*",
     "@map-editor/geometry": "workspace:*"
   },
   "devDependencies": {
+    "tsup": "8.5.1",
     "typescript": "6.0.3"
   }
 }
