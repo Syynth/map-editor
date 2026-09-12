@@ -20,7 +20,9 @@ packages/geometry          mesher + sheet layout.
 packages/runtime           three.js reference runtime; glTF export as a subpath.
 packages/ui                the editor's design vocabulary; Mantine is an implementation detail of it.
 packages/viewport          editor GL shell: renderer, post-processing, overlays, pointer input, rAF loop.
-packages/viewport-contrib  what a feature may import to contribute an overlay.
+packages/viewport-contrib  editor GL overlay-contribution surface; rank 3 alongside
+                           `runtime` (#49), not a feature-only package — one of six things
+                           a feature may import (#35), same as `registry` or `ui`.
 packages/editor-host       root actor, dispatch wiring, tool/stroke framework, files, play, feature folders.
 packages/feature-terrain   the one extracted feature, proving the import surface is sufficient.
 packages/fixtures          procedural texture generation (returns raw RGBA; the sample map's
@@ -34,8 +36,9 @@ apps/export-cli            headless glTF exporter. Cut 2026-09-11 for a native c
 ```
 
 Direction: `registry <- document <- geometry <- runtime <- viewport <- editor-host`, with
-`ui` and `viewport-contrib` hanging off the side, and feature packages (`feature-terrain`)
-sitting beside `editor-host` rather than on the ladder itself (#49). A feature may depend
+`ui` hanging off the side and `viewport-contrib` a real rung — rank 3, alongside `runtime`,
+not off to the side (#49) — and feature packages (`feature-terrain`) sitting beside
+`editor-host` rather than on the ladder itself (#49). A feature may depend
 only on `registry`, `document`, `geometry`, `runtime`, `ui`, or `viewport-contrib`; the host
 and a feature never import each other, and only an app composes them together. `ui` has a
 restricted `visibleTo` set: it is visible only to apps (currently `editor`), the planned

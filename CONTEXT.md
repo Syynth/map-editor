@@ -67,3 +67,50 @@ the geometry.
 One continuous interaction with a tool, from press to release. A stroke may
 span many frames and touch a cell many times, but it produces exactly one
 [Edit](#edit).
+
+## Sheet
+
+The terrain texture atlas: a grid of square tiles laid out
+material-by-material, where position on the sheet defines what a tile is,
+the way RPG Maker autotile sheets work. The current terrain template gives
+each material a block of autotile variants plus a row of cliff and ramp
+tiles; exact sheet layouts are still open and expected to change as the
+artist works with them.
+
+The sheet is generated as a placeholder or supplied by the artist, and is
+what lets the artist never tag tiles by hand.
+
+## Sprite
+
+A named asset in the sprite library: the visual definition of a tree, an
+NPC, a sign, or a prop. This is the brief's "Image object" — a visual
+placed with a full transform, outside the voxel grid. A sprite declares its
+[facings](#facing), the footprint used to size its quad, and whether it
+emits light.
+
+Placing a sprite creates an object on the [Map](#map): the object stores
+which sprite it references, plus its own position, scale, and facing state.
+Many objects can reference the same sprite, and painted background scenery
+does too.
+
+## Facing
+
+One directional image of a [Sprite](#sprite), shown when the object is
+viewed from a particular yaw. A sprite may have 1, 2, 4, or 8 facings
+depending on how much directional art the artist supplied; the first always
+faces the camera at the default yaw.
+
+A second sense, the facing configuration, is the object's behaviour around
+its facings: mirroring the right-hand images for the left side, how it
+flips or transitions between facings, and how much overlap it tolerates
+before switching back, to stop flicker.
+
+## RgbaImage
+
+Raw pixel data crossing the texture boundary: width, height, and a buffer
+of row-major RGBA bytes, four per pixel.
+
+Everything that draws — the placeholder generator, the artist's sheet or
+sprite loader — produces this, and everything that uploads or encodes — the
+runtime's textures, glTF export — accepts it, so pixels can move between
+them without either side depending on a canvas.

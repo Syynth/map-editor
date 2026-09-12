@@ -42,7 +42,8 @@ function isPlanned(placement: Placement): boolean {
 
 /**
  * `registry <- document <- geometry <- runtime <- viewport <- editor-host`,
- * with `ui` and `viewport-contrib` off the side (#3).
+ * with `ui` off the side; `viewport-contrib` is a real rung — rank 3, alongside
+ * `runtime` — not off to the side (#3, #49).
  *
  * A layer package may depend only on a STRICTLY lower rung. That rule alone
  * does NOT express "off the side": a low rung is reachable from every rung
@@ -297,6 +298,30 @@ describe('workspace dependency direction', () => {
         return [`${name} is placed but no workspace package declares that name`]
       return []
     })
+    expect(stale).toEqual([])
+  })
+
+  // #79: `visibleTo` has the same unvalidated parallel-list shape
+  // `FEATURE_MAY_DEPEND_ON` had before the "on both sides of the line" test
+  // below started checking every one of its entries against PLACEMENT — a
+  // renamed or removed key (`editor-host`, say) would leave a stale string
+  // here that `violation`'s own early `if (!a || !b) return null` treats as a
+  // silent non-match rather than a failure. The literal kinds ('app',
+  // 'feature') stand for any package of that kind, per the comment above
+  // PLACEMENT, and are not PLACEMENT keys themselves, so they're allowed
+  // alongside real ones.
+  it('keeps every visibleTo entry pointing at a real PLACEMENT key or kind literal', () => {
+    const knownKindLiterals = new Set(['app', 'feature'])
+    const stale = placed.flatMap(([name, placement]) =>
+      placement.kind === 'side'
+        ? placement.visibleTo
+            .filter((entry) => !knownKindLiterals.has(entry) && !(entry in PLACEMENT))
+            .map(
+              (entry) =>
+                `${name}.visibleTo contains "${entry}", which is neither a PLACEMENT key nor a known kind literal (${[...knownKindLiterals].join(', ')})`,
+            )
+        : [],
+    )
     expect(stale).toEqual([])
   })
 
