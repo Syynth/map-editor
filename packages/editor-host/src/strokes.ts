@@ -68,6 +68,15 @@ export interface PickSample {
   readonly surface: SurfaceAddress | null
   readonly point: { readonly x: number; readonly z: number } | null
   readonly objectId: string | null
+  /**
+   * Mid-stroke only: where the pointer's ray meets the horizontal plane
+   * through the press's hit, whatever is under the cursor now. A handler
+   * that MOVES something reads this rather than `point`, which mid-drag is
+   * the dragged sprite or a cliff face the ray crossed. Absent on a press
+   * (the press point is its own plane point) and from a test that has no
+   * camera; `point` is the fallback.
+   */
+  readonly plane?: { readonly x: number; readonly z: number } | null
 }
 
 export const NO_PICK: PickSample = { surface: null, point: null, objectId: null }
@@ -136,7 +145,7 @@ export function createStrokeHandler(deps: StrokeDeps, sample: StrokeSample, sele
  * (marquee, expand, contract) waits on a typed selection on the view actor.
  */
 function selectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeHandler {
-  let target = selection
+  const drag = new Drag(deps, selection)
 
   return {
     label: 'Move object',
@@ -145,16 +154,16 @@ function selectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeH
       if (pick.objectId) {
         if (modifiers.alt) deps.setTools({ spriteName: deps.reader.doc.objects[pick.objectId]?.sprite ?? deps.tools().spriteName })
         deps.select(pick.objectId)
-        target = pick.objectId
+        drag.grab(pick.objectId, pick)
         return []
       }
       if (!modifiers.shift) {
         deps.select(null)
-        target = null
+        drag.release()
       }
       return []
     },
-    move: (sample) => moveObject(deps, target, sample),
+    move: (sample) => drag.move(sample),
     end: () => [],
   }
 }
@@ -170,7 +179,7 @@ function selectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeH
  */
 function objectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeHandler {
   /** What a drag moves: the object pressed, the object placed, or failing both the selection at the press. */
-  let target = selection
+  const drag = new Drag(deps, selection)
 
   return {
     label: 'Edit object',
@@ -182,7 +191,7 @@ function objectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeH
       if (pick.objectId) {
         if (modifiers.alt) deps.setTools({ spriteName: doc.objects[pick.objectId]?.sprite ?? tools.spriteName })
         deps.select(pick.objectId)
-        target = pick.objectId
+        drag.grab(pick.objectId, pick)
         return []
       }
 
@@ -205,23 +214,59 @@ function objectStroke(deps: StrokeDeps, selection: string | null): EditorStrokeH
         hidden: false,
       }
       deps.select(object.id)
-      target = object.id
+      drag.grab(object.id, pick)
       return addObject(doc, object)
     },
-    move: (sample) => moveObject(deps, target, sample),
+    move: (sample) => drag.move(sample),
     end: () => [],
   }
 }
 
-/** Dragging a selected object moves it along the ground; a locked one stays put. */
-function moveObject(deps: StrokeDeps, target: string | null, sample: StrokeSample): readonly Patch[] {
-  if (!target || !sample.pick.point) return []
-  const doc = deps.reader.doc
-  const object = doc.objects[target]
-  if (!object || object.locked) return []
-  const position = groundedPosition(doc, sample.pick.point.x, sample.pick.point.z)
-  return updateObject(doc, object.id, {
-    position,
-    anchorCell: object.anchorCell ? [Math.floor(position[0]), Math.floor(position[2])] : null,
-  })
+/**
+ * Dragging an object along the ground, the way a grab feels in every app
+ * that has one: the point you pressed stays under the pointer. The offset
+ * between the object and the press's plane point is taken once at the grab
+ * and kept, so the object never jumps to the cursor, and each tick reads the
+ * pointer's position on the PRESS's plane (`pick.plane`) rather than
+ * whatever the ray hits now — mid-drag that is the dragged sprite itself,
+ * whose hit point slides along the billboard and made the motion feel
+ * constrained to an axis for no reason. Height follows the terrain.
+ */
+class Drag {
+  private target: string | null
+  private offset = { x: 0, z: 0 }
+
+  constructor(
+    private readonly deps: StrokeDeps,
+    selection: string | null,
+  ) {
+    // The selection at the press is the fallback target, held without an
+    // offset: a drag that starts on it uses the grab; one that starts beside
+    // it (a shift-press on empty ground) moves nothing.
+    this.target = selection
+  }
+
+  grab(id: string, pick: PickSample): void {
+    this.target = id
+    const object = this.deps.reader.doc.objects[id]
+    const at = pick.plane ?? pick.point
+    this.offset = object && at ? { x: object.position[0] - at.x, z: object.position[2] - at.z } : { x: 0, z: 0 }
+  }
+
+  release(): void {
+    this.target = null
+  }
+
+  move(sample: StrokeSample): readonly Patch[] {
+    const at = sample.pick.plane ?? sample.pick.point
+    if (!this.target || !at) return []
+    const doc = this.deps.reader.doc
+    const object = doc.objects[this.target]
+    if (!object || object.locked) return []
+    const position = groundedPosition(doc, at.x + this.offset.x, at.z + this.offset.z)
+    return updateObject(doc, object.id, {
+      position,
+      anchorCell: object.anchorCell ? [Math.floor(position[0]), Math.floor(position[2])] : null,
+    })
+  }
 }

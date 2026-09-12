@@ -596,6 +596,30 @@ describe('pointer input through the host', () => {
     expect(doc.objectOrder).toHaveLength(1)
   })
 
+  it('a drag keeps the grabbed point under the pointer and follows the press plane, not what the ray hits', () => {
+    const { host, dispatch } = makeHost()
+    dispatch('tools.set', { tool: 'object', spriteName: 'tree' })
+    host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2, z: 2 }, objectId: null } }))
+    host.input.pointerUp({ x: 20, y: 20 })
+    const doc = host.reader.doc
+    const id = doc.objectOrder[0]
+    expect(doc.objects[id].position[0]).toBe(2)
+
+    // Grab the tree half a cell off its position: that half-cell is the offset.
+    dispatch('tools.set', { tool: 'select' })
+    host.input.pointerDown(pressAt(2, 2, { pick: { surface: null, point: { x: 2.5, z: 2.5 }, objectId: id } }))
+    // Mid-drag the ray hits the dragged sprite itself (`point` is the sprite
+    // plane, `objectId` the tree); the plane point is what the move reads.
+    host.input.strokeMove({ surface: null, point: { x: 9, z: 1 }, objectId: id, plane: { x: 5.5, z: 6.5 } }, NO_MODIFIERS)
+    expect(doc.objects[id].position[0]).toBeCloseTo(5)
+    expect(doc.objects[id].position[2]).toBeCloseTo(6)
+    // Without a plane (no camera in a test) the ground point is the fallback, offset applied the same way.
+    host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.5, z: 4.5 }, objectId: null }, NO_MODIFIERS)
+    expect(doc.objects[id].position[0]).toBeCloseTo(4)
+    expect(doc.objects[id].position[2]).toBeCloseTo(4)
+    host.input.pointerUp({ x: 40, y: 40 })
+  })
+
   it('held keys round-trip for the play loop', () => {
     const { host } = makeHost()
     host.input.keyDown('w')
