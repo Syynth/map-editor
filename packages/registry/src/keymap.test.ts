@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { chordFromEvent, parseChords, type Chord, type KeyEventLike } from './chords'
 import { commands } from './commands'
 import { and, defineContextKey, disjoint } from './context'
-import { createChordSession, keymap, resolve, type KeyBinding, type KeymapContext } from './keymap'
+import { chordFor, createChordSession, keymap, resolve, type KeyBinding, type KeymapContext } from './keymap'
 import { dispose } from './owners'
 
 /**
@@ -249,6 +249,32 @@ describe('discovery', () => {
 
   it('reports nothing for a command nobody bound', () => {
     expect(keymap.bindingFor('nobody.bound.this')).toBeUndefined()
+  })
+
+  it('tells bindings of one command apart by their arguments', () => {
+    keymap.declare('owner-k', { chord: 'v', command: 'k.tool', args: { tool: 'select' }, weight: 'core' })
+    keymap.declare('owner-k', { chord: 't', command: 'k.tool', args: { tool: 'terrain' }, weight: 'core' })
+    expect(keymap.bindingFor('k.tool', 'other', { tool: 'select' })?.chord).toBe('v')
+    expect(keymap.bindingFor('k.tool', 'other', { tool: 'terrain' })?.chord).toBe('t')
+    expect(keymap.bindingFor('k.tool', 'other', { tool: 'object' })).toBeUndefined()
+    // Without arguments, the last binding of the command, as before.
+    expect(keymap.bindingFor('k.tool')?.chord).toBe('t')
+  })
+
+  it('advertises the unconditional binding over a scoped one declared later', () => {
+    keymap.declare('owner-k', { chord: 'v', command: 'k.tool', args: { tool: 'select' }, weight: 'core' })
+    keymap.declare('owner-k', { chord: 'escape', command: 'k.tool', args: { tool: 'select' }, when: mode.is('play'), weight: 'core' })
+    expect(keymap.bindingFor('k.tool', 'other', { tool: 'select' })?.chord).toBe('v')
+    expect(chordFor('k.tool', { tool: 'select' }, 'other')).toBe('V')
+    // A user preset appended last, unconditional, is what the tooltip shows.
+    keymap.declare('owner-l', { chord: '1', command: 'k.tool', args: { tool: 'select' }, weight: 'user' })
+    expect(chordFor('k.tool', { tool: 'select' }, 'other')).toBe('1')
+  })
+
+  it('falls back to the scoped binding when nothing unconditional binds the same thing', () => {
+    keymap.declare('owner-k', { chord: 'escape', command: 'k.back', when: mode.is('play'), weight: 'core' })
+    expect(chordFor('k.back', undefined, 'other')).toBe('escape')
+    expect(chordFor('k.back', undefined, 'mac')).toBe('escape')
   })
 })
 

@@ -141,6 +141,18 @@ body {
   gap: 8px;
 }
 
+/* Mantine's tooltip, in the vocabulary's own skin: the ground under the bars,
+   a hairline, the frame's radius and size — not the stock light pill. */
+.mantine-Tooltip-tooltip {
+  background: #0f1115;
+  color: var(--ui-ink);
+  border: 1px solid var(--ui-line-2);
+  border-radius: 4px;
+  padding: 4px 7px;
+  font: 12px/1.3 var(--ui-font);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
 .ui-tip .ui-kbd {
   background: var(--ui-bg);
 }
