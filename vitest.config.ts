@@ -1,9 +1,10 @@
 import { defineConfig, configDefaults } from 'vitest/config'
 
 // No longer merged with the Vite config: that config moved to `apps/editor`
-// along with the app, and every test now lives in a `packages/*` package that
-// is plain TypeScript with no JSX, so reaching across for it would pull a
-// bundler plugin back into repo-root tooling for nothing.
+// along with the app, and every test is plain TypeScript with no JSX — either
+// in a `packages/*` package or (since #57) `scripts/check-bundle-size.test.mjs`
+// — so reaching across for the Vite config would pull a bundler plugin back
+// into repo-root tooling for nothing.
 export default defineConfig({
   // Agent worktrees under .claude/ are full checkouts, so vitest's defaults
   // discover their copies of every test file and run the suite once per
