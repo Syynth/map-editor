@@ -53,6 +53,7 @@ async function waitForServer() {
   throw new Error('vite preview did not start')
 }
 
+/** @type {string[]} */
 const problems = []
 
 try {
@@ -82,7 +83,11 @@ try {
   await sleep(3500)
 
   const report = await page.evaluate(() => {
-    const canvas = document.querySelector('.stage canvas')
+    // Plain JS has no generic-call syntax (`querySelector<T>()` is a type-only
+    // construct `tsc` rejects outright in a `.mjs` file), so an `@type` cast
+    // is the only way to tell `checkJs` this selector is a canvas — a bare
+    // `querySelector` types as `Element | null`, which has no `.getContext`.
+    const canvas = /** @type {HTMLCanvasElement | null} */ (document.querySelector('.stage canvas'))
     const gl = canvas && canvas.getContext('webgl2')
     return {
       hasCanvas: Boolean(canvas),
@@ -97,8 +102,10 @@ try {
   await page.screenshot({ path: `${OUT}/01-editor.png` })
 
   // Sculpt: drag across the terrain with the raise brush.
-  const canvas = await page.$('.stage canvas')
-  const box = await canvas.boundingBox()
+  const canvasHandle = await page.$('.stage canvas')
+  if (!canvasHandle) throw new Error('".stage canvas" not found — did the editor mount?')
+  const box = await canvasHandle.boundingBox()
+  if (!box) throw new Error('".stage canvas" has no bounding box — is it hidden or zero-sized?')
   const cx = box.x + box.width / 2
   const cy = box.y + box.height / 2
 

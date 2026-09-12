@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    // `false`, unlike every package config in this repo: `skipLibCheck`
+    // skips checking `.d.ts` files, and `global.d.ts` below is a `.d.ts`
+    // file — with it on, a broken import there (a typo'd package name, a
+    // type this repo later renames or removes) is swallowed silently and
+    // shows up only as scattered implicit-`any` errors in whichever `.mjs`
+    // files use the affected global, with no line pointing at the real
+    // cause. Verified: pointing `global.d.ts`'s import at a nonexistent
+    // package reports nothing under `skipLibCheck: true` except those
+    // downstream implicit-`any`s, and reports the real `TS2307` at the
+    // `import` line itself once this is `false`.
+    "skipLibCheck": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowJs": true,
+    "checkJs": true,
+
+    // `DOM` alongside Node's own types, unlike every package config in this
+    // repo (see `packages/document/tsconfig.json`'s "no DOM" rationale): these
+    // files are Node processes (`node:child_process`, `node:fs`) that also
+    // hand Playwright closures — `page.evaluate(() => window.__viewport...)`,
+    // `page.addInitScript(() => window.localStorage.clear())` — which run
+    // inside the browser page, not this process. `checkJs` type-checks a
+    // closure's body against whatever lib is in scope at its definition site,
+    // with no way to tell it "this one runs somewhere else" the way a real
+    // `tsc --noEmit` on the file that page.evaluate itself lives in would
+    // know; the only way to check the Node half AND the browser-closure half
+    // in the same program is to give both lib sets here.
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"]
+  },
+
+  // `scripts/**` stays out of the root tsconfig (its own comment explains why
+  // that config specifically has no allowJs/checkJs) and gets this one
+  // instead, run as its own `tsc -p scripts` step from the root `typecheck`
+  // script — see issue #73. `include` covers `.test.mjs` too: they are still
+  // Node source `tsc` can check, even though `eslint.config.js`'s
+  // `OUTSIDE_THE_SYSTEM` exempts every file under `scripts/**`, tests
+  // included, from lint (#38).
+  "include": ["**/*.mjs", "global.d.ts"]
+}

@@ -27,15 +27,19 @@
   // dependency-direction test, whose subject is the set of `package.json`s
   // rather than any one package's source, so it belongs to no package.
   //
-  // `scripts` is deliberately NOT here (issue #28): those are `.mjs`, and
-  // `allowJs` is off, so an `include` entry for them type-checks nothing —
-  // `tsc --listFiles` confirms zero files from `scripts/` enter the program.
-  // Turning them on would mean `allowJs` + `checkJs` against 770 lines of
-  // unannotated Playwright drivers under this config's `strict`, which is a
-  // real lift, not a two-line fix. `scripts/**` is also inside ESLint's
-  // `OUTSIDE_THE_SYSTEM` global ignore (#38), so nothing — neither tsc nor
-  // ESLint — currently checks these files; that is an accepted gap, not a
-  // backstop. Add the entry back, with `allowJs` and `checkJs`, the day
-  // someone is willing to pay for that.
+  // `scripts` is deliberately NOT here (#73, superseding #28's deferral):
+  // those are `.mjs`, and `allowJs`/`checkJs` against 770-plus lines of
+  // Playwright drivers under this config's `strict` needs its own `lib`
+  // (`DOM`, for the browser closures handed to `page.evaluate`) and its own
+  // ambient globals (`scripts/global.d.ts`, typing the debug hooks
+  // `apps/editor/src/editor/App.tsx` puts on `window`) that no other file
+  // under this config wants — folding them in here would mean every root
+  // file compiling against a `lib`/`types` set only `scripts/**` needs.
+  // `scripts/tsconfig.json` carries that config instead, and the root
+  // `typecheck` script (package.json) runs it as a second `tsc -p scripts`
+  // invocation so `pnpm typecheck`/`pnpm gate` still cover it. #28's
+  // deferral reasoned from `allowJs` being off entirely, which is no longer
+  // true; #38's ESLint exemption for `scripts/**` is untouched — this issue
+  // was scoped to typechecking only.
   "include": ["tests", "vitest.config.ts"]
 }

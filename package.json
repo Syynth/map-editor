@@ -21,7 +21,7 @@
     "preview": "pnpm --filter @map-editor/editor preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
     "lint": "eslint . --max-warnings=0",
     "bench": "vitest bench --run --reporter=verbose",
     "shoot": "node scripts/screenshot.mjs",
@@ -32,7 +32,9 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@map-editor/document": "workspace:*",
     "@map-editor/eslint-rules": "workspace:*",
+    "@map-editor/viewport": "workspace:*",
     "@types/node": "^22.20.2",
     "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",
