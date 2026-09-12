@@ -25,7 +25,6 @@ export class LabScene {
   readonly scene = new THREE.Scene()
   readonly camera: THREE.PerspectiveCamera
   private readonly raycaster = new THREE.Raycaster()
-  private readonly plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   private readonly parts = new THREE.Group()
   private readonly handles = new THREE.Group()
   private readonly preview: THREE.Line
@@ -117,10 +116,11 @@ export class LabScene {
     return new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1)
   }
 
-  pickPlane(clientX: number, clientY: number): Pick2 | null {
+  /** Where the pointer's ray meets the horizontal plane at height `y` — the active sketch's plane. */
+  pickPlane(clientX: number, clientY: number, y = 0): Pick2 | null {
     this.raycaster.setFromCamera(this.ndc(clientX, clientY), this.camera)
     const out = new THREE.Vector3()
-    return this.raycaster.ray.intersectPlane(this.plane, out) ? { x: out.x, z: out.z } : null
+    return this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -y), out) ? { x: out.x, z: out.z } : null
   }
 
   pickHandle(clientX: number, clientY: number): number | null {
@@ -156,18 +156,23 @@ export class LabScene {
     this.preview.visible = list.length > 1
   }
 
-  setMesh(mesh: SketchMesh | null): void {
-    for (const child of [...this.parts.children]) {
-      this.parts.remove(child)
-      ;(child as THREE.Mesh).geometry.dispose()
+  /** Every sketch's parts, each group lifted to the sketch's base height (its parent's cap). */
+  setMeshes(list: readonly { mesh: SketchMesh; base: number }[]): void {
+    for (const group of [...this.parts.children]) {
+      this.parts.remove(group)
+      for (const child of group.children) (child as THREE.Mesh).geometry.dispose()
     }
-    if (!mesh) return
-    for (const key of ['cap', 'rim', 'wallBody', 'wallTop', 'wallBottom'] as const) {
-      const buffers = mesh[key]
-      if (buffers.triangleCount === 0) continue
-      const m = new THREE.Mesh(geometryOf(buffers), this.materials[key])
-      m.renderOrder = key === 'cap' || key === 'wallBody' ? 0 : 1
-      this.parts.add(m)
+    for (const { mesh, base } of list) {
+      const group = new THREE.Group()
+      group.position.y = base
+      for (const key of ['cap', 'rim', 'wallBody', 'wallTop', 'wallBottom'] as const) {
+        const buffers = mesh[key]
+        if (buffers.triangleCount === 0) continue
+        const m = new THREE.Mesh(geometryOf(buffers), this.materials[key])
+        m.renderOrder = key === 'cap' || key === 'wallBody' ? 0 : 1
+        group.add(m)
+      }
+      this.parts.add(group)
     }
   }
 }

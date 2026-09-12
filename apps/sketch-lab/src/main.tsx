@@ -14,6 +14,17 @@ const css = `
   .lab-side { overflow-y: auto; border-left: 1px solid ${colors.line}; background: ${colors.bg2}; display: flex; flex-direction: column; }
   .lab-mono { font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: ${colors.ink3}; }
   .lab-state { font: 11px/1.4 ui-monospace, Menlo, monospace; color: ${colors.ink2}; margin: 0; white-space: pre-wrap; }
+  .lab-actions { display: flex; gap: 4px; }
+  .lab-actions button { font: inherit; font-size: 11px; color: ${colors.ink2}; background: ${colors.panel}; border: 1px solid ${colors.line2}; border-radius: 4px; padding: 2px 7px; cursor: pointer; }
+  .lab-actions button:hover:not(:disabled) { color: ${colors.ink}; border-color: ${colors.ink3}; }
+  .lab-actions button:disabled { opacity: .4; cursor: default; }
+  .lab-list { display: grid; gap: 2px; }
+  .lab-row { display: grid; grid-template-columns: 1fr auto; align-items: center; border-radius: 4px; }
+  .lab-row.on { background: rgba(233,162,59,.16); }
+  .lab-row-name { font: inherit; color: ${colors.ink2}; background: none; border: 0; text-align: left; padding: 5px 6px; cursor: pointer; }
+  .lab-row.on .lab-row-name { color: ${colors.accent}; }
+  .lab-row-x { font: inherit; color: ${colors.ink3}; background: none; border: 0; padding: 4px 8px; cursor: pointer; }
+  .lab-row-x:hover { color: ${colors.warn}; }
   .lab-bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 4px; align-items: center;
     background: ${colors.panel}; border: 1px solid ${colors.line2}; border-radius: 8px; padding: 6px 8px; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
   .lab-bar-label { font: 600 10px/1 ui-monospace, Menlo, monospace; letter-spacing: .08em; color: ${colors.accent}; margin-right: 6px; }
