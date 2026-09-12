@@ -19,6 +19,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromiumArgs, wantsGpu } from './chromium-launch.mjs'
+import { meanLuminance } from './luminance.mjs'
 
 // Vite's config, `index.html` and `dist/` all live with the app now, so both
 // spawns below run from there rather than from the repo root.
@@ -61,23 +62,12 @@ await sleep(5000)
 const box = await (await page.$('.stage canvas')).boundingBox()
 
 async function report(label) {
-  const shot = await page.screenshot({
-    clip: { x: box.x + box.width / 2 - 30, y: box.y + box.height / 2 - 30, width: 60, height: 60 },
+  const luma = await meanLuminance(page, {
+    x: box.x + box.width / 2 - 30,
+    y: box.y + box.height / 2 - 30,
+    width: 60,
+    height: 60,
   })
-  const luma = await page.evaluate(async (bytes) => {
-    const bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: 'image/png' }))
-    const canvas = document.createElement('canvas')
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
-    const ctx = canvas.getContext('2d')
-    ctx.drawImage(bitmap, 0, 0)
-    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
-    let sum = 0
-    for (let i = 0; i < pixels.length; i += 4) {
-      sum += (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3
-    }
-    return sum / (pixels.length / 4)
-  }, [...shot])
   console.log(`${label.padEnd(30)} luma=${luma.toFixed(1)}`)
 }
 
