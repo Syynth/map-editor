@@ -21,9 +21,21 @@
  * warm machine — on purpose. It is not a performance regression detector for
  * a single slow test; it is the ceiling the loop must never cross, set where
  * #10 set it. Tighten it here if the ceiling moves, never per test.
+ *
+ * Moved from 15 s to 25 s once the actor migration (#66) landed both of its
+ * trains: the gate's CI runner measured 12.54 s at 181 tests / 24 files
+ * (main @ 33f7e5b) and 21.7 s at 358 tests / 35 files (this train), close
+ * to linear in file count — per-file worker spawn dominates there in a way
+ * a many-core local machine never shows. `isolate: false` was tried first
+ * to cut that per-file cost instead of moving the ceiling, but this suite's
+ * registries (keymap, context, feature) are module-level and own-scoped
+ * only within a single vitest worker's isolation, not across files sharing
+ * one — turning it off made 1-5 tests fail nondeterministically depending
+ * on file/worker assignment. Moving the ceiling is the honest fix for a
+ * suite that has genuinely grown, not a workaround for a slow test.
  */
 
-const BUDGET_MS = 15_000
+const BUDGET_MS = 25_000
 
 export default function setup(): () => void {
   const start = performance.now()
