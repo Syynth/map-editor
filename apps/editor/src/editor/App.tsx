@@ -90,6 +90,19 @@ function dormantPaint(doc: ReadonlyMapDoc): { top: number; cliff: number } {
   })
 }
 
+/**
+ * The tallest thing in the map, in half-tiles: the top of the layer view's
+ * slider. The map's own height rather than the document's ceiling, which is
+ * ten times taller than any map here and made the slider useless. Per
+ * revision, like `dormantPaint`, since a sculpt can raise it.
+ */
+function tallestPoint(doc: ReadonlyMapDoc): number {
+  let top = MIN_HEIGHT
+  for (const height of doc.terrain.height) if (height > top) top = height
+  for (const water of doc.terrain.water) if (water > top) top = water
+  return top
+}
+
 /** What a refusal says, flattened to one line; `null` when there was none. */
 function refusal(result: ReturnType<Host['dispatch']>): string | null {
   if (result.ok) return null
@@ -165,6 +178,7 @@ export default function App() {
 
   const doc = useDocument(wholeDocument)
   const dormant = useDocument(dormantPaint)
+  const tallest = useDocument(tallestPoint)
   // The revision itself, for the effects that fire on ANY change: the document
   // is mutated in place, so it is the only thing about it that moves.
   const revision = useSyncExternalStore(reader.subscribe, reader.getSnapshot)
@@ -440,10 +454,14 @@ export default function App() {
   const selected = view.selectedObjectId ? doc.objects[view.selectedObjectId] ?? null : null
   const deleteKbd = chordFor('selection.delete', undefined, platform)
   const hints = hintsFor(params)
-  // The layer view: `null` on the actor is the whole range; the control always shows a pair.
-  const layers = view.layers ?? { lo: MIN_HEIGHT, hi: MAX_HEIGHT }
+  // The layer view. The slider spans the map's own height with a little
+  // headroom (room to paint a layer above the top), never the document's
+  // ceiling. `null` on the actor is the whole range, which is what the top
+  // of the slider means — so a map that grows taller stays wholly visible.
+  const layerTop = Math.min(MAX_HEIGHT, Math.max(4, tallest + 2))
+  const layers = view.layers ? { lo: Math.min(view.layers.lo, layerTop), hi: Math.min(view.layers.hi, layerTop) } : { lo: MIN_HEIGHT, hi: layerTop }
   const setLayers = (range: { lo: number; hi: number }) =>
-    report('view.set', host.dispatch('view.set', { layers: range.lo === MIN_HEIGHT && range.hi === MAX_HEIGHT ? null : range }))
+    report('view.set', host.dispatch('view.set', { layers: range.lo === MIN_HEIGHT && range.hi >= layerTop ? null : range }))
 
   return (
     <Frame
@@ -527,7 +545,7 @@ export default function App() {
           ) : null}
           {!playing ? (
             <Overlay at="right">
-              <LayerRange max={MAX_HEIGHT} lo={layers.lo} hi={layers.hi} onChange={setLayers} />
+              <LayerRange max={layerTop} lo={layers.lo} hi={layers.hi} onChange={setLayers} />
             </Overlay>
           ) : null}
           {playing ? (
