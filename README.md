@@ -12,6 +12,7 @@ decisions and their reasoning.
 
 ```bash
 pnpm install
+pnpm browsers      # once, fetch the Chromium build these scripts drive
 pnpm dev           # http://localhost:5173
 pnpm test          # unit tests
 pnpm lint          # type-aware ESLint; no inline suppressions exist
@@ -20,6 +21,10 @@ pnpm shoot         # drive it headless and save screenshots to shots/
 pnpm tour          # capture the 25-step guided walkthrough to shots/tour/
 pnpm probe         # measure whether post-processing survives on this GPU
 ```
+
+`shoot`, `tour` and `probe` default to a SwiftShader software renderer, for
+parity with CI; add `--gpu` (e.g. `pnpm tour --gpu`) to drive the real GPU
+backend instead.
 
 ## What works
 
@@ -79,13 +84,19 @@ apps/editor/        React panels, tools and the app shell
 The import direction `document <- geometry <- runtime <- viewport <- editor` is
 enforced by two mechanisms rather than by a lint script. pnpm's strict
 `node_modules` means a package can only import what its own `package.json`
-declares, so `packages/document` cannot reach three.js or React at all — the
-import fails to resolve. That covers *undeclared* imports and nothing else: a
-wrong entry in a `package.json` resolves perfectly well, so the direction itself
-is asserted by `tests/dependency-direction.test.ts`, which reads every workspace
-`package.json`, checks each declared arrow against the ladder and checks the
-graph is acyclic. A package with no place on that ladder fails the test, so a
-new one cannot be added unchecked. The runtime is the package a game would
+declares — with one hole: a name the ROOT `package.json` declares hoists into
+the root `node_modules`, so a package that never declared it can still resolve
+it via Node's parent-directory walk. Outside that hole, `packages/document`
+cannot reach three.js or React at all — the import fails to resolve. So pnpm
+covers *undeclared* imports short of the root hoist, and nothing else: a wrong
+entry in a `package.json` resolves perfectly well, and a declared entry point
+that is itself a wildcard reopens a deep import past it. The direction itself,
+plus those two edges, are asserted by `tests/dependency-direction.test.ts`,
+which reads every workspace `package.json`, checks each declared arrow against
+the ladder, checks the graph is acyclic, keeps runtime libraries (and their
+`@types/` twins) off the root, and keeps every package's `exports` map
+explicit. A package with no place on that ladder fails the test, so a new one
+cannot be added unchecked. The runtime is the package a game would
 consume; the editor renders through it, so the preview and the game cannot drift
 apart.
 

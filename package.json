@@ -4,6 +4,9 @@
   "version": "0.0.1",
   "type": "module",
   "packageManager": "pnpm@12.3.4+sha512.961aa41fb077da3a04a441d9f8e15ebc0c96da8ef710b2eb67bf9ee7cb0610eabd48f1fd85f51cffe73846785fa0f87c56a3a872a1d893f8446741b5cce45457",
+  "engines": {
+    "node": "^22.13.0 || ^24.0.0 || >=26.0.0"
+  },
   "scripts": {
     "dev": "pnpm --filter @map-editor/editor dev",
     "gate": "turbo run test typecheck lint",
@@ -16,7 +19,8 @@
     "bench": "vitest bench --run --reporter=verbose",
     "shoot": "node scripts/screenshot.mjs",
     "tour": "node scripts/tour.mjs",
-    "probe": "node scripts/probe.mjs"
+    "probe": "node scripts/probe.mjs",
+    "browsers": "playwright install chromium"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

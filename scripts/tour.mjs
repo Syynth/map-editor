@@ -6,22 +6,26 @@
  * running it. Where possible it clicks the real UI rather than reaching into
  * the app, so the captures show authentic interaction.
  *
- *   node scripts/tour.mjs [outputDir]
+ *   node scripts/tour.mjs [outputDir] [--gpu]
  *
  * Writes numbered PNGs plus tour.json, which pairs each shot with its caption
- * for downstream use.
+ * for downstream use. Runs against Playwright's own bundled Chromium by
+ * default (`pnpm browsers` installs it); see scripts/chromium-launch.mjs for
+ * the --gpu / CHROMIUM_PATH knobs.
  */
 import { chromium } from 'playwright'
 import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { chromiumArgs, stripGpuFlag, wantsGpu } from './chromium-launch.mjs'
 
 // Vite's config, `index.html` and `dist/` all live with the app now, so both
 // spawns below run from there rather than from the repo root.
 const APP = fileURLToPath(new URL('../apps/editor', import.meta.url))
 
-const OUT = process.argv[2] ?? 'shots/tour'
+const GPU = wantsGpu()
+const OUT = stripGpuFlag()[0] ?? 'shots/tour'
 mkdirSync(OUT, { recursive: true })
 
 console.log('Building...')
@@ -49,8 +53,12 @@ const steps = []
 let index = 0
 
 const browser = await chromium.launch({
-  executablePath: process.env.CHROMIUM_PATH ?? '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
-  args: ['--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader'],
+  // No executablePath by default: Playwright resolves its own bundled build
+  // (`npx playwright install chromium`, or `pnpm browsers`), the only build
+  // guaranteed to match the Playwright version in package.json. CHROMIUM_PATH
+  // stays as an override for a machine that already pins its own browser.
+  executablePath: process.env.CHROMIUM_PATH,
+  args: chromiumArgs(GPU),
 })
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } })
 await page.addInitScript(() => window.localStorage.clear())
