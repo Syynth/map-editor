@@ -126,3 +126,12 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** `@napi-rs/canvas` is removed and `apps/export-cli` with it. The headless glTF exporter needed a 2D canvas — both the procedural texture generator and three's `GLTFExporter` draw through one — and no canvas-free path exists yet. The runtime's `./export` subpath stays; it works in the editor, which has a real canvas. The CLI returns once export has a canvas-free texture path (raw RGBA crossing the boundary, the reshape #3 costed out), which is now the prerequisite for both the CLI and for moving `textures.ts` into `packages/fixtures`.
 - **WHY:** The owner's words: *"definitely get rid of it, if there's not a good replacement, the cli can just be cut for now."* A native binary in a dev CLI is not worth its install and CI cost while the CLI is not load-bearing, and shimming a DOM into node so browser code can run is the wrong direction — the right fix is a texture path that never needed a canvas, and that is a design decision, not a dependency swap.
+
+## Four rulings on the restructure's follow-up decisions (#33, #37, #38, #39)
+- **WHEN:** 2026-09-11
+- **PROJECT:** map-editor
+- **SYSTEM:** cross-system
+- **SCOPE:** moderate
+- **WHAT:** Recorded on the wayfinder map's tickets, which hold the reasoning: [#38](https://github.com/Syynth/map-editor/issues/38) tests are exempt from all lint; [#39](https://github.com/Syynth/map-editor/issues/39) `minimumReleaseAgeStrict` on and CI never caches lockfile verification; [#37](https://github.com/Syynth/map-editor/issues/37) `rules-of-hooks` now, `exhaustive-deps` with the actor migration; [#33](https://github.com/Syynth/map-editor/issues/33) emit `.d.ts` and use project references.
+- **WHY:** Three followed the recommendation. #33 went against it — no emit was recommended because nothing consumes built output — on the strength of the standing "private for now, built as if publishable" posture: a package that only resolves as bundler-read source is not built as if publishable, and retrofitting emit later across seven packages is the drift the restructure exists to prevent.
+
