@@ -84,6 +84,21 @@ describe('exportGltf', () => {
     await expect(exportGltf(doc, { merge: false })).rejects.toThrow('boom')
   })
 
+  it('falls back to a fixed message when the rejection has no .message', async () => {
+    // Regression guard: three's `writer.writeAsync(...).catch(onError)` can
+    // hand `onError` a plain string (whatever was thrown), not the `ErrorEvent`
+    // the typings promise. `new Error(error.message)` on a string reads
+    // `.message` off `undefined`, producing an `Error` with an empty message —
+    // revert the fallback and this asserts a message that's no longer there.
+    parseMock.mockImplementation((_scene: unknown, _onDone: unknown, onError: (error: unknown) => void) => {
+      onError('a thrown string, not an ErrorEvent')
+    })
+    const doc = createMap(4, 4, 'String Rejection Check')
+
+    await expect(exportGltf(doc, { merge: false })).rejects.toBeInstanceOf(Error)
+    await expect(exportGltf(doc, { merge: false })).rejects.toThrow('glTF export failed')
+  })
+
   it('resolves to a binary blob on success', async () => {
     parseMock.mockImplementation((_scene: unknown, onDone: (result: ArrayBuffer) => void) => {
       onDone(new ArrayBuffer(4))

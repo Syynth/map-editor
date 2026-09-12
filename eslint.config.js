@@ -87,14 +87,20 @@ export default tseslint.config(
     rules: {},
   },
 
-  // No browser-globals block here (issue #28): `no-undef` is already off for
-  // every `.ts`/`.tsx` file (see `eslint-recommended-raw` inside
-  // `recommendedTypeChecked`, which is the actual source of the claim in the
-  // old comment this replaced), and there is no plain `.js` under
-  // `apps/editor/src` or any browser package for such a block to matter to —
-  // unlike `scripts/**` below, which really does hold `.mjs`. If a browser
-  // package ever grows a plain-JS file that reads `window`/`document`, add a
-  // targeted `files` block then rather than reviving a glob nothing needs today.
+  // This block is not about `no-undef` — that's already off for every
+  // `.ts`/`.tsx` file (see `eslint-recommended-raw` inside
+  // `recommendedTypeChecked`), so deleting this block once looked inert. What
+  // it actually buys is `no-global-assign`, from `js.configs.recommended`,
+  // which reads `languageOptions.globals` directly and is untouched by that
+  // `no-undef` shutoff — and `tsc` doesn't cover it either, since `window` and
+  // `document` are ambient `declare var`s that happily accept a reassignment.
+  // Verified on a probe: with this block absent, `window = undefined as never`
+  // under `apps/editor/src` lints clean and type-checks clean; restoring the
+  // block reports `no-global-assign`. Scoped to the packages that actually run
+  // in a browser, not the whole repo, so a Node-only package keeps
+  // `no-global-assign`'s real signal on its own globals instead of losing it
+  // to a blanket `globals.browser`.
+  { files: ['apps/editor/src/**', 'packages/{ui,viewport,runtime}/src/**'], languageOptions: { globals: globals.browser } },
   {
     // `**/` matters: a flat-config pattern with no slash matches only at the
     // config's own directory, and the app's Vite config now sits in

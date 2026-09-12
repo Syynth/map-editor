@@ -291,8 +291,16 @@ export async function exportGltf(doc: MapDoc, options: ExportOptions): Promise<B
       // The typings call this an `ErrorEvent`; three's own exporter actually
       // rejects with whatever `writeAsync` threw, which is usually already an
       // `Error` — but rejecting with a non-Error, unobserved by any test, is
-      // exactly what #28 flagged. Wrap defensively rather than assume.
-      (error) => reject(error instanceof Error ? error : new Error(error.message)),
+      // exactly what #28 flagged. When it's a string (three's `.catch(onError)`
+      // passes one straight through), `error.message` is `undefined` and would
+      // otherwise produce an empty `Error` with no clue what failed — so fall
+      // back to a fixed message rather than surface that.
+      (error) =>
+        reject(
+          error instanceof Error
+            ? error
+            : new Error(typeof error.message === 'string' ? error.message : 'glTF export failed'),
+        ),
       {
         binary: true,
         includeCustomExtensions: true,
