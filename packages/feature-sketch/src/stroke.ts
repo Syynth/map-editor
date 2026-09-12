@@ -22,6 +22,7 @@ import {
   closeSketch,
   createSketch,
   frameOf,
+  placeStructure,
   toLocal,
   updateSketchPoint,
   structureOf,
@@ -118,21 +119,31 @@ function drawStroke(deps: FeatureDeps): SketchStrokeHandler {
 }
 
 function editStroke(deps: FeatureDeps): SketchStrokeHandler {
-  let target: { sketch: string; index: number } | null = null
+  /** A point being dragged, or a whole sketch being moved by the offset between its placement and the grab. */
+  let target: { kind: 'point'; sketch: string; index: number } | { kind: 'sketch'; sketch: string; offset: { x: number; z: number } } | null = null
   return {
-    label: 'Move point',
+    label: 'Move sketch',
     begin(sample) {
       const doc = deps.doc()
       const world = pointOf(sample)
       const hit = world ? nearestSketchPoint(doc, world.x, world.z) : null
       if (hit) {
-        target = { sketch: hit.sketch.id, index: hit.index }
+        target = { kind: 'point', sketch: hit.sketch.id, index: hit.index }
         deps.select({ kind: 'sketchPoint', structure: hit.sketch.id, index: hit.index })
         return []
       }
       const surface = sample.pick.surface
-      if (surface && (surface.kind === SURFACE_SKETCH_CAP || surface.kind === SURFACE_SKETCH_WALL)) deps.select({ kind: 'structure', id: surface.structure })
-      else if (!sample.modifiers.shift) deps.select(null)
+      if (surface && (surface.kind === SURFACE_SKETCH_CAP || surface.kind === SURFACE_SKETCH_WALL)) {
+        const sketch = structureOf(doc, surface.structure, 'sketch')
+        deps.select({ kind: 'structure', id: surface.structure })
+        // Grab the sketch by where it was pressed: the placement moves by how far the pointer travels in the parent's frame.
+        if (sketch && world) {
+          const [px, pz] = toLocal(parentFrame(doc, sketch), world.x, world.z)
+          target = { kind: 'sketch', sketch: sketch.id, offset: { x: sketch.placement.x - px, z: sketch.placement.z - pz } }
+        }
+        return []
+      }
+      if (!sample.modifiers.shift) deps.select(null)
       return []
     },
     move(sample) {
@@ -140,10 +151,20 @@ function editStroke(deps: FeatureDeps): SketchStrokeHandler {
       if (!target || !world) return []
       const doc = deps.doc()
       const snap = sample.modifiers.shift ? 'free' : deps.params().sketchSnap
-      return updateSketchPoint(doc, target.sketch, target.index, localSnapped(doc, target.sketch, world, snap))
+      if (target.kind === 'point') return updateSketchPoint(doc, target.sketch, target.index, localSnapped(doc, target.sketch, world, snap))
+      const sketch = structureOf(doc, target.sketch, 'sketch')
+      if (!sketch) return []
+      const [px, pz] = toLocal(parentFrame(doc, sketch), world.x, world.z)
+      const placement = { x: snapTo(px + target.offset.x, snap), z: snapTo(pz + target.offset.z, snap), yaw: sketch.placement.yaw }
+      return placeStructure(doc, sketch.id, placement)
     },
     end: () => [],
   }
+}
+
+/** The frame a sketch's placement is measured in: its parent's, or the world at the root. */
+function parentFrame(doc: ReadonlyMapDoc, sketch: ReadonlySketch) {
+  return sketch.parent ? frameOf(doc, sketch.parent) : { x: 0, z: 0, yaw: 0 as const, y: 0 }
 }
 
 export function sketchContract(deps: FeatureDeps): ToolContract<SketchSample, Patch> {

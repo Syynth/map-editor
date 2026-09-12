@@ -134,6 +134,25 @@ describe('editing an outline', () => {
     expect(selections.at(-1)).toBeNull()
   })
 
+  it('a press on the cap away from any point grabs the whole sketch and moves it, snapped, points untouched', () => {
+    const doc = drawn()
+    const { contract } = stub(doc, { sketchMode: 'edit' })
+    const sketch = onlySketch(doc)
+    if (!sketch) throw new Error('no sketch')
+    const cap = (x: number, z: number, plane?: { x: number; z: number }) => ({
+      pick: { surface: { structure: sketch.id, kind: 3 as const, x: 0, y: 0, dir: 0, level: 0 }, point: { x, z }, plane },
+      modifiers: { shift: false, alt: false, ctrl: false },
+    })
+    const handler = contract.stroke(cap(5, 5))
+    handler?.begin(cap(5, 5))
+    applyPatches(doc, [...(handler?.move(cap(0, 0, { x: 7.4, z: 6.6 })) ?? [])])
+    const moved = onlySketch(doc)
+    expect(moved?.placement).toEqual({ x: 2, z: 2, yaw: 0 })
+    expect(moved?.points).toEqual(sketch.points)
+    // The height under a point that was inside the outline follows the move.
+    expect(frameOf(doc, sketch.id)).toMatchObject({ x: 2, z: 2 })
+  })
+
   it('reports a closed sketch\'s points at its cap height, an open one\'s at its base', () => {
     const doc = drawn()
     const sketch = onlySketch(doc)
