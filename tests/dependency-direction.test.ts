@@ -100,6 +100,7 @@ interface PackageJson {
   devDependencies?: unknown
   peerDependencies?: unknown
   optionalDependencies?: unknown
+  exports?: unknown
 }
 
 interface Project {
@@ -251,6 +252,56 @@ describe('workspace dependency direction', () => {
         return reason === null ? [] : [`${project.dir}/package.json: ${reason}`]
       }),
     )
+    expect(violations).toEqual([])
+  })
+
+  it('keeps runtime libraries off the root', () => {
+    // A package's `dependencies` field is the one that says "my shipped
+    // source imports this"; `devDependencies` covers private tooling
+    // (typescript, vitest, eslint...) that the code it type-checks or tests
+    // never imports. So only `dependencies`, across every non-root package,
+    // marks a name as a live import target — the channel #20 closed in
+    // `8b6b80d` when `three` and `react` sat in the root's devDependencies
+    // and `packages/document` could import them without declaring them.
+    // Workspace package names are excluded: a root -> package arrow is a
+    // question `violation()` already answers, and always answers `null` for.
+    const runtimeLibraries = new Set(
+      projects
+        .filter((project) => project.dir !== '.')
+        .flatMap((project) => names(readPackageJson(project.dir).dependencies))
+        .filter((name) => !(name in PLACEMENT)),
+    )
+    const rootPkg = readPackageJson('.')
+    const rootNames = [...names(rootPkg.dependencies), ...names(rootPkg.devDependencies)]
+    const violations = [...new Set(rootNames)]
+      .filter((name) => runtimeLibraries.has(name))
+      .sort()
+      .map(
+        (name) =>
+          `package.json: root declares "${name}", which a workspace package also declares under "dependencies" — remove it from the root; a root copy re-hoists into node_modules and lets any package import it without declaring it`,
+      )
+    expect(violations).toEqual([])
+  })
+
+  it("keeps every package's exports map explicit", () => {
+    // #20's second gap: pnpm's strict node_modules stops an UNDECLARED
+    // import, but says nothing about a declared entry point that is itself a
+    // wildcard. A `"./*"` or `"./src/*"` subpath (or a missing `exports`
+    // field, which lets Node fall back to the package root) reopens the deep
+    // import #3 closed, so every key has to name one explicit file.
+    const violations = projects
+      .filter((project) => project.dir !== '.')
+      .flatMap((project) => {
+        const { exports } = readPackageJson(project.dir)
+        if (typeof exports !== 'object' || exports === null || Array.isArray(exports))
+          return [`${project.dir}/package.json: has no "exports" map, so a consumer can reach any file by path`]
+        return Object.entries(exports as Record<string, unknown>)
+          .filter(([key, value]) => key.includes('*') || (typeof value === 'string' && value.includes('*')))
+          .map(
+            ([key]) =>
+              `${project.dir}/package.json: exports["${key}"] is a wildcard, which lets a consumer reach any file under it by path instead of the declared entry point`,
+          )
+      })
     expect(violations).toEqual([])
   })
 
