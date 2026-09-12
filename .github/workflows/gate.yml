@@ -21,6 +21,12 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version-file: '.nvmrc'
+          # v5 auto-detects `packageManager` and tries to cache pnpm's store
+          # by shelling out to `pnpm store path` — before corepack has ever
+          # put a `pnpm` on PATH, which fails outright. We don't want that
+          # cache anyway (see the "Do NOT cache pnpm's store" comment below),
+          # so turn the feature off rather than reorder around it.
+          package-manager-cache: false
 
       # Node has been dropping corepack from the default install (deprecated
       # since v22, no longer guaranteed bundled by the Node version pinned in
