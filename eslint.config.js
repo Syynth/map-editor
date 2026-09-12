@@ -77,25 +77,6 @@ export default tseslint.config(
   },
 
   {
-    files: ['packages/runtime/src/export.ts'],
-    // The two rules from `recommendedTypeChecked` that the existing code does
-    // not satisfy, and whose fixes are API-shape decisions rather than
-    // mechanical ones. Both land on `exportGltf`/`buildExportScene` in
-    // `packages/runtime/src/export.ts`, which has no test covering it — so "make the
-    // linter happy" would mean reshaping untested exported surface inside a
-    // toolchain commit. Turned on by whoever owns that call, with a test.
-    rules: {
-      // `buildExportScene` is declared `async` and never awaits. Dropping
-      // `async` changes its exported return type; keeping it may be deliberate
-      // headroom for image decoding. Not this commit's call.
-      '@typescript-eslint/require-await': 'off',
-      // The glTF exporter's error callback is rejected verbatim. Wrapping it in
-      // an `Error` changes what the one caller catches, unobserved by any test.
-      '@typescript-eslint/prefer-promise-reject-errors': 'off',
-    },
-  },
-
-  {
     // The house rules — the register of machine-checked constraints. Empty
     // today: `enq` purity is #22 and no-styles-outside-`packages/ui` is #12,
     // and both are deliberately unimplemented here. The wiring lands now so
@@ -106,7 +87,14 @@ export default tseslint.config(
     rules: {},
   },
 
-  { files: ['apps/editor/src/**'], languageOptions: { globals: globals.browser } },
+  // No browser-globals block here (issue #28): `no-undef` is already off for
+  // every `.ts`/`.tsx` file (see `eslint-recommended-raw` inside
+  // `recommendedTypeChecked`, which is the actual source of the claim in the
+  // old comment this replaced), and there is no plain `.js` under
+  // `apps/editor/src` or any browser package for such a block to matter to —
+  // unlike `scripts/**` below, which really does hold `.mjs`. If a browser
+  // package ever grows a plain-JS file that reads `window`/`document`, add a
+  // targeted `files` block then rather than reviving a glob nothing needs today.
   {
     // `**/` matters: a flat-config pattern with no slash matches only at the
     // config's own directory, and the app's Vite config now sits in

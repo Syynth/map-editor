@@ -79,7 +79,10 @@ function atlasFor(asset: SpriteAsset): HTMLCanvasElement {
   return canvas
 }
 
-export async function buildExportScene(doc: MapDoc, options: ExportOptions): Promise<THREE.Scene> {
+// Synchronous: nothing here awaits. An async signature that never suspends
+// only costs the caller a microtask tick, but it also lied about the return
+// type, which is the thing #28 flagged.
+export function buildExportScene(doc: MapDoc, options: ExportOptions): THREE.Scene {
   const scene = new THREE.Scene()
   scene.name = doc.name
   const nearest = doc.filtering === 'nearest'
@@ -278,14 +281,18 @@ export async function buildExportScene(doc: MapDoc, options: ExportOptions): Pro
 }
 
 export async function exportGltf(doc: MapDoc, options: ExportOptions): Promise<Blob> {
-  const scene = await buildExportScene(doc, options)
+  const scene = buildExportScene(doc, options)
   const exporter = new GLTFExporter()
 
   const binary = await new Promise<ArrayBuffer>((resolve, reject) => {
     exporter.parse(
       scene,
       (result) => resolve(result as ArrayBuffer),
-      (error) => reject(error),
+      // The typings call this an `ErrorEvent`; three's own exporter actually
+      // rejects with whatever `writeAsync` threw, which is usually already an
+      // `Error` — but rejecting with a non-Error, unobserved by any test, is
+      // exactly what #28 flagged. Wrap defensively rather than assume.
+      (error) => reject(error instanceof Error ? error : new Error(error.message)),
       {
         binary: true,
         includeCustomExtensions: true,
