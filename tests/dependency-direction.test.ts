@@ -100,6 +100,7 @@ interface PackageJson {
   devDependencies?: unknown
   peerDependencies?: unknown
   optionalDependencies?: unknown
+  exports?: unknown
 }
 
 interface Project {
@@ -118,6 +119,16 @@ function readPackageJson(dir: string): PackageJson {
 
 function names(field: unknown): string[] {
   return typeof field === 'object' && field !== null ? Object.keys(field) : []
+}
+
+/**
+ * A runtime import of `foo` can also arrive as a type-only import satisfied by
+ * `@types/foo` alone (no runtime package present) — DefinitelyTyped's scoped
+ * naming (`@scope/x` -> `@types/scope__x`) is the one irregular part.
+ */
+function typesTwin(name: string): string {
+  const scoped = /^@([^/]+)\/(.+)$/.exec(name)
+  return scoped ? `@types/${scoped[1]}__${scoped[2]}` : `@types/${name}`
 }
 
 /**
@@ -251,6 +262,85 @@ describe('workspace dependency direction', () => {
         return reason === null ? [] : [`${project.dir}/package.json: ${reason}`]
       }),
     )
+    expect(violations).toEqual([])
+  })
+
+  it('keeps runtime libraries off the root', () => {
+    // A package's `dependencies` field is the one that says "my shipped
+    // source imports this"; `devDependencies` covers private tooling
+    // (typescript, vitest, eslint...) that the code it type-checks or tests
+    // never imports. `peerDependencies` counts too — a package that expects
+    // its consumer to supply a library (`ui`'s `react`, say) still imports
+    // it, it just doesn't install it — so a name only under `peerDependencies`
+    // is exactly as live an import target as one under `dependencies`. Only
+    // `tooling`-kind packages are exempt: `eslint-rules`' `eslint` peer names
+    // the linter it plugs into, not something its own source imports, and the
+    // root legitimately carries that same name as a devDependency.
+    //
+    // Every runtime library also stands for its `@types/` twin: a type-only
+    // `import type … from 'three'` resolves against `@types/three` alone,
+    // with no runtime `three` in sight, so a root `@types/three` re-hoists
+    // exactly like a root `three` would — the gap `8b6b80d` didn't close,
+    // since it only ever named the runtime packages, not their types.
+    const runtimeLibraries = new Set(
+      projects
+        .filter((project) => project.dir !== '.' && PLACEMENT[project.name]?.kind !== 'tooling')
+        .flatMap((project) => {
+          const pkg = readPackageJson(project.dir)
+          return [...names(pkg.dependencies), ...names(pkg.peerDependencies)]
+        })
+        .filter((name) => !(name in PLACEMENT)),
+    )
+    for (const name of [...runtimeLibraries]) runtimeLibraries.add(typesTwin(name))
+
+    const rootPkg = readPackageJson('.')
+    const rootNames = [
+      ...names(rootPkg.dependencies),
+      ...names(rootPkg.devDependencies),
+      ...names(rootPkg.peerDependencies),
+      ...names(rootPkg.optionalDependencies),
+    ]
+    const violations = [...new Set(rootNames)]
+      .filter((name) => runtimeLibraries.has(name))
+      .sort()
+      .map(
+        (name) =>
+          `package.json: root declares "${name}", which a workspace package also declares under "dependencies" (or its "@types/" twin) — remove it from the root; a root copy re-hoists into node_modules and lets any package import it without declaring it`,
+      )
+    expect(violations).toEqual([])
+  })
+
+  it("keeps every package's exports map explicit", () => {
+    // #20's second gap: pnpm's strict node_modules stops an UNDECLARED
+    // import, but says nothing about a declared entry point that is itself a
+    // wildcard. A `"./*"` or `"./src/*"` subpath (or a missing `exports`
+    // field, which lets Node fall back to the package root) reopens the deep
+    // import #3 closed, so every key has to name one explicit file.
+    //
+    // A string-valued `exports` (`"./src/index.ts"`) is Node's shorthand for
+    // `{ ".": "./src/index.ts" }` — one fixed file, with no key for a `*` to
+    // vary against — so it is exactly as explicit as the object form and is
+    // accepted the same way; a literal `*` inside that string still reopens
+    // the deep import, so it is still caught.
+    const violations = projects
+      .filter((project) => project.dir !== '.')
+      .flatMap((project) => {
+        const { exports } = readPackageJson(project.dir)
+        if (typeof exports === 'string')
+          return exports.includes('*')
+            ? [
+                `${project.dir}/package.json: exports is "${exports}", a wildcard, which lets a consumer reach any file by path instead of the declared entry point`,
+              ]
+            : []
+        if (typeof exports !== 'object' || exports === null || Array.isArray(exports))
+          return [`${project.dir}/package.json: has no "exports" map, so a consumer can reach any file by path`]
+        return Object.entries(exports as Record<string, unknown>)
+          .filter(([key, value]) => key.includes('*') || (typeof value === 'string' && value.includes('*')))
+          .map(
+            ([key]) =>
+              `${project.dir}/package.json: exports["${key}"] is a wildcard, which lets a consumer reach any file under it by path instead of the declared entry point`,
+          )
+      })
     expect(violations).toEqual([])
   })
 

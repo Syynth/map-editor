@@ -58,18 +58,18 @@ toolchain to the baseline this phase installs against — React 19, Vite 8, Vite
 TypeScript 6.0.3, plus ESLint, XState and Mantine. React 18 → 19 across 2,640 untested
 lines of `src/editor` is the real risk there, not the version numbers.
 
-- [ ] Switch to pnpm: delete `package-lock.json`, add `pnpm-workspace.yaml`,
+- [x] Switch to pnpm: delete `package-lock.json`, add `pnpm-workspace.yaml`,
       set the `packageManager` field.
-- [ ] Add `.nvmrc` — development is on Node 26, CI will default to something else.
-- [ ] Add Turborepo with a `turbo.json` pipeline covering `build`, `test`,
+- [x] Add `.nvmrc` — development is on Node 26, CI will default to something else.
+- [x] Add Turborepo with a `turbo.json` pipeline covering `build`, `test`,
       `typecheck`, `lint`.
-- [ ] **Install ESLint 10 + typescript-eslint 8 here, not in Phase 3.**
+- [x] **Install ESLint 10 + typescript-eslint 8 here, not in Phase 3.**
       [#20](https://github.com/Syynth/map-editor/issues/20) decided this deliberately, so
       the checks land *with* the code rather than being retrofitted onto it. Flat config,
       type-aware, custom rules in their own workspace package, `noInlineConfig: true`.
       Test files and `scripts/` are scoped out by `files:` globs; `packages/fixtures` is
       not.
-- [ ] Confirm `pnpm test` still passes before moving a single file.
+- [x] Confirm `pnpm test` still passes before moving a single file.
 
 ## Phase 2 — Extract packages, leaves first
 
@@ -94,9 +94,13 @@ move rather than to the whole restructure. Order follows the dependency directio
       function the boundary script always named.
 - [x] A test enforcing dependency direction, since pnpm does not.
       `tests/dependency-direction.test.ts`: it reads every workspace `package.json`,
-      checks each declared arrow against the ladder above and checks the graph is
-      acyclic. A workspace package with no entry in its table fails, so a new package
-      cannot be silently unchecked — which is the bug the deleted script had.
+      checks each declared arrow against the ladder above, checks the graph is
+      acyclic, keeps runtime libraries (and their `@types/` twins) off the root
+      so none can re-hoist into a package that never declared them, and keeps
+      every package's `exports` map explicit so a declared entry point can't
+      itself be a wildcard. A workspace package with no entry in its table fails,
+      so a new package cannot be silently unchecked — which is the bug the
+      deleted script had.
 - [x] **Delete `scripts/check-boundaries.mjs`.** Its header has always said to, and
       [#20](https://github.com/Syynth/map-editor/issues/20) found it is regex-over-source
       and therefore blind to types. It had also started passing vacuously: it walked
