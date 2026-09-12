@@ -30,7 +30,7 @@ import { describe, expect, it } from 'vitest'
 type Placement =
   | { kind: 'layer'; rank: number; planned?: boolean }
   | { kind: 'side'; rank: number; visibleTo: readonly string[]; planned?: boolean }
-  | { kind: 'feature'; rank: number; planned?: boolean }
+  | { kind: 'feature'; planned?: boolean }
   | { kind: 'tooling' }
   | { kind: 'app' }
   | { kind: 'root' }
@@ -62,16 +62,19 @@ function isPlanned(placement: Placement): boolean {
  * already what makes it "unreachable from `runtime` or the exporter" as #3
  * requires.
  *
- * #49 settles what #3 left open for `feature-terrain`: a feature ranks
- * alongside `editor-host`, so equal rank forbids either importing the other,
- * by construction — no case in `violation` ever compares a `feature` to
- * `editor-host` and finds it lower. But equal rank is a ceiling, not a
- * description of the floor: the same "strictly lower rung" rule that ranking
- * gives every other kind would also license a feature to reach `viewport` and
- * `fixtures` at rung 4, and #35 names a shorter list than that. So `feature`
- * gets no rank arithmetic at all — `violation` gives it an explicit allow-list
- * instead, and `rank` on its placement is bookkeeping for this comment, not an
- * input to the check.
+ * #49 settles what #3 left open for `feature-terrain`: a feature sits beside
+ * `editor-host`, not under it on the ladder, and neither may import the
+ * other — by two separate mechanisms, not a shared rank. `violation`'s
+ * `feature` case checks an explicit allow-list (`FEATURE_MAY_DEPEND_ON`)
+ * rather than comparing rungs, so it can admit `registry`, `document`,
+ * `geometry`, `runtime`, `ui`, and `viewport-contrib` without also admitting
+ * `viewport` and `fixtures`, which a plain "strictly lower rung" rule would
+ * license and #35 never names. The reverse direction — `editor-host`, or any
+ * other layer or side package, reaching a feature — is refused by the
+ * layer/side case's own kind-guard, since `feature` is neither `layer` nor
+ * `side`; #49 gives that refusal its own branch and message so it doesn't
+ * misreport a feature as an app. `feature` therefore carries no `rank` at
+ * all: there is nothing left for one to bound.
  */
 const PLACEMENT: Record<string, Placement> = {
   'map-editor': { kind: 'root' },
@@ -89,11 +92,10 @@ const PLACEMENT: Record<string, Placement> = {
   '@map-editor/viewport': { kind: 'layer', rank: 4 },
   '@map-editor/fixtures': { kind: 'layer', rank: 4 },
   '@map-editor/editor-host': { kind: 'layer', rank: 5, planned: true },
-  // Rank 5 is the same rung as editor-host, which is the point (#49): equal
-  // rank keeps this and editor-host out of each other's dependencies by
-  // construction. What it MAY depend on is not read from that rank at all —
-  // see `violation`'s 'feature' case and the comment above PLACEMENT.
-  '@map-editor/feature-terrain': { kind: 'feature', rank: 5, planned: true },
+  // Sits beside editor-host, not under it: see the comment above PLACEMENT
+  // for the two mechanisms (an allow-list one way, a kind-guard the other)
+  // that keep the two from ever importing each other.
+  '@map-editor/feature-terrain': { kind: 'feature', planned: true },
 
   // Tooling describes the system from outside it, so it sits off the ladder
   // entirely rather than at the bottom of it: a rung of 0 would let any layer
@@ -198,11 +200,11 @@ function discover(): Project[] {
 }
 
 /**
- * #35's list for what a feature may depend on, not derived from rank — see
- * the comment above PLACEMENT for why rank can't carry this. Deliberately
- * excludes `editor-host` and every `feature` (equal rank already forbids
- * both) and `viewport` / `fixtures` (rank 4, reachable under a plain
- * "strictly lower rung" rule, but never named by #35).
+ * #35's list for what a feature may depend on — see the comment above
+ * PLACEMENT for why this is an allow-list rather than rank arithmetic.
+ * Deliberately excludes `editor-host` and every `feature` (simply by not
+ * naming them here) and `viewport` / `fixtures` (rank 4, reachable under a
+ * plain "strictly lower rung" rule, but never named by #35).
  */
 const FEATURE_MAY_DEPEND_ON = new Set([
   '@map-editor/registry',
@@ -243,16 +245,24 @@ function violation(from: string, to: string): string | null {
     // package is placed off the side for its consumers, not for its own imports.
     case 'layer':
     case 'side':
+      // A feature is not an app, so the generic "arrow from apps to packages
+      // points one way" message below would misname it. #35's rule for this
+      // direction is its own: the host never imports a feature — an app is
+      // the only thing that composes a feature into anything.
+      if (b.kind === 'feature')
+        return `${from} is a package and may not depend on ${to} (feature): #35 rules that the host never imports a feature — only an app composes them together`
       if (b.kind !== 'layer' && b.kind !== 'side')
         return `${from} is a package and may not depend on ${to} (${b.kind}): the arrow from apps to packages points one way`
       return b.rank < a.rank
         ? null
         : `${from} (rung ${a.rank}) may not depend on ${to} (rung ${b.rank}): a package may depend only on a strictly lower rung`
-    // No rank comparison here on purpose (see FEATURE_MAY_DEPEND_ON): equal
-    // rank with editor-host already keeps both out of the allow-list, so
-    // reaching for `b.rank < a.rank` too would just be a second, redundant
-    // route to the same answer for those two cases — and the wrong answer for
-    // `viewport` / `fixtures`, which rank arithmetic alone would admit.
+    // No rank comparison for a feature target: a feature sits beside
+    // editor-host, off the ladder, so there is no rung to compare against.
+    // The `feature` case below checks FEATURE_MAY_DEPEND_ON instead, which
+    // admits `registry`/`document`/`geometry`/`runtime`/`ui`/
+    // `viewport-contrib` without also admitting `viewport`/`fixtures` — the
+    // "strictly lower rung" rule just above would license both, and #35
+    // never names them.
     case 'feature':
       return FEATURE_MAY_DEPEND_ON.has(to)
         ? null
@@ -300,6 +310,42 @@ describe('workspace dependency direction', () => {
       }),
     )
     expect(violations).toEqual([])
+  })
+
+  // Table-driven against `violation` itself, not the workspace on disk: the
+  // review that asked for this pointed out that `throw`ing inside
+  // `case 'feature':` still left every test above green, since nothing on
+  // disk is a feature or depends on one yet — the `planned` assertion two
+  // tests up guarantees that. These cases exercise both directions (a
+  // feature reaching out, and something reaching in) without waiting for a
+  // second feature package to exist.
+  it('keeps a feature package on both sides of the line #35 drew', () => {
+    const FEATURE = '@map-editor/feature-terrain'
+
+    // Off the allow-list: two rungs a plain "strictly lower rung" rule would
+    // admit (`viewport`, `fixtures`), the peer it may never reach
+    // (`editor-host`, and a feature reaching a feature — there being only
+    // one on disk, `FEATURE` stands in for both), and an app, which is not
+    // reachable by any package.
+    for (const to of ['@map-editor/viewport', '@map-editor/fixtures', '@map-editor/editor-host', FEATURE, '@map-editor/editor'])
+      expect(violation(FEATURE, to), `${FEATURE} -> ${to}`).not.toBeNull()
+
+    // On the allow-list: every one of these must be legal, or the feature
+    // package this PR unblocks can't actually import what #35 promised it.
+    for (const to of FEATURE_MAY_DEPEND_ON) expect(violation(FEATURE, to), `${FEATURE} -> ${to}`).toBeNull()
+
+    // The reverse arrow: a package reaching INTO a feature, refused by its
+    // own branch rather than falling through to the generic "arrow from apps
+    // to packages points one way" message, which would misname a feature as
+    // an app.
+    expect(violation('@map-editor/editor-host', FEATURE)).toContain('#35')
+    expect(violation('@map-editor/ui', FEATURE)).toContain('#35')
+    expect(violation('@map-editor/editor-host', FEATURE)).not.toContain('the arrow from apps to packages points one way')
+
+    // `violation` treats an unplaced package as a non-match (see the early
+    // `if (!a || !b) return null`), so a name in the allow-list that a rename
+    // left stale would silently stop mattering instead of failing loudly.
+    for (const name of FEATURE_MAY_DEPEND_ON) expect(name in PLACEMENT, name).toBe(true)
   })
 
   it('keeps runtime libraries off the root', () => {
