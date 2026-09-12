@@ -241,3 +241,11 @@ Each entry:
 - **STATUS:** tentative
 - **WHAT:** A sculpt stroke applies once per cell, when the pointer has fully passed from one cell into the next, decided from the pointer's position on the press plane rather than from the picked surface, with a dead zone past the boundary. The dead zone's size is dialed in by feel on a prototype and then fixed.
 - **WHY:** Applying on every change of the picked surface re-triggers off the geometry the stroke just raised and chatters along edges; the artist wants a stroke that lands where the brush clearly is.
+
+## Water is its own tool, not a terrain verb
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** editor-ui
+- **SCOPE:** moderate
+- **WHAT:** Water leaves the Terrain tool's verbs and becomes a rail subject of its own, with its own bar and settings: the water line's height (defaulting to the layer view's top handle), fill and drain as its modes, and room for later behaviour (flow, shore) that terrain has no place for. Picking looks through water everywhere: every tool edits the ground under it, and previews draw there.
+- **WHY:** Water is not terrain — it is a surface bound to the heightmap with behaviours and settings of its own (ruling of the same date) — and the rail's rule is one subject per item. Folded into terrain it could only ever be "pool at the pressed cell", which never made sense.
