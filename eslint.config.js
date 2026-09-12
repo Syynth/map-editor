@@ -1,6 +1,7 @@
 import js from '@eslint/js'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
+import reactHooks from 'eslint-plugin-react-hooks'
 import { plugin as houseRules } from '@map-editor/eslint-rules'
 
 // Plain `.js`, not `.ts`: ESLint only reads a TypeScript config through `jiti`,
@@ -10,8 +11,9 @@ import { plugin as houseRules } from '@map-editor/eslint-rules'
 
 /**
  * Files that describe or drive the system from outside it, and are therefore
- * exempt from the house rules (issue #20's amendment). Benchmarks count as test
- * files here: vitest runs them, and a bench exists to measure the system rather
+ * exempt from lint entirely — every rule set, not only the house rules
+ * (issue #20's amendment, sharpened by #38). Benchmarks count as test files
+ * here: vitest runs them, and a bench exists to measure the system rather
  * than to be part of it. `packages/fixtures` is deliberately absent — it
  * produces data the editor really loads, so its output has to satisfy the same
  * invariants as anything else.
@@ -38,6 +40,21 @@ export default tseslint.config(
     // any depth (gitignore semantics differ), so `git status` stays clean and
     // hides it.
     ignores: ['**/dist/**', '**/.turbo/**', '.claude/**'],
+  },
+
+  {
+    // A config object with only `ignores` — no `files` — is a *global* ignore
+    // in flat config: it applies to every other block below, including
+    // `js.configs.recommended` and `recommendedTypeChecked`, not just to
+    // whichever block happens to list it as `ignores` alongside `files`. #38
+    // found that putting `OUTSIDE_THE_SYSTEM` only on the house-rules block
+    // (below) excluded test files from the house rules but left them getting
+    // typescript-eslint's recommended set — `no-unsafe-*` and friends —
+    // which is what grew `document.test.ts`'s now-removed `OnDisk` type.
+    // Verified with `eslint --print-config` on a `*.test.ts` file: with the
+    // exemption only on the house-rules block, `recommendedTypeChecked`'s
+    // rules still show up; with it global as below, no rules from any set do.
+    ignores: OUTSIDE_THE_SYSTEM,
   },
 
   {
@@ -81,10 +98,33 @@ export default tseslint.config(
     // today: `enq` purity is #22 and no-styles-outside-`packages/ui` is #12,
     // and both are deliberately unimplemented here. The wiring lands now so
     // that the first rule is a rule file rather than a rule plus a migration.
+    //
+    // No `ignores: OUTSIDE_THE_SYSTEM` here — the global ignore above already
+    // removes those files from every block, this one included. Repeating it
+    // here would be a no-op, and the whole point of #38 was that a *local*
+    // ignore on just this block isn't enough.
     files: ['**/*.{ts,tsx}'],
-    ignores: OUTSIDE_THE_SYSTEM,
     plugins: { 'map-editor': houseRules },
     rules: {},
+  },
+
+  {
+    // #37: `eslint-plugin-react-hooks` was never installed, so the three
+    // `eslint-disable-next-line react-hooks/exhaustive-deps` comments the
+    // ESLint task (#20) found in `App.tsx`/`panels.tsx` were suppressing a
+    // rule that never ran — dead comments over unchecked code, not actually
+    // enforced anything. `rules-of-hooks` only (call order, conditional
+    // hooks): it has zero violations here, so turning it on costs nothing
+    // and catches a real class of bug. `exhaustive-deps` is deliberately
+    // NOT enabled — the three sites above genuinely violate it on purpose
+    // (documented at each site: a revision counter standing in for an
+    // object that never changes identity), and #11's actor migration
+    // deletes all three rather than restructuring them to satisfy the rule.
+    // Do not "fix" this by turning `exhaustive-deps` on; it deletes itself
+    // when #11 lands.
+    files: ['**/*.tsx'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: { 'react-hooks/rules-of-hooks': 'error' },
   },
 
   // This block is not about `no-undef` — that's already off for every
