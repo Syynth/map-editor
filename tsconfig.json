@@ -62,6 +62,7 @@
     { "path": "packages/editor-host" },
     { "path": "packages/eslint-rules" },
     { "path": "packages/feature-terrain" },
+    { "path": "packages/feature-sketch" },
     { "path": "packages/fixtures" },
     { "path": "packages/geometry" },
     { "path": "packages/registry" },

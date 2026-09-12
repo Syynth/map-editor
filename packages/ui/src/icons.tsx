@@ -30,6 +30,18 @@ const GLYPHS = {
       <path d="M9 20v-6h6v6" />
     </>
   ),
+  sketch: (
+    <>
+      <path d="M5 17 8 6l8 2 3 8-7 3z" />
+      <circle cx="8" cy="6" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="8" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="16" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="5" cy="17" r="1.6" fill="currentColor" stroke="none" />
+    </>
+  ),
+  pen: <path d="M4 20l4-1L19 8l-3-3L5 16zM14 7l3 3" />,
+  check: <path d="M5 12l5 5L20 7" />,
   fences: <path d="M5 7v13M12 7v13M19 7v13M2 11h20M2 16h20M3.5 8 5 5l1.5 3M10.5 8 12 5l1.5 3M17.5 8 19 5l1.5 3" />,
   level: (
     <>
@@ -251,7 +263,6 @@ const GLYPHS = {
       <path d="M12 9v5M12 17v.5" />
     </>
   ),
-  check: <path d="M4 12l5 5L20 6" />,
   plus: <path d="M12 5v14M5 12h14" />,
   chevronDown: <path d="M6 9l6 6 6-6" />,
 } satisfies Record<string, ReactElement>

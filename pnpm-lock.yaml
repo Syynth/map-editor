@@ -166,6 +166,9 @@ importers:
       '@map-editor/editor-host':
         specifier: workspace:*
         version: link:../../packages/editor-host
+      '@map-editor/feature-sketch':
+        specifier: workspace:*
+        version: link:../../packages/feature-sketch
       '@map-editor/feature-terrain':
         specifier: workspace:*
         version: link:../../packages/feature-terrain
@@ -252,7 +255,7 @@ importers:
     devDependencies:
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -286,7 +289,7 @@ importers:
         version: 19.3.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -301,10 +304,47 @@ importers:
         version: 10.10.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
+
+  packages/feature-sketch:
+    dependencies:
+      '@map-editor/document':
+        specifier: workspace:*
+        version: link:../document
+      '@map-editor/geometry':
+        specifier: workspace:*
+        version: link:../geometry
+      '@map-editor/registry':
+        specifier: workspace:*
+        version: link:../registry
+      '@map-editor/ui':
+        specifier: workspace:*
+        version: link:../ui
+      xstate:
+        specifier: 6.0.0-alpha.53
+        version: 6.0.0-alpha.53
+      zod:
+        specifier: 4.6.2
+        version: 4.6.2
+    devDependencies:
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      react:
+        specifier: ^19.3.0
+        version: 19.3.0
+      tsup:
+        specifier: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.20.2)(jsdom@26.1.0)(vite@8.3.0(@types/node@22.20.2)(esbuild@0.27.7))
 
   packages/feature-terrain:
     dependencies:
@@ -335,7 +375,7 @@ importers:
         version: 19.3.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -354,7 +394,7 @@ importers:
     devDependencies:
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -367,7 +407,7 @@ importers:
     devDependencies:
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -383,7 +423,7 @@ importers:
     devDependencies:
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -411,7 +451,7 @@ importers:
         version: 0.186.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -442,7 +482,7 @@ importers:
         version: 19.3.0(react@19.3.0)
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3
@@ -464,7 +504,7 @@ importers:
         version: 0.186.0
       tsup:
         specifier: 8.5.1
-        version: 8.5.1
+        version: 8.5.1(postcss@8.5.28)(typescript@6.0.3)
       typescript:
         specifier: 6.0.3
         version: 6.0.3

@@ -267,8 +267,9 @@ export interface HostOptions {
  * `apply` is one labelled edit as an EVENT at the document actor: a feature
  * has no writer and no route to one (#13).
  */
-function featureDeps(owner: OwnerId, reader: DocumentReader, document: AnyActorRef, tools: ActorRefFrom<ToolsLogic>): EditorFeatureDeps {
+function featureDeps(owner: OwnerId, reader: DocumentReader, document: AnyActorRef, tools: ActorRefFrom<ToolsLogic>, view: ActorRefFrom<ViewLogic>): EditorFeatureDeps {
   return {
+    select: (selection) => view.send({ type: 'select', selection: selection as Selection | null }),
     doc: () => reader.doc,
     // The feature's own slice, and nothing else's: what it declared at install, plus what it set since.
     params: () => tools.getSnapshot().context.features[owner] ?? {},
@@ -345,7 +346,7 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
       // actor to spawn plus the tool contracts and context keys the
       // declarations alone cannot carry (#9's two-registry split).
       const spawned = features.map((feature) => {
-        const instance = feature.create(featureDeps(feature.owner, reader, document, tools))
+        const instance = feature.create(featureDeps(feature.owner, reader, document, tools, view))
         instances.set(feature.owner, instance)
         return [feature.owner, spawn(instance.logic, { id: feature.owner })] as const
       })
@@ -677,7 +678,7 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
   const releaseFeatureHook = onFeatureChange<Feature['create']>({
     install: ({ owner, create, params }) => {
       children.tools.send({ type: 'seed', owner, params: (params ?? {}) as FeatureParams })
-      const instance = create(featureDeps(owner, reader, children.document, children.tools))
+      const instance = create(featureDeps(owner, reader, children.document, children.tools, children.view))
       instances.set(owner, instance)
       actor.send({ type: 'install', owner, logic: instance.logic })
     },

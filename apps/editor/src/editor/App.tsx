@@ -21,6 +21,7 @@ import {
   levelBounds,
   structureOf,
   type ReadonlyVoxel,
+  toWorld,
 } from '@map-editor/document'
 import {
   useDocument,
@@ -35,6 +36,7 @@ import {
 // implementation). An app is the only thing that may import a feature (#35),
 // and this file is an app.
 import { strokeCells } from '@map-editor/feature-terrain'
+import { currentSketch, sketchPointHeight } from '@map-editor/feature-sketch'
 import { mergeParams, type EditorParams } from './params'
 // The canvas-drawing generator lives behind its own subpath (#48): re-exporting it
 // from the package root would force `DOM` into every consumer's tsconfig, including
@@ -58,7 +60,7 @@ import {
   TopGrow,
   TopSep,
 } from '@map-editor/ui'
-import { Viewport } from '@map-editor/viewport'
+import { Viewport, type SketchOverlay } from '@map-editor/viewport'
 
 import { saveAutosave } from './autosave'
 import { FeaturePanels, ObjectBar, SelectBar } from './bars'
@@ -184,6 +186,19 @@ function hintsFor(params: EditorParams): ReadonlyArray<{ kbd?: string; text: str
         : [
             { kbd: 'drag', text: `paint ${params.paintVerb}` },
             { kbd: '⌥ click', text: 'pick up the tile' },
+          ]
+    case 'sketch':
+      return params.sketchMode === 'draw'
+        ? [
+            { kbd: 'click', text: params.drawing ? 'add a point' : 'start an outline' },
+            { kbd: '⌥ click', text: 'a corner point' },
+            { kbd: '⇧', text: 'no snapping' },
+            ...(params.drawing ? [{ kbd: '⏎', text: 'finish' }, { kbd: 'esc', text: 'discard' }] : []),
+          ]
+        : [
+            { kbd: 'drag', text: 'move a point' },
+            { kbd: 'click', text: 'select a sketch' },
+            { kbd: '⇧', text: 'no snapping' },
           ]
     default:
       return []
@@ -362,9 +377,31 @@ export default function App() {
   // the transition, which is exactly when `playing` moves.
   const play = useMemo(() => (playing ? host.playSession() : null), [host, playing])
 
+  // The sketch under the Sketch tool — being drawn, or selected — as the viewport draws it: its points in world space on
+  // its cap. Computed per render rather than memoised: the document is mutated in place, so nothing about `doc` would tell
+  // a memo to recompute, and it is a handful of points.
+  const sketchOverlay = ((): SketchOverlay | null => {
+    if (params.tool !== 'sketch') return null
+    const sketch = currentSketch(doc, params, view.selection)
+    if (!sketch) return null
+    const frame = frameOf(doc, sketch.id)
+    const y = sketchPointHeight(doc, sketch) + 0.05
+    const points = sketch.points.map((p) => {
+      const [x, z] = toWorld(frame, p.x, p.z)
+      return [x, y, z] as const
+    })
+    const selected = view.selection?.kind === 'sketchPoint' && view.selection.structure === sketch.id ? view.selection.index : null
+    return { points, closed: sketch.closed, selected }
+  })()
+  // Pushed to the viewport by content, not identity: the object is new every render, its key only when the sketch changed.
+  const sketchOverlayKey = sketchOverlay ? `${sketchOverlay.closed}:${sketchOverlay.selected}:${sketchOverlay.points.map((p) => p.join(',')).join(';')}` : ''
+  const sketchOverlayRef = useRef(sketchOverlay)
+  sketchOverlayRef.current = sketchOverlay
+
   // --- push editor state into the viewport ----------------------------------
   useEffect(() => {
     viewportRef.current?.setOptions({
+      sketch: sketchOverlayRef.current,
       brushPreview: params.tool === 'terrain' && !playing ? hoverCells : [],
       showGrid: view.showGrid,
       gameCamera: view.gameCamera,
@@ -373,7 +410,7 @@ export default function App() {
       selectedObjectId: view.selectedObjectId,
       layers: view.layers,
     })
-  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selectedObjectId, view.layers, hover, hoverCells])
+  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selectedObjectId, view.layers, hover, hoverCells, sketchOverlayKey])
 
   useEffect(() => {
     viewportRef.current?.refreshAtmosphere()
@@ -566,7 +603,7 @@ export default function App() {
         ) : params.tool === 'object' ? (
           <ObjectBar params={params} set={setParams} />
         ) : (
-          <FeaturePanels slot="bar" tool={params.tool} doc={doc} params={params} platform={platform} />
+          <FeaturePanels slot="bar" tool={params.tool} doc={doc} params={params} platform={platform} selection={view.selection} />
         )
       }
       stage={
@@ -619,6 +656,7 @@ export default function App() {
           doc={doc}
           params={params}
           set={setParams}
+          selection={view.selection}
           platform={platform}
           selected={selected}
           deleteKbd={deleteKbd}

@@ -10,6 +10,7 @@
  */
 
 import type { Atmosphere, CameraRig, DeepReadonly, MapObject, ReadonlyMapDoc, RgbaImage } from '@map-editor/document'
+import type { Selection } from '@map-editor/editor-host'
 import type { EditorParams } from './params'
 import type { Platform } from '@map-editor/registry'
 import { FileButton, InspectorHead, Note, Row, Section } from '@map-editor/ui'
@@ -33,6 +34,7 @@ export function Inspector({
   params,
   set,
   platform,
+  selection,
   selected,
   deleteKbd,
   levelOpen,
@@ -53,6 +55,7 @@ export function Inspector({
   params: EditorParams
   set: (changes: Partial<EditorParams>) => void
   platform: Platform
+  selection: Selection | null
   selected: DeepReadonly<MapObject> | null
   deleteKbd?: string
   levelOpen: boolean
@@ -98,7 +101,7 @@ export function Inspector({
         <Section title="Brush" summary={`${params.brush.size} · ${params.brush.shape}`}>
           <Row label="Size" value={`${params.brush.size} cells`} />
           <Row label="Shape" value={params.brush.shape} />
-          <FeaturePanels slot="inspector" tool={params.tool} doc={doc} params={params} platform={platform} />
+          <FeaturePanels slot="inspector" tool={params.tool} doc={doc} params={params} platform={platform} selection={selection} />
         </Section>
       ) : null}
 

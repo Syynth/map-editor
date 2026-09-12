@@ -50,6 +50,12 @@ export interface HotHandle {
  * the document's types. The host fills them in; a feature names the narrowest
  * shape it reads, and structural typing makes the two meet.
  */
+/** What a feature may select: something with a kind; the host knows the rest (an object, a structure, a point of a sketch). */
+export interface FeatureSelection {
+  readonly kind: string
+  readonly [field: string]: unknown
+}
+
 export interface FeatureDeps<TDoc, TPatch, TParams> {
   /** The document, live. Read per call, never captured: it is mutated in place. */
   doc(): TDoc
@@ -59,6 +65,8 @@ export interface FeatureDeps<TDoc, TPatch, TParams> {
   setParams(changes: Partial<TParams>): void
   /** One labelled edit, applied and recorded by the document actor. */
   apply(label: string, patches: readonly TPatch[]): void
+  /** Make something the selection, or clear it; the host's view actor holds it and every panel reads it from there. */
+  select(selection: FeatureSelection | null): void
 }
 
 /**

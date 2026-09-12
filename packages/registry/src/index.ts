@@ -31,7 +31,7 @@ export type { OwnerId } from './owners'
 export type { Declaration, DeclarationRegistry } from './registry'
 
 export { defineFeature, onFeatureChange, provideFeature } from './feature'
-export type { FeatureChangeHooks, FeatureDeps, FeatureInstance, FeatureModule, HotHandle } from './feature'
+export type { FeatureChangeHooks, FeatureDeps, FeatureInstance, FeatureModule, FeatureSelection, HotHandle } from './feature'
 
 export { always, and, defineContextKey, disjoint, evaluate, never, not, or, parsePredicate } from './context'
 export type { Availability, ContextKey, ContextSnapshot, KeyValue, Predicate, PredicateNode } from './context'

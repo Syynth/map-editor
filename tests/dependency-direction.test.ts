@@ -97,6 +97,7 @@ const PLACEMENT: Record<string, Placement> = {
   // for the two mechanisms (an allow-list one way, a kind-guard the other)
   // that keep the two from ever importing each other.
   '@map-editor/feature-terrain': { kind: 'feature' },
+  '@map-editor/feature-sketch': { kind: 'feature' },
 
   // Tooling describes the system from outside it, so it sits off the ladder
   // entirely rather than at the bottom of it: a rung of 0 would let any layer

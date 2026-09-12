@@ -1,0 +1,35 @@
+{
+  "name": "@map-editor/feature-sketch",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.ts && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.typecheck.json"
+  },
+  "dependencies": {
+    "@map-editor/document": "workspace:*",
+    "@map-editor/geometry": "workspace:*",
+    "@map-editor/registry": "workspace:*",
+    "@map-editor/ui": "workspace:*",
+    "xstate": "6.0.0-alpha.53",
+    "zod": "4.6.2"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3",
+    "vitest": "^5.0.0"
+  }
+}
