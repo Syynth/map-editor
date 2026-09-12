@@ -79,14 +79,17 @@ apps/export-cli/    headless `.glb` exporter: plain node, no browser
 ```
 
 The import direction `document <- geometry <- runtime <- viewport <- editor` is
-enforced by dependency resolution rather than by a lint script: pnpm's strict
+enforced by two mechanisms rather than by a lint script. pnpm's strict
 `node_modules` means a package can only import what its own `package.json`
 declares, so `packages/document` cannot reach three.js or React at all — the
-import fails to resolve. `scripts/check-boundaries.mjs`, which policed the old
-`src/{core,runtime,editor}` tree, now inspects nothing and says so; it is kept
-wired up for whoever rewrites it against the workspace, and proves nothing until
-they do. The runtime is the package a game would consume; the editor renders
-through it, so the preview and the game cannot drift apart.
+import fails to resolve. That covers *undeclared* imports and nothing else: a
+wrong entry in a `package.json` resolves perfectly well, so the direction itself
+is asserted by `tests/dependency-direction.test.ts`, which reads every workspace
+`package.json`, checks each declared arrow against the ladder and checks the
+graph is acyclic. A package with no place on that ladder fails the test, so a
+new one cannot be added unchecked. The runtime is the package a game would
+consume; the editor renders through it, so the preview and the game cannot drift
+apart.
 
 ## Two things worth knowing before reading the code
 
