@@ -20,7 +20,14 @@
 
 import * as THREE from 'three'
 
-import { HALF, allChunkKeys, type ReadonlyMapDoc, type RgbaImage, type SpriteAsset } from '@map-editor/document'
+import {
+  HALF,
+  allChunkKeys,
+  type ReadonlyMapDoc,
+  type RgbaImage,
+  type SpriteAsset,
+  rootVoxel,
+} from '@map-editor/document'
 import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
 import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
 import { layerView, withinLayers, type LayerRange } from './layers'
@@ -201,7 +208,8 @@ export class RuntimeScene {
   }
 
   mapCentre(): THREE.Vector3 {
-    return new THREE.Vector3(this.doc.size.width / 2, 0, this.doc.size.height / 2)
+    const { width, height } = rootVoxel(this.doc).size
+    return new THREE.Vector3(width / 2, 0, height / 2)
   }
 
   /** Remove a chunk's meshes from the scene and free their geometry. */
@@ -224,10 +232,12 @@ export class RuntimeScene {
   }
 
   rebuildChunks(keys?: string[]): void {
-    const list = keys ?? allChunkKeys(this.doc.size.width, this.doc.size.height)
+    // TRANSITIONAL: the scene draws the root voxel volume; other structures come with the per-structure step.
+    const ground = rootVoxel(this.doc)
+    const list = keys ?? allChunkKeys(ground.size.width, ground.size.height)
     const start = performance.now()
     // What the mesher reads: the document, or its layer view while a range is set.
-    const source = layerView(this.doc, this.layers)
+    const source = layerView(ground, this.layers)
 
     // A full rebuild is authoritative about which chunks exist, so it also has
     // to drop the ones that no longer do. Replacing a map with a smaller one
@@ -243,7 +253,7 @@ export class RuntimeScene {
     for (const key of list) {
       this.dropChunk(key)
 
-      const mesh = meshTerrainChunk(source, key)
+      const mesh = meshTerrainChunk(this.doc, source, key)
       if (mesh.solid.triangleCount === 0 && !mesh.water) continue
 
       const solid = new THREE.Mesh(buildGeometry(mesh.solid), this.terrainMaterial)
@@ -251,6 +261,7 @@ export class RuntimeScene {
       solid.receiveShadow = true
       solid.userData.chunkKey = key
       solid.userData.surface = 'solid'
+      solid.userData.structureId = ground.id
       this.terrainGroup.add(solid)
 
       let water: THREE.Mesh | null = null
@@ -260,6 +271,7 @@ export class RuntimeScene {
         water.renderOrder = WATER_RENDER_ORDER
         water.userData.chunkKey = key
         water.userData.surface = 'water'
+        water.userData.structureId = ground.id
         this.terrainGroup.add(water)
       }
 
@@ -282,6 +294,11 @@ export class RuntimeScene {
       triangles,
       lastMeshMs: performance.now() - start,
     }
+  }
+
+  /** The structure a terrain mesh belongs to — what a pick names alongside the face. */
+  structureIdFor(mesh: THREE.Object3D): string {
+    return mesh.userData.structureId as string
   }
 
   faceAddressFor(mesh: THREE.Object3D): Int32Array | null {

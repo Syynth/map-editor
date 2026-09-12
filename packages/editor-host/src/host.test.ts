@@ -11,6 +11,10 @@ import {
   type MapObject,
   type Patch,
   type SurfaceAddress,
+  rootVoxel,
+  type MapDoc,
+  type ReadonlyMapDoc,
+  type VoxelStructure,
 } from '@map-editor/document'
 import { commands, defineFeature, dispose, provideFeature, type HotHandle } from '@map-editor/registry'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -18,6 +22,10 @@ import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from '
 
 import { createHost, type Feature, type Host } from './host'
 import type { PointerPress } from './gesture'
+
+/** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
 
 /**
  * #10's shape: a behavior test dispatches at the root actor and asserts
@@ -53,22 +61,22 @@ function apply(host: Host, label: string, patches: Patch[]): void {
 
 /** One committed edit, so there is something to undo. */
 function raiseOnce(host: Host, x: number, y: number, by = 1): void {
-  apply(host, 'Raise', raise(host.reader.doc, [[x, y]], by))
+  apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[x, y]], by))
 }
 
 describe('the document commands, routed to the document actor', () => {
   it('undoes and redoes what the write path recorded, seen through reader', () => {
     const { host, dispatch } = makeHost()
-    const index = cellIndex(host.reader.doc.size, 2, 2)
-    const before = host.reader.doc.terrain.height[index]
+    const index = cellIndex(ground(host.reader.doc).size, 2, 2)
+    const before = ground(host.reader.doc).terrain.height[index]
     raiseOnce(host, 2, 2, 3)
-    expect(host.reader.doc.terrain.height[index]).toBe(before + 3)
+    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 3)
 
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(host.reader.doc.terrain.height[index]).toBe(before)
+    expect(ground(host.reader.doc).terrain.height[index]).toBe(before)
 
     expect(dispatch('redo')).toEqual({ ok: true })
-    expect(host.reader.doc.terrain.height[index]).toBe(before + 3)
+    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 3)
   })
 
   it('undoes exactly once per dispatch, not twice', () => {
@@ -159,7 +167,7 @@ describe('the document commands, routed to the document actor', () => {
     const other = createMap(6, 6, 'Other')
     expect(dispatch('document.load', { json: serialize(other) })).toEqual({ ok: true })
     expect(host.reader.doc.name).toBe('Other')
-    expect(host.reader.doc.size).toEqual({ width: 6, height: 6 })
+    expect(ground(host.reader.doc).size).toEqual({ width: 6, height: 6 })
     // Nothing on the stack addresses a document that is gone.
     expect(host.reader.canUndo()).toBe(false)
   })
@@ -170,10 +178,10 @@ describe('the document commands, routed to the document actor', () => {
     // keeps the open document open.
     const { host, dispatch } = makeHost()
     const name = host.reader.doc.name
-    expect(dispatch('document.load', { json: '{ "formatVersion": 1 }' })).toMatchObject({
+    expect(dispatch('document.load', { json: '{ "formatVersion": 2 }' })).toMatchObject({
       ok: false,
       kind: 'invalid-args',
-      issues: [{ path: ['json'], message: expect.stringContaining('no size') as string }],
+      issues: [{ path: ['json'], message: expect.stringContaining('no structures') as string }],
     })
     expect(host.reader.doc.name).toBe(name)
   })
@@ -182,7 +190,7 @@ describe('the document commands, routed to the document actor', () => {
     const { host, dispatch } = makeHost()
     raiseOnce(host, 1, 1)
     expect(dispatch('document.new', { width: 4, height: 4, name: 'Fresh' })).toEqual({ ok: true })
-    expect(host.reader.doc.size).toEqual({ width: 4, height: 4 })
+    expect(ground(host.reader.doc).size).toEqual({ width: 4, height: 4 })
     expect(host.reader.doc.name).toBe('Fresh')
     expect(host.reader.canUndo()).toBe(false)
     expect(dispatch('document.new', { width: 0, height: 4 })).toMatchObject({ ok: false, kind: 'invalid-args' })
@@ -254,7 +262,7 @@ describe('mode: the host\'s own top-level state', () => {
     const { host, dispatch } = makeHost()
     expect(host.playSession()).toBeNull()
 
-    apply(host, 'Raise', raise(host.reader.doc, [[4, 4]], 6))
+    apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[4, 4]], 6))
     dispatch('mode.play')
     const session = host.playSession()
     expect(session?.start).toEqual([4, groundHeight(host.reader.doc, 4, 4), 4])
@@ -274,7 +282,7 @@ describe('mode: the host\'s own top-level state', () => {
     const { host, dispatch } = makeHost()
     dispatch('mode.play')
     const first = host.playSession()?.start
-    apply(host, 'Raise', raise(host.reader.doc, [[4, 4]], 4))
+    apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[4, 4]], 4))
     expect(host.playSession()?.start).toEqual(first)
 
     dispatch('mode.edit')
@@ -429,7 +437,7 @@ describe('the ways a dispatch does not happen', () => {
 const NO_MODIFIERS = { shift: false, alt: false, ctrl: false }
 
 function topAt(x: number, y: number): SurfaceAddress {
-  return { kind: 0, x, y, dir: -1, level: 0 }
+  return { structure: 'ground', kind: 0, x, y, dir: -1, level: 0 }
 }
 
 /** A minimal object to drag; the tests that use it override position and anchor. */
@@ -1018,6 +1026,49 @@ describe('deleting objects', () => {
  * complete by now. A new declaration anywhere in the workspace that no test
  * here exercises turns this red — add the test, not an exemption.
  */
+describe('the sketch and structure commands, routed to the document actor', () => {
+  it('draws a sketch on the ground, edits it, moves it, and deletes it, one command each', () => {
+    const { host, dispatch } = makeHost()
+    const doc = () => host.reader.doc
+    expect(dispatch('sketch.new', { parent: 'ground', name: 'Island' })).toMatchObject({ ok: true })
+    const id = doc().structureOrder.at(-1) as string
+    expect(doc().structures[id]).toMatchObject({ kind: 'sketch', parent: 'ground', closed: false })
+
+    for (const point of [
+      { x: 1, z: 1, smooth: true },
+      { x: 4, z: 1, smooth: false },
+      { x: 4, z: 4, smooth: true },
+    ])
+      expect(dispatch('sketch.point.add', { id, point })).toMatchObject({ ok: true })
+    // Two points are not an outline: closing is refused as a no-op, not an error.
+    expect(dispatch('sketch.point.delete', { id, index: 2 })).toMatchObject({ ok: true })
+    dispatch('sketch.close', { id })
+    expect(doc().structures[id]).toMatchObject({ closed: false })
+    expect(dispatch('sketch.point.add', { id, point: { x: 1, z: 4, smooth: true }, at: 2 })).toMatchObject({ ok: true })
+    expect(dispatch('sketch.point.update', { id, index: 0, changes: { smooth: false } })).toMatchObject({ ok: true })
+    expect(dispatch('sketch.close', { id })).toMatchObject({ ok: true })
+    expect(dispatch('sketch.set', { id, changes: { layers: 5, lip: 'bevel' } })).toMatchObject({ ok: true })
+    const sketch = doc().structures[id]
+    expect(sketch).toMatchObject({ closed: true, layers: 5, lip: 'bevel' })
+    expect(sketch.kind === 'sketch' ? sketch.points[0].smooth : null).toBe(false)
+
+    expect(dispatch('structure.rename', { id, name: 'Isle' })).toMatchObject({ ok: true })
+    expect(dispatch('structure.place', { id, placement: { x: 2, z: 3, yaw: 1 } })).toMatchObject({ ok: true })
+    expect(doc().structures[id]).toMatchObject({ name: 'Isle', placement: { x: 2, z: 3, yaw: 1 } })
+    // Reparenting onto itself is refused; onto the root is fine.
+    dispatch('structure.reparent', { id, parent: id })
+    expect(doc().structures[id]?.parent).toBe('ground')
+    expect(dispatch('structure.reparent', { id, parent: null })).toMatchObject({ ok: true })
+    expect(doc().structures[id]?.parent).toBeNull()
+
+    expect(dispatch('structure.delete', { id })).toMatchObject({ ok: true })
+    expect(doc().structures[id]).toBeUndefined()
+    expect(host.reader.undoLabel()).toBe('Delete structure')
+    dispatch('undo')
+    expect(doc().structures[id]).toBeDefined()
+  })
+})
+
 describe('declared but untested', () => {
   it('has dispatched every command the registry knows', () => {
     const untested = commands

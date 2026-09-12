@@ -16,6 +16,7 @@
  */
 
 import {
+  rootVoxel,
   MAX_HEIGHT,
   MIN_HEIGHT,
   NO_RAMP,
@@ -86,38 +87,41 @@ export interface TerrainEdit {
  * routing (#23), which is what the casts rest on.
  */
 export function terrainEdit(doc: ReadonlyMapDoc, id: string, args: unknown): TerrainEdit | undefined {
+  // TRANSITIONAL: the commands address cells of "the terrain"; they gain a
+  // structure id when the runtime goes per-structure.
+  const voxel = rootVoxel(doc)
   switch (id) {
     case 'terrain.raise': {
       const { cells, delta } = args as z.infer<typeof raiseArgs>
-      return { label: delta < 0 ? 'Lower' : 'Raise', patches: raise(doc, cells, delta) }
+      return { label: delta < 0 ? 'Lower' : 'Raise', patches: raise(doc, voxel, cells, delta) }
     }
     case 'terrain.flatten': {
       const { cells, height } = args as z.infer<typeof flattenArgs>
-      return { label: 'Flatten', patches: flatten(doc, cells, height) }
+      return { label: 'Flatten', patches: flatten(doc, voxel, cells, height) }
     }
     case 'terrain.ramp': {
       const { cells, dir } = args as z.infer<typeof rampArgs>
-      return { label: 'Toggle ramp', patches: dir < 0 ? [] : setRamp(doc, cells, dir) }
+      return { label: 'Toggle ramp', patches: dir < 0 ? [] : setRamp(doc, voxel, cells, dir) }
     }
     case 'terrain.water': {
       const { cells, level } = args as z.infer<typeof waterArgs>
-      return { label: level === null ? 'Remove water' : 'Carve water', patches: setWater(doc, cells, level) }
+      return { label: level === null ? 'Remove water' : 'Carve water', patches: setWater(voxel, cells, level) }
     }
     case 'terrain.material': {
       const { cells, material } = args as z.infer<typeof materialArgs>
-      return { label: 'Set material', patches: setMaterial(doc, cells, material) }
+      return { label: 'Set material', patches: setMaterial(voxel, cells, material) }
     }
     case 'terrain.paint.top': {
       const { cells, tile } = args as z.infer<typeof topArgs>
-      return { label: tile === null ? 'Clear paint' : 'Paint', patches: paintTop(doc, cells, tile ?? undefined) }
+      return { label: tile === null ? 'Clear paint' : 'Paint', patches: paintTop(voxel, cells, tile ?? undefined) }
     }
     case 'terrain.paint.cliff': {
       const { faces, tile } = args as z.infer<typeof cliffArgs>
-      return { label: tile === null ? 'Clear paint' : 'Paint', patches: paintCliff(doc, faces, tile ?? undefined) }
+      return { label: tile === null ? 'Clear paint' : 'Paint', patches: paintCliff(voxel, faces, tile ?? undefined) }
     }
     case 'terrain.paint.tint': {
       const { cells, tint } = args as z.infer<typeof tintArgs>
-      return { label: tint === null ? 'Clear tint' : 'Tint', patches: paintTint(doc, cells, tint ?? undefined) }
+      return { label: tint === null ? 'Clear tint' : 'Tint', patches: paintTint(voxel, cells, tint ?? undefined) }
     }
     default:
       return undefined

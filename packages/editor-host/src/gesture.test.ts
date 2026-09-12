@@ -17,7 +17,7 @@ import type { EditorStrokeHandler, StrokeSample } from './strokes'
  */
 
 function top(x: number, y: number): SurfaceAddress {
-  return { kind: 0, x, y, dir: -1, level: 0 }
+  return { structure: 'ground', kind: 0, x, y, dir: -1, level: 0 }
 }
 
 const NO_MODIFIERS = { shift: false, alt: false, ctrl: false }

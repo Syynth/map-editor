@@ -12,7 +12,7 @@
  * the chunk mesher dwarfs.
  */
 
-import { NO_WATER, cellIndex, tintKey, type ReadonlyMapDoc } from '@map-editor/document'
+import { NO_WATER, cellIndex, tintKey, type ReadonlyVoxel } from '@map-editor/document'
 
 export interface LayerRange {
   /** Lowest height shown, in half-tiles. */
@@ -26,14 +26,14 @@ export const CUT_TINT = 0x9aa4b8
 /** A column wholly under the floor: dark, so it reads as context rather than subject. */
 export const GHOST_TINT = 0x2a2f3a
 
-export function layerView(doc: ReadonlyMapDoc, range: LayerRange | null): ReadonlyMapDoc {
-  if (range === null) return doc
-  const heights = doc.terrain.height.slice()
-  const water = doc.terrain.water.slice()
-  const tint: Record<string, number> = { ...doc.paint.tint }
-  for (let y = 0; y < doc.size.height; y++) {
-    for (let x = 0; x < doc.size.width; x++) {
-      const index = cellIndex(doc.size, x, y)
+export function layerView(voxel: ReadonlyVoxel, range: LayerRange | null): ReadonlyVoxel {
+  if (range === null) return voxel
+  const heights = voxel.terrain.height.slice()
+  const water = voxel.terrain.water.slice()
+  const tint: Record<string, number> = { ...voxel.paint.tint }
+  for (let y = 0; y < voxel.size.height; y++) {
+    for (let x = 0; x < voxel.size.width; x++) {
+      const index = cellIndex(voxel.size, x, y)
       const height = heights[index]
       if (height > range.hi) {
         heights[index] = range.hi
@@ -44,7 +44,7 @@ export function layerView(doc: ReadonlyMapDoc, range: LayerRange | null): Readon
       if (water[index] !== NO_WATER && water[index] > range.hi) water[index] = NO_WATER
     }
   }
-  return { ...doc, terrain: { ...doc.terrain, height: heights, water }, paint: { ...doc.paint, tint } }
+  return { ...voxel, terrain: { ...voxel.terrain, height: heights, water }, paint: { ...voxel.paint, tint } }
 }
 
 /** Whether a world-space height (an object's base) is inside the range. */

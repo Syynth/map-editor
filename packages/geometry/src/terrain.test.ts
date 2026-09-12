@@ -8,11 +8,18 @@ import {
   SURFACE_CLIFF,
   SURFACE_TOP,
   type MapDoc,
+  rootVoxel,
+  type ReadonlyMapDoc,
+  type VoxelStructure,
 } from '@map-editor/document'
 import { meshTerrainChunk } from './terrain'
 
+/** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
+
 function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
-  doc.terrain.height[cellIndex(doc.size, x, y)] = h
+  ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)] = h
 }
 
 describe('paint survives sculpt', () => {
@@ -26,15 +33,15 @@ describe('paint survives sculpt', () => {
 
     // Paint the band at absolute level 6 on the east face.
     const key = cliffKey(3, 3, 0, 6)
-    doc.paint.cliff[key] = 42
-    expect(doc.paint.cliff[key]).toBe(42)
+    ground(doc).paint.cliff[key] = 42
+    expect(ground(doc).paint.cliff[key]).toBe(42)
 
     // Sculpt the cliff down below that band. The face stops being meshed.
     setHeight(doc, 3, 3, 4)
-    const lowered = meshTerrainChunk(doc, '0,0')
+    const lowered = meshTerrainChunk(doc, ground(doc), '0,0')
     const levels = new Set<number>()
     for (let tri = 0; tri < lowered.solid.triangleCount; tri++) {
-      const address = readAddress(lowered.solid.faceAddr, tri)
+      const address = readAddress(lowered.solid.faceAddr, tri, 'ground')
       if (address.kind === SURFACE_CLIFF && address.x === 3 && address.y === 3) {
         levels.add(address.level)
       }
@@ -42,30 +49,30 @@ describe('paint survives sculpt', () => {
     expect(levels.has(6)).toBe(false)
 
     // The paint is still there. Nothing garbage-collected it.
-    expect(doc.paint.cliff[key]).toBe(42)
+    expect(ground(doc).paint.cliff[key]).toBe(42)
 
     // Raise it back and the artist's work reappears at the same address.
     setHeight(doc, 3, 3, 8)
-    const restored = meshTerrainChunk(doc, '0,0')
+    const restored = meshTerrainChunk(doc, ground(doc), '0,0')
     let found = false
     for (let tri = 0; tri < restored.solid.triangleCount; tri++) {
-      const address = readAddress(restored.solid.faceAddr, tri)
+      const address = readAddress(restored.solid.faceAddr, tri, 'ground')
       if (address.kind === SURFACE_CLIFF && address.x === 3 && address.y === 3 && address.level === 6) {
         found = true
       }
     }
     expect(found).toBe(true)
-    expect(doc.paint.cliff[key]).toBe(42)
+    expect(ground(doc).paint.cliff[key]).toBe(42)
   })
 })
 
 describe('mesher', () => {
   it('emits a top quad per cell and addresses it back to the cell', () => {
     const doc = createMap(4, 4)
-    const mesh = meshTerrainChunk(doc, '0,0')
+    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
     const tops = new Set<string>()
     for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
-      const address = readAddress(mesh.solid.faceAddr, tri)
+      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
       if (address.kind === SURFACE_TOP) tops.add(`${address.x},${address.y}`)
     }
     expect(tops.size).toBe(16)
@@ -74,10 +81,10 @@ describe('mesher', () => {
   it('emits one cliff band per half-tile level of the drop', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 6)
-    const mesh = meshTerrainChunk(doc, '0,0')
+    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
     const east = new Set<number>()
     for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
-      const address = readAddress(mesh.solid.faceAddr, tri)
+      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
       if (address.kind === SURFACE_CLIFF && address.x === 1 && address.y === 1 && address.dir === 0) {
         east.add(address.level)
       }
@@ -89,10 +96,10 @@ describe('mesher', () => {
   it('suppresses the cliff on a ramp’s descending side', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 4)
-    doc.terrain.ramp[cellIndex(doc.size, 1, 1)] = 0
-    const mesh = meshTerrainChunk(doc, '0,0')
+    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 1, 1)] = 0
+    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
     for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
-      const address = readAddress(mesh.solid.faceAddr, tri)
+      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
       if (address.kind === SURFACE_CLIFF && address.x === 1 && address.y === 1) {
         expect(address.dir).not.toBe(0)
       }
@@ -105,7 +112,7 @@ describe('mesher', () => {
     // UVs onto two points, which streaked the whole terrain.
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 6)
-    const { solid } = meshTerrainChunk(doc, '0,0')
+    const { solid } = meshTerrainChunk(doc, ground(doc), '0,0')
 
     for (let quad = 0; quad < solid.positions.length / 3 / 4; quad++) {
       const us: number[] = []
@@ -126,7 +133,7 @@ describe('mesher', () => {
 
   it('maps the sheet the right way up on a top quad', () => {
     const doc = createMap(4, 4)
-    const { solid } = meshTerrainChunk(doc, '0,0')
+    const { solid } = meshTerrainChunk(doc, ground(doc), '0,0')
     // Corner order is c00, c01, c11, c10. c00 is the sheet's top-left, which
     // in GL coordinates is the largest v.
     const v00 = solid.uvs[1]
@@ -140,8 +147,8 @@ describe('mesher', () => {
   it('produces finite, consistent buffers', () => {
     const doc = createMap(8, 8)
     setHeight(doc, 2, 2, 7)
-    doc.terrain.ramp[cellIndex(doc.size, 3, 2)] = 1
-    const { solid } = meshTerrainChunk(doc, '0,0')
+    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 3, 2)] = 1
+    const { solid } = meshTerrainChunk(doc, ground(doc), '0,0')
     expect(solid.positions.length / 3).toBe(solid.normals.length / 3)
     expect(solid.positions.length / 3).toBe(solid.uvs.length / 2)
     expect(solid.positions.length / 3).toBe(solid.colors.length / 3)

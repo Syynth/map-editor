@@ -66,7 +66,7 @@ describe('the default keymap', () => {
     // editor's own bindings rather than a fixture's.
     expect(hit(live, 'ctrl+z')).toEqual({ kind: 'none' })
 
-    live.children.document.send({ type: 'patch', label: 'Raise', patches: [{ t: 'terrain', field: 'height', index: 0, value: 3 }] })
+    live.children.document.send({ type: 'patch', label: 'Raise', patches: [{ t: 'voxel', id: 'ground', field: 'height', index: 0, value: 3 }] })
 
     expect(hit(live, 'ctrl+z')).toMatchObject({ command: 'undo' })
     expect(hit(live, 'meta+z')).toMatchObject({ command: 'undo' })

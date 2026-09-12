@@ -16,6 +16,7 @@
  */
 
 import {
+  rootVoxel,
   DIR_VECTORS,
   cellIndex,
   inBounds,
@@ -141,15 +142,17 @@ function analyseHiddenSurfaces(doc: ReadonlyMapDoc, yaws: number[]): HiddenSurfa
   let totalFaces = 0
   let hiddenFaces = 0
 
-  for (let y = 0; y < doc.size.height; y++) {
-    for (let x = 0; x < doc.size.width; x++) {
-      const h = doc.terrain.height[cellIndex(doc.size, x, y)]
+  // TRANSITIONAL: coverage reads the root voxel volume's cliffs.
+  const voxel = rootVoxel(doc)
+  for (let y = 0; y < voxel.size.height; y++) {
+    for (let x = 0; x < voxel.size.width; x++) {
+      const h = voxel.terrain.height[cellIndex(voxel.size, x, y)]
       for (let dir = 0; dir < 4; dir++) {
         const [dx, dy] = DIR_VECTORS[dir]
         const nx = x + dx
         const ny = y + dy
-        const neighbour = inBounds(doc.size, nx, ny)
-          ? doc.terrain.height[cellIndex(doc.size, nx, ny)]
+        const neighbour = inBounds(voxel.size, nx, ny)
+          ? voxel.terrain.height[cellIndex(voxel.size, nx, ny)]
           : 0
         const bands = h - neighbour
         if (bands <= 0) continue

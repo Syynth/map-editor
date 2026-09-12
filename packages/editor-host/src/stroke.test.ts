@@ -1,10 +1,27 @@
-import { brushCells, cellIndex, createDocument, createMap, patchAddress, raise, type Patch, type SurfaceAddress } from '@map-editor/document'
+import {
+  brushCells,
+  cellIndex,
+  createDocument,
+  createMap,
+  patchAddress,
+  raise,
+  type Patch,
+  type SurfaceAddress,
+  rootVoxel,
+  type MapDoc,
+  type ReadonlyMapDoc,
+  type VoxelStructure,
+} from '@map-editor/document'
 import type { ToolContract } from '@map-editor/registry'
 import { describe, expect, it } from 'vitest'
 import { createActor, type InspectionEvent } from 'xstate'
 
 import { strokeLogic, type DocumentRef } from './stroke'
 import { createStrokeHandler, type StrokeDeps, type StrokeSample, type ToolsSnapshot } from './strokes'
+
+/** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
+const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => rootVoxel(doc) as VoxelStructure
+
 
 /**
  * The stroke actor's two invariants (#11), each asserted through `reader` and
@@ -38,7 +55,7 @@ const SCULPT: ToolsSnapshot = {
 }
 
 function top(x: number, y: number): SurfaceAddress {
-  return { kind: 0, x, y, dir: -1, level: 0 }
+  return { structure: 'ground', kind: 0, x, y, dir: -1, level: 0 }
 }
 
 function sample(x: number, y: number, modifiers: Partial<StrokeSample['modifiers']> = {}): StrokeSample {
@@ -57,7 +74,7 @@ function raiseContract(deps: StrokeDeps): ToolContract<StrokeSample, Patch> {
     const address = tick.pick.surface
     if (!address) return []
     const doc = deps.reader.doc
-    return raise(doc, brushCells(doc, address.x, address.y, deps.tools().brush), tick.modifiers.shift ? -1 : 1)
+    return raise(doc, ground(doc), brushCells(ground(doc), address.x, address.y, deps.tools().brush), tick.modifiers.shift ? -1 : 1)
   }
   return {
     stroke: (press) =>
@@ -132,15 +149,15 @@ describe('the stroke actor', () => {
   it('applies every tick immediately, then commits one Edit with one patch per address', () => {
     const { reader, document, start, patchEvents, record } = rig()
     const doc = reader.doc
-    const before = doc.terrain.height.slice()
-    const at = (x: number, y: number) => doc.terrain.height[cellIndex(doc.size, x, y)]
+    const before = ground(doc).terrain.height.slice()
+    const at = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
 
     // A size-3 brush dragged right two cells and back again: every tick lands
     // on cells earlier ticks already raised, which is the redundancy measured
     // in docs/stack.md.
     const path: Array<[number, number]> = [[4, 4], [5, 4], [6, 4], [5, 4], [4, 4], [5, 4], [6, 4]]
     const stroke = start(sample(...path[0]))
-    expect(at(4, 4), 'the press already deformed the terrain').toBe(before[cellIndex(doc.size, 4, 4)] + 1)
+    expect(at(4, 4), 'the press already deformed the terrain').toBe(before[cellIndex(ground(doc).size, 4, 4)] + 1)
     for (const [x, y] of path.slice(1)) {
       const seen = at(x, y)
       stroke.send({ type: 'move', sample: sample(x, y) })
@@ -162,20 +179,20 @@ describe('the stroke actor', () => {
     // One Edit, and undoing it restores every cell to before the press.
     expect(reader.canUndo()).toBe(true)
     expect(reader.undoLabel()).toBe('Raise')
-    const after = doc.terrain.height.slice()
+    const after = ground(doc).terrain.height.slice()
     document.send({ type: 'undo' })
-    expect(doc.terrain.height).toEqual(before)
+    expect(ground(doc).terrain.height).toEqual(before)
     expect(reader.canUndo()).toBe(false)
     // And the compacted forward values reproduce the final state exactly.
     document.send({ type: 'redo' })
-    expect(doc.terrain.height).toEqual(after)
+    expect(ground(doc).terrain.height).toEqual(after)
   })
 
   it('keeps the first inverse and the last value: raise, raise, lower undoes to the start in one step', () => {
     const { reader, document, start, record } = rig({ ...SCULPT, brush: { size: 1, shape: 'square' } })
     const doc = reader.doc
-    const index = cellIndex(doc.size, 3, 3)
-    const before = doc.terrain.height[index]
+    const index = cellIndex(ground(doc).size, 3, 3)
+    const before = ground(doc).terrain.height[index]
 
     const stroke = start(sample(3, 3))
     stroke.send({ type: 'move', sample: sample(4, 3) })
@@ -183,16 +200,16 @@ describe('the stroke actor', () => {
     stroke.send({ type: 'move', sample: sample(4, 3) })
     stroke.send({ type: 'move', sample: sample(3, 3, { shift: true }) })
     // +1, +1, -1 on (3,3): three writes, a net of one.
-    expect(doc.terrain.height[index]).toBe(before + 1)
+    expect(ground(doc).terrain.height[index]).toBe(before + 1)
     stroke.send({ type: 'end', sample: sample(3, 3) })
 
     const edit = record()
-    const mine = edit.patches.find((patch) => patch.t === 'terrain' && patch.index === index)
-    const inverse = edit.inverse.find((patch) => patch.t === 'terrain' && patch.index === index)
+    const mine = edit.patches.find((patch) => patch.t === 'voxel' && patch.index === index)
+    const inverse = edit.inverse.find((patch) => patch.t === 'voxel' && patch.index === index)
     expect(mine?.value).toBe(before + 1)
     expect(inverse?.value).toBe(before)
     document.send({ type: 'undo' })
-    expect(doc.terrain.height[index]).toBe(before)
+    expect(ground(doc).terrain.height[index]).toBe(before)
   })
 
   it('drops an address put back where it started, and commits no Edit when nothing remains', () => {
@@ -221,11 +238,11 @@ describe('the stroke actor', () => {
     const doc = reader.doc
     const stroke = start(sample(1, 1))
     stroke.send({ type: 'end', sample: sample(1, 1) })
-    const settled = doc.terrain.height.slice()
+    const settled = ground(doc).terrain.height.slice()
 
     stroke.send({ type: 'move', sample: sample(2, 1) })
 
-    expect(doc.terrain.height).toEqual(settled)
+    expect(ground(doc).terrain.height).toEqual(settled)
     expect(dead).toHaveLength(1)
     expect(dead[0]).toMatchObject({ reason: 'stopped', event: { type: 'move' } })
   })
@@ -237,6 +254,6 @@ describe('the stroke actor', () => {
     const stroke = start(sample(0, 0))
     stroke.send({ type: 'end', sample: sample(0, 0) })
     const patch: Patch | undefined = patchEvents()[0]?.patches[0]
-    expect(patch).toMatchObject({ t: 'terrain', field: 'height' })
+    expect(patch).toMatchObject({ t: 'voxel', id: 'ground', field: 'height' })
   })
 })

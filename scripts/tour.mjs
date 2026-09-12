@@ -194,13 +194,15 @@ async function expect(label, fn) {
 async function counts() {
   return page.evaluate(() => {
     const doc = window.__host.reader.doc
+    // The root voxel volume; the tour reads the grid as it always did.
+    const ground = /** @type {import('@map-editor/document').VoxelStructure} */ (doc.structures[doc.structureOrder[0]])
     return {
-      ramps: doc.terrain.ramp.filter((r) => r !== -1).length,
-      topPaint: Object.keys(doc.paint.top).length,
-      cliffPaint: Object.keys(doc.paint.cliff).length,
-      tint: Object.keys(doc.paint.tint).length,
+      ramps: ground.terrain.ramp.filter((r) => r !== -1).length,
+      topPaint: Object.keys(ground.paint.top).length,
+      cliffPaint: Object.keys(ground.paint.cliff).length,
+      tint: Object.keys(ground.paint.tint).length,
       objects: doc.objectOrder.length,
-      heightSum: doc.terrain.height.reduce((a, b) => a + b, 0),
+      heightSum: ground.terrain.height.reduce((a, b) => a + b, 0),
     }
   })
 }
@@ -267,11 +269,13 @@ await shot('sculpt-undo', 'One Ctrl+Z takes the entire stroke back — the whole
 async function faceCamera(distance = 10, pitch = 10) {
   const face = await page.evaluate(() => {
     const doc = window.__host.reader.doc
+    // The root voxel volume; the tour reads the grid as it always did.
+    const ground = /** @type {import('@map-editor/document').VoxelStructure} */ (doc.structures[doc.structureOrder[0]])
     let best = { x: 0, y: 0, drop: -1, top: 0, bottom: 0 }
-    for (let y = 2; y < doc.size.height - 2; y++) {
-      for (let x = 2; x < doc.size.width - 2; x++) {
-        const top = doc.terrain.height[y * doc.size.width + x]
-        const bottom = doc.terrain.height[(y + 1) * doc.size.width + x]
+    for (let y = 2; y < ground.size.height - 2; y++) {
+      for (let x = 2; x < ground.size.width - 2; x++) {
+        const top = ground.terrain.height[y * ground.size.width + x]
+        const bottom = ground.terrain.height[(y + 1) * ground.size.width + x]
         if (top - bottom > best.drop) best = { x, y, drop: top - bottom, top, bottom }
       }
     }
@@ -386,7 +390,7 @@ for (let i = 0; i < 9; i++) {
 }
 await page.mouse.up()
 const topPainted = (await counts()).topPaint
-await expect('tile painting landed', () => Object.keys(window.__host.reader.doc.paint.top).length > 0)
+await expect('tile painting landed', () => Object.keys(/** @type {import('@map-editor/document').VoxelStructure} */ (window.__host.reader.doc.structures[window.__host.reader.doc.structureOrder[0]]).paint.top).length > 0)
 await shot(
   'paint-tile',
   `Painting a tile over the terrain — ${topPainted} cells carry a painted override. The cell keeps its material underneath; this is a layer on top of what the template picks automatically.`,
@@ -401,7 +405,7 @@ for (let i = 0; i < 7; i++) {
   await sleep(40)
 }
 await page.mouse.up()
-await expect('tint painting landed', () => Object.keys(window.__host.reader.doc.paint.tint).length > 0)
+await expect('tint painting landed', () => Object.keys(/** @type {import('@map-editor/document').VoxelStructure} */ (window.__host.reader.doc.structures[window.__host.reader.doc.structureOrder[0]]).paint.tint).length > 0)
 await shot(
   'paint-tint',
   'The tint brush, quantised per cell — deliberately not smooth splatting, which looks mushy next to pixel art.',
@@ -458,7 +462,7 @@ await shot(
 await page.evaluate(() => window.__host.dispatch('undo'))
 await expect(
   'paint came back with the geometry',
-  () => Object.keys(window.__host.reader.doc.paint.cliff).length > 0,
+  () => Object.keys(/** @type {import('@map-editor/document').VoxelStructure} */ (window.__host.reader.doc.structures[window.__host.reader.doc.structureOrder[0]]).paint.cliff).length > 0,
 )
 await shot(
   'cliff-restored',

@@ -18,14 +18,14 @@ const specs = {
 describe('outline', () => {
   it('normalises orientation so a profile clicked either way round meshes the same', () => {
     const cw: Profile = { points: [...square.points].reverse() }
-    expect(outlineOf(cw).points).toEqual(outlineOf(square).points)
-    expect(outlineOf(cw).area).toBe(16)
-    expect(outlineOf(square).area).toBe(16)
-    expect(outlineOf(square).perimeter).toBe(16)
+    expect(outlineOf(cw.points).points).toEqual(outlineOf(square.points).points)
+    expect(outlineOf(cw.points).area).toBe(16)
+    expect(outlineOf(square.points).area).toBe(16)
+    expect(outlineOf(square.points).perimeter).toBe(16)
   })
 
   it('rounds smooth points and leaves corners exactly where they were', () => {
-    const rounded = outlineOf({ points: square.points.map((p, i) => ({ ...p, smooth: i > 0 })) }, 2)
+    const rounded = outlineOf(square.points.map((p, i) => ({ ...p, smooth: i > 0 })), 2)
     expect(rounded.points.length).toBeGreaterThan(4)
     expect(rounded.points).toContainEqual([0, 0])
     expect(rounded.points).not.toContainEqual([4, 4])

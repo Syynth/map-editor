@@ -25,6 +25,7 @@
  */
 
 import {
+  type ReadonlyVoxel,
   CORNER_OFFSETS,
   DIR_VECTORS,
   HALF,
@@ -150,9 +151,9 @@ class BufferBuilder {
   }
 }
 
-function heightOutside(doc: ReadonlyMapDoc, x: number, y: number): number {
-  if (!inBounds(doc.size, x, y)) return OUTSIDE_HEIGHT
-  return doc.terrain.height[cellIndex(doc.size, x, y)]
+function heightOutside(voxel: ReadonlyVoxel, x: number, y: number): number {
+  if (!inBounds(voxel.size, x, y)) return OUTSIDE_HEIGHT
+  return voxel.terrain.height[cellIndex(voxel.size, x, y)]
 }
 
 function unpackTint(packed: number | undefined): [number, number, number] {
@@ -168,14 +169,14 @@ function unpackTint(packed: number | undefined): [number, number, number] {
  * Corner occlusion for a top-surface vertex. Looks at the three cells that
  * share the grid vertex with this cell and counts the ones standing above it.
  */
-function cornerShade(doc: ReadonlyMapDoc, x: number, y: number, vx: number, vy: number, h: number): number {
+function cornerShade(voxel: ReadonlyVoxel, x: number, y: number, vx: number, vy: number, h: number): number {
   let occluders = 0
   for (let dy = -1; dy <= 0; dy++) {
     for (let dx = -1; dx <= 0; dx++) {
       const nx = vx + dx
       const ny = vy + dy
       if (nx === x && ny === y) continue
-      if (heightOutside(doc, nx, ny) > h) occluders += 1
+      if (heightOutside(voxel, nx, ny) > h) occluders += 1
     }
   }
   return 1 - AO_STRENGTH * occluders
@@ -200,19 +201,19 @@ const SIDE_GEOMETRY: ReadonlyArray<{
   { origin: [1, 0], u: [-1, 0] },
 ]
 
-function resolveTopTile(doc: ReadonlyMapDoc, layout: SheetLayout, x: number, y: number): number {
+function resolveTopTile(voxel: ReadonlyVoxel, layout: SheetLayout, x: number, y: number): number {
   // Layer order: painted override wins over the template's automatic default.
-  const painted = topPaint(doc.paint, x, y)
+  const painted = topPaint(voxel.paint, x, y)
   if (painted !== undefined) return painted
 
-  const index = cellIndex(doc.size, x, y)
-  const material = doc.terrain.material[index]
-  if (doc.terrain.ramp[index] !== NO_RAMP) return rampTile(layout, material)
-  return defaultTopTile(layout, material, autotileMask(doc, x, y))
+  const index = cellIndex(voxel.size, x, y)
+  const material = voxel.terrain.material[index]
+  if (voxel.terrain.ramp[index] !== NO_RAMP) return rampTile(layout, material)
+  return defaultTopTile(layout, material, autotileMask(voxel, x, y))
 }
 
 function resolveCliffTile(
-  doc: ReadonlyMapDoc,
+  voxel: ReadonlyVoxel,
   layout: SheetLayout,
   x: number,
   y: number,
@@ -220,14 +221,14 @@ function resolveCliffTile(
   level: number,
   band: CliffBand,
 ): number {
-  const painted = cliffPaint(doc.paint, x, y, dir, level)
+  const painted = cliffPaint(voxel.paint, x, y, dir, level)
   if (painted !== undefined) return painted
-  const material = doc.terrain.material[cellIndex(doc.size, x, y)]
+  const material = voxel.terrain.material[cellIndex(voxel.size, x, y)]
   return cliffTile(layout, material, band)
 }
 
-export function meshTerrainChunk(doc: ReadonlyMapDoc, key: string): TerrainChunkMesh {
-  const bounds = chunkBounds(key, doc.size.width, doc.size.height)
+export function meshTerrainChunk(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, key: string): TerrainChunkMesh {
+  const bounds = chunkBounds(key, voxel.size.width, voxel.size.height)
   const solid = new BufferBuilder()
   const water = new BufferBuilder()
   const layout = sheetLayoutFor(doc)
@@ -238,12 +239,12 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, key: string): TerrainChunk
 
   for (let y = bounds.y0; y < bounds.y1; y++) {
     for (let x = bounds.x0; x < bounds.x1; x++) {
-      const index = cellIndex(doc.size, x, y)
-      const ramp = doc.terrain.ramp[index]
-      const tint = unpackTint(tintPaint(doc.paint, x, y))
+      const index = cellIndex(voxel.size, x, y)
+      const ramp = voxel.terrain.ramp[index]
+      const tint = unpackTint(tintPaint(voxel.paint, x, y))
 
       // --- corner heights, in half-tile units -------------------------------
-      const cornerH = cornerHeights(doc, x, y)
+      const cornerH = cornerHeights(voxel, x, y)
 
       // --- top quad ---------------------------------------------------------
       {
@@ -253,10 +254,10 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, key: string): TerrainChunk
           return [vx, cornerH[i] * HALF, vy] as [number, number, number]
         })
         const shade = CORNER_OFFSETS.map((offset, i) =>
-          cornerShade(doc, x, y, x + offset[0], y + offset[1], cornerH[i]),
+          cornerShade(voxel, x, y, x + offset[0], y + offset[1], cornerH[i]),
         ) as [number, number, number, number]
 
-        const [u0, v0, u1, v1] = tileUv(layout, resolveTopTile(doc, layout, x, y))
+        const [u0, v0, u1, v1] = tileUv(layout, resolveTopTile(voxel, layout, x, y))
         // Corner order is c00, c01, c11, c10. Sheets are authored top-down, so
         // increasing map +Z walks down the sheet, which is decreasing v.
         solid.quad(
@@ -279,7 +280,7 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, key: string): TerrainChunk
         if (ramp === dir) continue
 
         const [dx, dy] = DIR_VECTORS[dir]
-        const neighbour = heightOutside(doc, x + dx, y + dy)
+        const neighbour = heightOutside(voxel, x + dx, y + dy)
 
         const [startCorner, endCorner] = SIDE_CORNERS[dir]
         const topStart = cornerH[startCorner]
@@ -309,7 +310,7 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, key: string): TerrainChunk
             level === topLevel ? 'top' : level === neighbour ? 'bottom' : 'middle'
           const [u0, v0, u1, v1] = tileUv(
             layout,
-            resolveCliffTile(doc, layout, x, y, dir, level, band),
+            resolveCliffTile(voxel, layout, x, y, dir, level, band),
           )
 
           // Keep the texture from stretching when a band is clipped short.
@@ -341,7 +342,7 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, key: string): TerrainChunk
       }
 
       // --- water ------------------------------------------------------------
-      const waterLevel = doc.terrain.water[index]
+      const waterLevel = voxel.terrain.water[index]
       if (waterLevel !== NO_WATER) {
         const wy = waterLevel * HALF
         water.quad(

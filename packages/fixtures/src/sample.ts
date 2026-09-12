@@ -22,6 +22,8 @@ import {
   topKey,
   type MapDoc,
   type MapObject,
+  rootVoxel,
+  type VoxelStructure,
 } from '@map-editor/document'
 import { sheetLayoutFor, cliffTile, defaultTopTile } from '@map-editor/geometry'
 
@@ -58,6 +60,7 @@ function place(
 
 export function createSampleMap(width = 36, height = 36): MapDoc {
   const doc = createMap(width, height, 'Sample Valley')
+  const ground = rootVoxel(doc) as VoxelStructure
   const layout = sheetLayoutFor(doc)
   const centreX = width / 2
   const centreY = height / 2
@@ -65,7 +68,7 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   // --- terrain -------------------------------------------------------------
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const index = cellIndex(doc.size, x, y)
+      const index = cellIndex(ground.size, x, y)
       const dx = (x - centreX) / width
       const dy = (y - centreY) / height
       const distance = Math.hypot(dx, dy)
@@ -77,13 +80,13 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
 
       let h = Math.round(rolling + ridge * (1 - distance) - river * 2.4)
       h = Math.max(0, Math.min(18, h))
-      doc.terrain.height[index] = h
+      ground.terrain.height[index] = h
 
       // Material follows height: sand low, grass mid, stone high.
-      doc.terrain.material[index] = h <= 1 ? 3 : h >= 8 ? 2 : hash(x, y, 1) > 0.88 ? 1 : 0
+      ground.terrain.material[index] = h <= 1 ? 3 : h >= 8 ? 2 : hash(x, y, 1) > 0.88 ? 1 : 0
 
       // Water pools in the river bed.
-      if (h <= 1) doc.terrain.water[index] = 2
+      if (h <= 1) ground.terrain.water[index] = 2
     }
   }
 
@@ -96,7 +99,7 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   const stepDowns: Array<[number, number, number]> = []
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      const h = doc.terrain.height[cellIndex(doc.size, x, y)]
+      const h = ground.terrain.height[cellIndex(ground.size, x, y)]
       if (h < 3) continue
       for (let dir = 0; dir < 4; dir++) {
         const [dx, dy] = [
@@ -105,7 +108,7 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
           [-1, 0],
           [0, -1],
         ][dir]
-        if (doc.terrain.height[cellIndex(doc.size, x + dx, y + dy)] === h - 2) {
+        if (ground.terrain.height[cellIndex(ground.size, x + dx, y + dy)] === h - 2) {
           stepDowns.push([x, y, dir])
         }
       }
@@ -114,7 +117,7 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   // Spread a handful around the map instead of clustering them.
   for (let i = 0; i < stepDowns.length; i += Math.max(1, Math.floor(stepDowns.length / 14))) {
     const [x, y, dir] = stepDowns[i]
-    doc.terrain.ramp[cellIndex(doc.size, x, y)] = dir
+    ground.terrain.ramp[cellIndex(ground.size, x, y)] = dir
   }
 
   // --- painted overrides ---------------------------------------------------
@@ -125,24 +128,24 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
     const x = Math.round(4 + step)
     const y = Math.round(centreY + 6 + Math.sin(step * 0.4) * 2)
     if (x < 0 || x >= width || y < 0 || y >= height) continue
-    doc.paint.top[topKey(x, y)] = dirtTile
-    if (hash(x, y, 7) > 0.6) doc.paint.top[topKey(x, y - 1)] = dirtTile
+    ground.paint.top[topKey(x, y)] = dirtTile
+    if (hash(x, y, 7) > 0.6) ground.paint.top[topKey(x, y - 1)] = dirtTile
   }
 
   // A band of stone painted onto one cliff face, at a fixed absolute level, so
   // sculpting nearby demonstrates that the paint stays put.
   const stoneBand = cliffTile(layout, 2, 'middle')
   for (let x = 0; x < width; x++) {
-    const index = cellIndex(doc.size, x, Math.round(centreY - 8))
-    const h = doc.terrain.height[index]
-    if (h > 5) doc.paint.cliff[cliffKey(x, Math.round(centreY - 8), 1, h - 2)] = stoneBand
+    const index = cellIndex(ground.size, x, Math.round(centreY - 8))
+    const h = ground.terrain.height[index]
+    if (h > 5) ground.paint.cliff[cliffKey(x, Math.round(centreY - 8), 1, h - 2)] = stoneBand
   }
 
   // A cool tint in the river bed, quantised per cell rather than blended.
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (doc.terrain.height[cellIndex(doc.size, x, y)] <= 2) {
-        doc.paint.tint[tintKey(x, y)] = 0xa8c4d8
+      if (ground.terrain.height[cellIndex(ground.size, x, y)] <= 2) {
+        ground.paint.tint[tintKey(x, y)] = 0xa8c4d8
       }
     }
   }

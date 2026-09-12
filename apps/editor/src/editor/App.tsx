@@ -15,6 +15,7 @@ import {
   type ReadonlyMapDoc,
   type RgbaImage,
   type SurfaceAddress,
+  rootVoxel,
 } from '@map-editor/document'
 import {
   useDocument,
@@ -81,12 +82,13 @@ const wholeDocument = (doc: ReadonlyMapDoc): ReadonlyMapDoc => doc
  * place, so nothing else about it would tell a memo to recompute.
  */
 function dormantPaint(doc: ReadonlyMapDoc): { top: number; cliff: number } {
-  return countDormant(doc.paint, (kind, key) => {
+  const voxel = rootVoxel(doc)
+  return countDormant(voxel.paint, (kind, key) => {
     const [x, y] = key.split(',').map(Number)
-    if (!inBounds(doc.size, x, y)) return false
+    if (!inBounds(voxel.size, x, y)) return false
     if (kind === 'top') return true
     const level = Number(key.split(',')[3])
-    return level < doc.terrain.height[cellIndex(doc.size, x, y)]
+    return level < voxel.terrain.height[cellIndex(voxel.size, x, y)]
   })
 }
 
@@ -98,8 +100,9 @@ function dormantPaint(doc: ReadonlyMapDoc): { top: number; cliff: number } {
  */
 function tallestPoint(doc: ReadonlyMapDoc): number {
   let top = MIN_HEIGHT
-  for (const height of doc.terrain.height) if (height > top) top = height
-  for (const water of doc.terrain.water) if (water > top) top = water
+  const voxel = rootVoxel(doc)
+  for (const height of voxel.terrain.height) if (height > top) top = height
+  for (const water of voxel.terrain.water) if (water > top) top = water
   return top
 }
 
@@ -272,7 +275,7 @@ export default function App() {
         if (pick.surface && live.params.tool === 'terrain' && !live.playing) {
           // The same cells the stroke will touch, grown from the same origin
           // — read off the open stroke rather than recomputed from a copy.
-          setHoverCells(strokeCells(host.reader.doc, live.params, pick.surface, host.input.strokeOrigin()))
+          setHoverCells(strokeCells(rootVoxel(host.reader.doc), live.params, pick.surface, host.input.strokeOrigin()))
         } else {
           setHoverCells([])
         }
@@ -532,7 +535,7 @@ export default function App() {
           <Overlay at="top-left">
             <Pill>
               <span className="ui-num">
-                {doc.size.width} × {doc.size.height}
+                {rootVoxel(doc).size.width} × {rootVoxel(doc).size.height}
               </span>
             </Pill>
           </Overlay>

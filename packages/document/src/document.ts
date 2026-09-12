@@ -410,10 +410,10 @@ export function newId(prefix = 'obj'): string {
 }
 
 /** A flat voxel volume of `width` × `height` cells at height 2, standing on `parent` (or the ground). */
-export function createVoxel(width: number, height: number, name = 'Ground', parent: string | null = null): VoxelStructure {
+export function createVoxel(width: number, height: number, name = 'Ground', parent: string | null = null, id = newId('vox')): VoxelStructure {
   const count = width * height
   return {
-    id: newId('vox'),
+    id,
     kind: 'voxel',
     name,
     parent,
@@ -429,9 +429,9 @@ export function createVoxel(width: number, height: number, name = 'Ground', pare
   }
 }
 
-/** A new level: one root voxel volume of the given size, and nothing else. */
+/** A new level: one root voxel volume of the given size, and nothing else. Its id is always `ground`, so a test or a tour can name it without looking it up. */
 export function createMap(width = 32, height = 32, name = 'Untitled Map'): MapDoc {
-  const ground = createVoxel(width, height)
+  const ground = createVoxel(width, height, 'Ground', null, 'ground')
   return {
     formatVersion: FORMAT_VERSION,
     id: newId('map'),

@@ -14,6 +14,7 @@
 import * as THREE from 'three'
 
 import {
+  rootVoxel,
   defaultFacing,
   groundHeight,
   inBounds,
@@ -86,7 +87,7 @@ export class Character {
       // Refuse a step that would mean climbing a cliff, using the same ground
       // query the mesher builds geometry from, so the two cannot disagree.
       const currentY = groundHeight(doc, this.position.x, this.position.z)
-      if (inBounds(doc.size, Math.floor(nextX), Math.floor(nextZ))) {
+      if (inBounds(rootVoxel(doc).size, Math.floor(nextX), Math.floor(nextZ))) {
         const nextY = groundHeight(doc, nextX, nextZ)
         if (nextY - currentY <= MAX_STEP) {
           this.position.set(nextX, nextY, nextZ)
