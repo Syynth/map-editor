@@ -32,6 +32,15 @@ Twelve turbo tasks across seven packages and two apps; 60 tests (53 pre-existing
 5-test dependency-direction suite + 2 for `export-cli`). ~6 s cold, single-digit ms on a
 cache hit — the gate is fast enough that agents should run it on every iteration.
 
+CI (`.github/workflows/gate.yml`) runs a superset of this on every PR and every push to
+`main`: it also builds `apps/editor` — the only package with a `build` script, and not
+covered by the `test`/`typecheck`/`lint` tasks above, which depend only on `^build` — as
+its own step *before* linting, in a fresh checkout with no pre-existing `dist/`. That
+ordering is load-bearing, not incidental: see the workflow's header comment and
+`eslint.config.js`'s `ignores` comment for the bug a lint-before-build job would never
+catch. `pnpm gate` / `pnpm gate:full` in root `package.json` are the turbo-fronted entry
+points CI and a local run both call, so the two do not drift into separate command lists.
+
 `scripts/check-boundaries.mjs` is gone. `tests/dependency-direction.test.ts` replaces it:
 it builds the workspace graph from declared dependencies, asserts the decided direction
 and acyclicity, and **fails on an unplaced package**, so a new package cannot be silently
@@ -56,9 +65,11 @@ with `cp -c -R` (APFS) as the `DISK` preamble already instructs.
 - **Repo:** `Syynth/map-editor` · **default branch:** `main` · **assignee:** `Syynth`
 - **Trailer:** `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`
 - **PR footer:** `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
-- **No CI yet.** Branch protection and GitHub Actions are Phase 3. Until they exist the
-  gate is only what agents run locally, so the adversarial review step carries more weight
-  than usual, not less.
+- **CI is live.** `.github/workflows/gate.yml` runs the gate above (plus a build) on every
+  PR and push to `main`; branch protection on `main` requires the `gate` check, `strict`
+  (up to date before merge), and applies to admins too (#25). The adversarial review step
+  still carries the weight it always did — CI catches what the gate checks, not what a
+  review does.
 
 ## Conventions (CONV)
 
