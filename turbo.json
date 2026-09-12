@@ -15,6 +15,11 @@
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "test": { "dependsOn": ["^build"] },
     "typecheck": { "dependsOn": ["^build"] },
+    // Reads apps/editor's own `dist/`, so it depends on THIS package's build
+    // (not `^build`, which only orders a package after its dependencies).
+    // #57: the only implementation is apps/editor's, the one package with a
+    // `dist/` to measure.
+    "check-bundle-size": { "dependsOn": ["build"] },
     // `lint` is currently implemented only by the root task below: one
     // `eslint .` from the repo root covers `packages/*` too, because flat
     // config resolves from the root and the project service finds each

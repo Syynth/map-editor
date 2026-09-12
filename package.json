@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "pnpm --filter @map-editor/editor dev",
     "gate": "turbo run test typecheck lint",
-    "gate:full": "turbo run build test typecheck lint",
+    "gate:full": "turbo run build test typecheck lint check-bundle-size",
     "preview": "pnpm --filter @map-editor/editor preview",
     "test": "vitest run",
     "test:watch": "vitest",

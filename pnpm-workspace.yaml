@@ -22,3 +22,18 @@ packages:
 minimumReleaseAgeExclude:
   - '@types/three@0.186.0'
   - xstate@6.0.0-alpha.53
+
+# #55: turn a wrong-Node-version install from a warning into a hard failure
+# rather than leave it silently permissive. `pnpm config get engine-strict`
+# confirms this key is read (returns `true`) — but a probe (root `engines.node`
+# set to an unsatisfiable range, then `pnpm install --frozen-lockfile` and
+# `pnpm install --force` through the exact pinned pnpm) did NOT fail or even
+# warn either with this on or off, in this pnpm 12.3.4. The CHANGELOG entry
+# for `engineStrict` (12.0.0, "Under `engineStrict`, an install fails when an
+# incompatible package is reached through a regular `dependencies` edge...")
+# describes it gating a DEPENDENCY's declared engines, not this workspace's
+# own manifest — so it is set here for that real (if narrower) protection,
+# not as a verified guard against a contributor running the wrong Node.
+# Enforcing the latter turned out to need a different, unimplemented
+# mechanism; see the PR for #55 for what was actually checked.
+engineStrict: true

@@ -28,9 +28,11 @@ ticket (a decision) or an ordinary issue (merely unbuilt). That sorting is a hum
 ```
 pnpm install --prefer-offline && pnpm turbo run test typecheck lint
 ```
-Twelve turbo tasks across seven packages and two apps; 60 tests (53 pre-existing + a
-5-test dependency-direction suite + 2 for `export-cli`). ~6 s cold, single-digit ms on a
-cache hit — the gate is fast enough that agents should run it on every iteration.
+Eleven turbo tasks across seven packages and one app (`apps/export-cli` was cut
+2026-09-11 — no native-canvas path exists yet, see `docs/decision-log.md`); 72 tests,
+counted from a fresh cold `pnpm turbo run test typecheck lint` rather than adjusted from
+the old total. ~6 s cold, single-digit ms on a cache hit — the gate is fast enough that
+agents should run it on every iteration.
 
 CI (`.github/workflows/gate.yml`) runs a superset of this on every PR and every push to
 `main`: it also builds `apps/editor` — the only package with a `build` script, and not
