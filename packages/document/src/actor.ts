@@ -34,8 +34,12 @@
  * outlives it by design — so there is nothing to tear down here either.
  */
 
+import type { CommandEvent } from '@map-editor/registry'
 import { setup, types } from 'xstate'
 
+// Imported for its side effect as much as its exports: the module declares
+// `undo` and `redo` at import, and the actor is what makes them handled.
+import './commands'
 import type { Patch } from './edits'
 import { writerOf, type DocumentWriter, type EditorStore } from './store'
 
@@ -43,6 +47,12 @@ import { writerOf, type DocumentWriter, type EditorStore } from './store'
  * What the actor accepts. Plain data throughout — a `Patch` addresses its
  * target by index, key or id, never by reference — which is what keeps a
  * recorded session replayable (#2's argument convention).
+ *
+ * `command` is the host's route in (#8): the same `undo`/`redo` the raw
+ * events carry, arriving as a dispatched command so a keybinding, a menu and
+ * a test reach the write handle by one path. The raw events stay for callers
+ * that hold the ref directly — the stroke actor (#66 step 4) will send
+ * `patch` per tick without a command in between.
  */
 export type DocumentEvent =
   | { type: 'patch'; label: string; patches: Patch[] }
@@ -50,6 +60,7 @@ export type DocumentEvent =
   | { type: 'endStroke' }
   | { type: 'undo' }
   | { type: 'redo' }
+  | CommandEvent
 
 /**
  * The machine, closed over a writer. Internal: the barrel exports only the
@@ -65,6 +76,7 @@ export function documentLogic(writer: DocumentWriter) {
         endStroke: types<void>(),
         undo: types<void>(),
         redo: types<void>(),
+        command: types<{ id: string; args: unknown }>(),
       },
     },
   }).createMachine({
@@ -97,6 +109,16 @@ export function documentLogic(writer: DocumentWriter) {
           },
           redo: (_, enq) => {
             enq(() => writer.redo())
+            return {}
+          },
+          command: ({ event }, enq) => {
+            // Only the ids `commands.ts` declared can arrive here: the host
+            // routes by declaring owner, and this owner declared two. Anything
+            // else is refused with the `undefined` guard shape rather than
+            // dropped inside `enq`, so it takes no transition at all.
+            if (event.id === 'undo') enq(() => writer.undo())
+            else if (event.id === 'redo') enq(() => writer.redo())
+            else return undefined
             return {}
           },
         },

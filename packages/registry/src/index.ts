@@ -3,8 +3,8 @@
  *
  * Declarations only. Commands, tools, panels and keybindings are static data
  * registered at import and enumerable before any actor exists; the handlers
- * will ride on actors — `document`'s in #66 step 2, `editor-host`'s in step 3
- * — joined to these by string id and nothing else (#5, #9). Nothing here
+ * ride on actors — `document`'s and `editor-host`'s (#66 steps 2 and 3) —
+ * joined to these by string id and nothing else (#5, #9). Nothing here
  * imports XState, React or the DOM — a consumer that needs one of those sits
  * above this package, and the only dependency is a types-only spec.
  *

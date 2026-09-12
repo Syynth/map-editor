@@ -10,7 +10,7 @@
  * is where that discipline is enforced (#23).
  *
  * `dispatch(id, args)` itself belongs to the host (#8: one root actor,
- * bubble-down), built in #66 step 3, because it needs the actor refs. What
+ * bubble-down) in `editor-host`, because it needs the actor refs. What
  * lives here is everything that does NOT need an actor — lookup,
  * availability, argument validation — so a test drives the same code path a
  * keybinding does without `editor-host` (#3), and so the `unknown` /
@@ -67,7 +67,7 @@ export type DispatchRefusal =
 export type DispatchResult = { readonly ok: true } | DispatchRefusal
 
 /**
- * What the pre-flight hands its caller — the host, once #66 step 3 builds it:
+ * What the pre-flight hands its caller — the host's `dispatch`:
  * the declaration to route by and the VALIDATED arguments, since a schema may
  * fill defaults or strip what it does not know, and the handler must see what
  * the schema approved.

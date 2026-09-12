@@ -81,11 +81,15 @@ alone; do not route it through a machine.
       bug.
 - [ ] Tool modes as hierarchical states: terrain(sculpt/paint) × verbs, objects,
       camera.
-- [ ] Edit versus play as a top-level state that changes input interpretation.
+- [x] Edit versus play as a top-level state: the host actor's `edit`/`play`
+      (#66 step 3). `App.tsx` still holds its own `playing` flag until step 7
+      rewires it; input interpretation follows then.
 - [ ] Async work as actors: worker meshing, file load/save, glTF export,
       autosave — with cancellation, progress and failure handling.
 - [ ] Move the 18-field `EditorState` out of the single `useState` in `App.tsx`,
-      so changing brush size stops re-rendering every panel.
+      so changing brush size stops re-rendering every panel. The owners exist
+      — the `tools` and `view` actors in `editor-host` (#66 step 3) — and the
+      move is step 7.
 - [ ] Establish the machine/store boundary in code review terms, so the document
       never drifts into machine context.
 
@@ -102,10 +106,11 @@ alone; do not route it through a machine.
       mutation and property replacement, while leaving reads untouched — the
       arrays are plain `number[]`, so no branding tricks are needed. Held by a
       typecheck-time test in `packages/document/src/actor.test.ts`.
-- [ ] A single `useDocument(selector)` hook that subscribes to the revision.
+- [x] A single `useDocument(selector)` hook that subscribes to the revision.
       Closes both read hazards at once: memoising on `doc` never recomputes
       (it never changes identity), and reading without subscribing silently
-      fails to re-render. Lands with `editor-host` (#66 step 3).
+      fails to re-render. In `editor-host` (#66 step 3); `App.tsx` moves onto
+      it in step 7.
 - [x] Route the existing `store.doc` reads — 59, not 44: `runtime/scene.ts`
       adds 15 — through `reader`. `EditorStore.doc` is private now; every
       read-only function down the ladder (`ops`, `io.serialize`, `geometry`,

@@ -5,7 +5,7 @@
  * because nothing made the feature collect the disposables `declare` handed
  * back. The fix is that the registry never hands one back: every surface takes
  * an owner id as its first argument and registers its own teardown against it
- * here, and whoever installs features — the host, once #66 step 3 builds it —
+ * here, and whoever installs features — the host, through `Host.dispose` —
  * disposes by owner. A feature module therefore never sees a disposable, and
  * a surface package (`viewport-contrib`'s overlays, say) can take part in the
  * same teardown without this package learning what it holds — it calls
@@ -65,9 +65,9 @@ export function onDispose(owner: OwnerId, teardown: Teardown): void {
  * declared nothing is not an error there.
  *
  * Only revokes declarations and runs hooks. Sending `dispose` to the owner's
- * actor and stopping its ref will be the host's half (#21 §5, #66 step 3),
- * ordered AFTER this so nothing can reach a half-disposed feature through the
- * registry.
+ * actor and stopping its ref is the host's half (#21 §5, `Host.dispose` in
+ * `editor-host`), ordered AFTER this so nothing can reach a half-disposed
+ * feature through the registry.
  */
 export function dispose(owner: OwnerId): void {
   if (reserved.has(owner)) throw new Error(`owner "${owner}" is reserved and cannot be disposed`)

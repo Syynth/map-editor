@@ -9,8 +9,13 @@ import { defineConfig, configDefaults } from 'vitest/config'
 // the Vite config would pull a bundler plugin back into repo-root tooling
 // for nothing.
 export default defineConfig({
-  // Agent worktrees under .claude/ are full checkouts, so vitest's defaults
-  // discover their copies of every test file and run the suite once per
-  // worktree — a green run then reports several times the tests it has.
-  test: { exclude: [...configDefaults.exclude, '**/.claude/worktrees/**'] },
+  test: {
+    // Agent worktrees under .claude/ are full checkouts, so vitest's defaults
+    // discover their copies of every test file and run the suite once per
+    // worktree — a green run then reports several times the tests it has.
+    exclude: [...configDefaults.exclude, '**/.claude/worktrees/**'],
+    // #10's 15 s gate budget, measured over the whole run and enforced by a
+    // throw from the teardown — see the file for why it is not a test file.
+    globalSetup: ['tests/gate-budget.ts'],
+  },
 })

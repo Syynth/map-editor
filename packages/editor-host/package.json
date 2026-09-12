@@ -1,5 +1,5 @@
 {
-  "name": "@map-editor/document",
+  "name": "@map-editor/editor-host",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -10,10 +10,18 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@map-editor/document": "workspace:*",
     "@map-editor/registry": "workspace:*",
-    "xstate": "6.0.0-alpha.53"
+    "@xstate/react": "7.0.0-alpha.2",
+    "xstate": "6.0.0-alpha.53",
+    "zod": "4.6.2"
+  },
+  "peerDependencies": {
+    "react": "^19.3.0"
   },
   "devDependencies": {
+    "@types/react": "^19.3.0",
+    "react": "^19.3.0",
     "typescript": "6.0.3",
     "vitest": "^5.0.0"
   }

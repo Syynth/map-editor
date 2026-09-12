@@ -104,6 +104,8 @@ export type { DocumentReader } from './store'
 export { createDocumentActorLogic } from './actor'
 export type { DocumentActorLogic, DocumentEvent } from './actor'
 
+export { DOCUMENT_OWNER, documentKeys } from './commands'
+
 export { LoadError, deserialize, serialize } from './io'
 
 export {

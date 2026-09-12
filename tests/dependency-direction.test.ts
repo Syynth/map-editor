@@ -82,7 +82,7 @@ const PLACEMENT: Record<string, Placement> = {
 
   '@map-editor/registry': { kind: 'layer', rank: 0 },
   '@map-editor/document': { kind: 'layer', rank: 1 },
-  // Visible only to apps, features, and (once it exists) the editor host: the
+  // Visible only to apps, features, and the editor host: the
   // chrome vocabulary is the editor's, not the runtime's. Entries are
   // PLACEMENT keys, except the literals 'app' and 'feature', which stand for
   // any package of that kind.
@@ -92,7 +92,7 @@ const PLACEMENT: Record<string, Placement> = {
   '@map-editor/viewport-contrib': { kind: 'layer', rank: 3, planned: true },
   '@map-editor/viewport': { kind: 'layer', rank: 4 },
   '@map-editor/fixtures': { kind: 'layer', rank: 4 },
-  '@map-editor/editor-host': { kind: 'layer', rank: 5, planned: true },
+  '@map-editor/editor-host': { kind: 'layer', rank: 5 },
   // Sits beside editor-host, not under it: see the comment above PLACEMENT
   // for the two mechanisms (an allow-list one way, a kind-guard the other)
   // that keep the two from ever importing each other.

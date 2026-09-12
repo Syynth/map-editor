@@ -8,9 +8,9 @@
  * and commits one `Edit` on release — #11) will be host code, built in #66
  * step 4; what is here is only the CONTRACT it runs against, kept structural
  * and minimal so a feature module is writable against nothing but this
- * package. Neither the host (step 3) nor the first feature (step 5) exists
- * yet: every "the host does X" below states what that code must do with a
- * handler, not what shipped code does.
+ * package. The host exists (step 3) but runs no strokes yet, and the first
+ * feature (step 5) does not exist: every "the host does X" below states what
+ * the stroke framework must do with a handler, not what shipped code does.
  *
  * Nothing here imports XState. An actor-facing shape is written structurally
  * (`{ send(event): void }`) so the declaration half stays free of the actor

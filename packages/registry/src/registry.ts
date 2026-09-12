@@ -2,9 +2,9 @@
  * The generic declaration registry: static module-level data, populated at
  * import, enumerable before any actor exists (#5, #9).
  *
- * This is the DECLARATION half of the two-registry split. The HANDLER half is
- * designed to ride on an actor a feature exports and the host spawns (#9;
- * neither exists yet — #66 steps 3 and 5); the two are joined by the
+ * This is the DECLARATION half of the two-registry split. The HANDLER half
+ * rides on an actor a feature exports and the host spawns (#9; the host is
+ * `editor-host`, the first feature is #66 step 5); the two are joined by the
  * declaration's string id and nothing else, which is what lets a palette or a
  * keybinding editor list every command while nothing is running.
  * Declared-but-unhandled is therefore a legal state, not an error.
@@ -36,7 +36,7 @@ export interface DeclarationRegistry<T extends Declaration> {
   get(id: string): T | undefined
   /** Every live declaration, in declaration order. */
   all(): readonly T[]
-  /** The owner that declared `id` — what the host (#66 step 3) will route a command by, never an id prefix (#8). */
+  /** The owner that declared `id` — what the host routes a command by, never an id prefix (#8). */
   ownerOf(id: string): OwnerId | undefined
 }
 

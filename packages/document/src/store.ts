@@ -46,9 +46,15 @@ type Listener = () => void
 export interface DocumentReader {
   readonly doc: ReadonlyMapDoc
   readonly revision: number
-  subscribe(listener: Listener): () => void
+  /**
+   * `this: void` on both: they are handed to `useSyncExternalStore` detached
+   * from the reader (`useDocument` in `editor-host` does exactly that), so
+   * the type says they may be, and the store binds them as arrows to keep it
+   * true.
+   */
+  subscribe(this: void, listener: Listener): () => void
   /** `useSyncExternalStore`'s second argument: the revision, as a value. */
-  getSnapshot(): number
+  getSnapshot(this: void): number
   canUndo(): boolean
   canRedo(): boolean
   undoLabel(): string | null
