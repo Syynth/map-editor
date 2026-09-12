@@ -104,7 +104,7 @@ empirically in this repo, and all of them are on the wayfinder map
   go red before committing.
 - **Prove reachability, not just green tests.** Both rendering bugs this repo has ever had
   — degenerate UVs on terrain tops and a double colour-space conversion in the sky — were
-  found by looking at screenshots while 53 unit tests passed. `npm run tour` drives the app
+  found by looking at screenshots while 53 unit tests passed. `pnpm tour` drives the app
   and captures a walkthrough; use it.
 - **Never `git stash`** — all worktrees share one stash stack.
 
