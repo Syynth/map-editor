@@ -23,13 +23,17 @@
  * the command form of a verb cannot drift from each other either.
  */
 
-import { cellIndex, inBounds, type Cell, type Patch, type SurfaceAddress } from '@map-editor/document'
+import { SURFACE_TOP, cellIndex, inBounds, type Cell, type Patch, type SurfaceAddress } from '@map-editor/document'
 import type { FeatureDeps, StrokeHandler, ToolContract } from './deps'
 import { eyedrop, paintPatches, sculptPatches, strokeCells, terrainLabel, type TerrainModifiers } from './verbs'
 
 /** One tick's input: what the pointer is over, and the modifiers held at that instant. */
 export interface TerrainSample {
-  readonly pick: { readonly surface: SurfaceAddress | null }
+  readonly pick: {
+    readonly surface: SurfaceAddress | null
+    /** Mid-stroke, the pointer on the horizontal plane through the press's hit; what a sculpt stroke steers by. */
+    readonly plane?: { readonly x: number; readonly z: number } | null
+  }
   readonly modifiers: TerrainModifiers
 }
 
@@ -38,6 +42,31 @@ export type TerrainStrokeHandler = StrokeHandler<TerrainSample, Patch>
 function addressKey(address: SurfaceAddress): string {
   return `${address.x},${address.y},${address.kind},${address.dir},${address.level}`
 }
+
+/**
+ * Whether the pointer, at `point` on the press plane, has moved from `from`
+ * into another cell by more than `deadZone` along every axis it crossed.
+ * Measured from the boundary it crossed, so a pointer hovering on a line
+ * does not flip cells with every pixel, and one crossing a corner has to
+ * clear both edges. `null` while it has not.
+ */
+export function cellPast(from: Cell, point: { readonly x: number; readonly z: number }, deadZone: number): Cell | null {
+  const cx = Math.floor(point.x)
+  const cz = Math.floor(point.z)
+  if (cx === from[0] && cz === from[1]) return null
+  if (cx !== from[0]) {
+    const inside = cx > from[0] ? point.x - cx : cx + 1 - point.x
+    if (inside < deadZone) return null
+  }
+  if (cz !== from[1]) {
+    const inside = cz > from[1] ? point.z - cz : cz + 1 - point.z
+    if (inside < deadZone) return null
+  }
+  return [cx, cz]
+}
+
+/** The top of `cell`, as the address a sculpt verb targets when it was steered there by the plane rather than by a pick. */
+const topOf = ([x, y]: Cell): SurfaceAddress => ({ x, y, kind: SURFACE_TOP, dir: 0, level: 0 })
 
 function handlerFor(deps: FeatureDeps, press: TerrainSample): TerrainStrokeHandler {
   const doc = deps.doc()
@@ -48,9 +77,37 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample): TerrainStrokeHandl
   const anchorHeight = address && inBounds(doc.size, address.x, address.y) ? doc.terrain.height[cellIndex(doc.size, address.x, address.y)] : 0
   /** Cell last edited, so a drag does not re-apply to the same cell. */
   let lastCell: string | null = null
+  /** The cell a sculpt stroke is on, steered by the press plane; `null` until a tick lands one. */
+  let steered: Cell | null = null
+
+  /**
+   * A sculpt stroke (raise, flatten, water) is steered by where the pointer
+   * is on the press plane, not by what the ray hits: raising a cell puts a
+   * taller face under the cursor, and picking that face is what made the
+   * stroke re-fire on the cell it had just raised. It moves to the next cell
+   * only once the pointer is `sculptDeadZone` past the boundary. Ramp and
+   * paint keep the pick, since they target faces.
+   */
+  function steer(sample: TerrainSample): SurfaceAddress | null {
+    const params = deps.params()
+    const surface = sample.pick.surface
+    if (params.terrainMode !== 'sculpt' || params.sculptVerb === 'ramp') return surface
+    const plane = sample.pick.plane
+    if (plane === undefined || plane === null) {
+      // No plane — a press, or no camera: the pick decides, by cell only.
+      if (surface) steered = [surface.x, surface.y]
+      return surface ? topOf([surface.x, surface.y]) : null
+    }
+    if (steered === null) steered = [Math.floor(plane.x), Math.floor(plane.z)]
+    else {
+      const next = cellPast(steered, plane, params.sculptDeadZone)
+      if (next !== null && inBounds(deps.doc().size, next[0], next[1])) steered = next
+    }
+    return topOf(steered)
+  }
 
   function tick(sample: TerrainSample, phase: 'start' | 'move' | 'end'): Patch[] {
-    const address = sample.pick.surface
+    const address = steer(sample)
     if (!address) return []
 
     if (sample.modifiers.alt) {

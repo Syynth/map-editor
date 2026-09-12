@@ -20,6 +20,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 import {
   SURFACE_CLIFF,
   SURFACE_TOP,
+  NO_WATER,
   cellIndex,
   cornerHeights,
   groundHeight,
@@ -523,7 +524,10 @@ export class Viewport {
   /** A flat overlay quad hugging a cell's top surface. */
   private cellQuad(doc: ReadonlyMapDoc, x: number, y: number, out: number[], lift = 0.03): void {
     if (!inBounds(doc.size, x, y)) return
-    const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => h * 0.5 + lift)
+    // A flooded column's preview sits on the water, not on the lake bed under
+    // it — the water surface writes depth and would hide it there.
+    const water = doc.terrain.water[cellIndex(doc.size, x, y)]
+    const [c00, c01, c11, c10] = cornerHeights(doc, x, y).map((h) => (water === NO_WATER ? h : Math.max(h, water)) * 0.5 + lift)
     out.push(
       x, c00, y, x, c01, y + 1, x + 1, c11, y + 1,
       x, c00, y, x + 1, c11, y + 1, x + 1, c10, y,

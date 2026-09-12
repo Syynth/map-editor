@@ -21,6 +21,7 @@ const defaults: TerrainParams = {
   tile: 0,
   tint: 0xffffff,
   rampDir: -1,
+  sculptDeadZone: 0.2,
 }
 
 function stub(doc: ReadonlyMapDoc, overrides: Partial<TerrainParams> = {}) {
@@ -39,6 +40,60 @@ const top = (x: number, y: number): SurfaceAddress => ({ x, y, kind: SURFACE_TOP
 const sample = (address: SurfaceAddress | null, modifiers: Partial<{ shift: boolean; alt: boolean; ctrl: boolean }> = {}) => ({
   pick: { surface: address },
   modifiers: { shift: false, alt: false, ctrl: false, ...modifiers },
+})
+/** A mid-stroke tick with the pointer at `(x, z)` on the press plane; the ray hits `address`, which a sculpt stroke must ignore. */
+const planeSample = (x: number, z: number, address: SurfaceAddress | null = null) => ({
+  pick: { surface: address, plane: { x, z } },
+  modifiers: { shift: false, alt: false, ctrl: false },
+})
+
+describe('a sculpt stroke steers by the press plane, with a dead zone', () => {
+  it("does not re-fire on the cell it just raised when the ray now hits that cell's new face", () => {
+    const doc = createMap(8, 8)
+    const { deps } = stub(doc)
+    const handler = terrainContract(deps).stroke(sample(top(1, 1)))
+    expect(handler?.begin(sample(top(1, 1)))).toHaveLength(1)
+    // The pointer has barely moved; the pick now says "cliff face of (1,1)".
+    const face: SurfaceAddress = { x: 1, y: 1, kind: SURFACE_CLIFF, dir: 2, level: 1 }
+    expect(handler?.move(planeSample(1.5, 1.6, face))).toEqual([])
+    expect(handler?.move(planeSample(1.9, 1.9, face))).toEqual([])
+  })
+
+  it('moves to the next cell only once the pointer is the dead zone past the boundary', () => {
+    const doc = createMap(8, 8)
+    const { deps } = stub(doc, { sculptDeadZone: 0.2 })
+    const handler = terrainContract(deps).stroke(sample(top(1, 1)))
+    handler?.begin(sample(top(1, 1)))
+    expect(handler?.move(planeSample(2.1, 1.5))).toEqual([]) // over the line, inside the dead zone
+    expect(handler?.move(planeSample(2.25, 1.5))).toHaveLength(1) // past it
+    // Back across the same line: the dead zone applies in both directions.
+    expect(handler?.move(planeSample(1.9, 1.5))).toEqual([])
+    expect(handler?.move(planeSample(1.7, 1.5))).toHaveLength(1)
+  })
+
+  it('a dead zone of zero is the exact boundary, and a corner crossing must clear both edges', () => {
+    const doc = createMap(8, 8)
+    const { deps } = stub(doc, { sculptDeadZone: 0 })
+    const handler = terrainContract(deps).stroke(sample(top(1, 1)))
+    handler?.begin(sample(top(1, 1)))
+    expect(handler?.move(planeSample(2.0, 1.5))).toHaveLength(1)
+    const { deps: deps2 } = stub(createMap(8, 8), { sculptDeadZone: 0.25 })
+    const handler2 = terrainContract(deps2).stroke(sample(top(1, 1)))
+    handler2?.begin(sample(top(1, 1)))
+    expect(handler2?.move(planeSample(2.3, 2.1))).toEqual([]) // past x's zone, not z's
+    expect(handler2?.move(planeSample(2.3, 2.3))).toHaveLength(1)
+  })
+
+  it('ramp and paint keep steering by the pick, since they target faces', () => {
+    const doc = createMap(8, 8)
+    const { deps } = stub(doc, { terrainMode: 'paint', paintVerb: 'material', material: 1 })
+    const handler = terrainContract(deps).stroke(sample(top(1, 1)))
+    handler?.begin(sample(top(1, 1)))
+    // The plane says (1,1) still; the pick says (3,3). Paint follows the pick.
+    const patches = handler?.move(planeSample(1.5, 1.5, top(3, 3)))
+    expect(patches).toHaveLength(1)
+    expect(patches?.[0]).toMatchObject({ t: 'terrain', field: 'material', index: cellIndex(doc.size, 3, 3), value: 1 })
+  })
 })
 
 describe('the terrain tool contract', () => {

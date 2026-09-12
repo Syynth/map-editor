@@ -21,7 +21,7 @@
 
 import { DIR_NAMES, type ReadonlyMapDoc } from '@map-editor/document'
 import { chordFor, panels, type OwnerId, type Platform } from '@map-editor/registry'
-import { BarDivider, BarLabel, BarSlider, ColorInput, Field, IconSegmented, Select } from '@map-editor/ui'
+import { BarDivider, BarLabel, BarSlider, ColorInput, Field, IconSegmented, Select, Slider } from '@map-editor/ui'
 
 import { terrainKeys } from './keys'
 import type { TerrainParams } from './verbs'
@@ -102,6 +102,19 @@ export function TerrainBar({ params, set, platform }: TerrainPanelProps) {
   )
 }
 
+/**
+ * The sculpt stroke's dial, while the feel is being settled (tentative
+ * ruling of 2026-09-12): how far past a cell boundary the pointer goes
+ * before the stroke moves on. Leaves with the number, once it is chosen.
+ */
+export function TerrainSculptPanel({ params, set }: TerrainPanelProps) {
+  return (
+    <Field label="Dead zone" hint="Cells past a boundary before the stroke moves to the next cell — 0 is the exact boundary">
+      <Slider value={params.sculptDeadZone} min={0} max={0.5} step={0.05} onChange={(sculptDeadZone) => set({ sculptDeadZone })} format={(v) => v.toFixed(2)} />
+    </Field>
+  )
+}
+
 export function TerrainRampPanel({ params, set }: TerrainPanelProps) {
   return (
     <Field label="Ramp faces" hint="Or just click a cliff face directly">
@@ -138,6 +151,7 @@ export function TerrainPaintPanel({ doc, params, set }: TerrainPanelProps) {
 
 export function declareTerrainPanels(owner: OwnerId): void {
   panels.declare(owner, { id: 'terrain.bar', title: 'Terrain', slot: 'bar', component: TerrainBar })
+  panels.declare(owner, { id: 'terrain.sculpt', title: 'Sculpt', component: TerrainSculptPanel, when: terrainKeys.mode.is('sculpt') })
   panels.declare(owner, { id: 'terrain.ramp', title: 'Ramp', component: TerrainRampPanel, when: terrainKeys.verb.is('ramp') })
   panels.declare(owner, { id: 'terrain.paint', title: 'Paint', component: TerrainPaintPanel, when: terrainKeys.mode.is('paint') })
 }
