@@ -7,7 +7,7 @@
 
 import { DEFAULT_THEME, createTheme, mergeMantineTheme, type MantineColorsTuple, type MantineThemeOverride } from '@mantine/core'
 
-import { colors, fonts, fontSize, radius, space } from './tokens'
+import { colors, fonts, fontSize, frame, radius, space } from './tokens'
 
 type Rgb = [number, number, number]
 
@@ -113,6 +113,12 @@ export function cssVariables(): Record<string, string> {
     '--ui-ok': c.ok,
     '--ui-font': fonts.ui,
     '--ui-font-mono': fonts.mono,
+    // the frame's fixed dimensions, so the grid in styles.css reads them from here
+    '--ui-top': `${frame.topBar}px`,
+    '--ui-context': `${frame.contextBar}px`,
+    '--ui-rail': `${frame.rail}px`,
+    '--ui-inspector': `${frame.inspector}px`,
+    '--ui-status': `${frame.statusBar}px`,
     // legacy names, read by apps/editor/src/editor/styles.css
     '--bg': c.bg,
     '--panel': c.panel,

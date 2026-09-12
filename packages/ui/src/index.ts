@@ -3,22 +3,22 @@
  *
  * Issue #12's rule: this is not "the package that contains Mantine", it is the
  * package that holds the vocabulary, and Mantine is an implementation detail of
- * it. The dependency on `@mantine/core` is declared here and nowhere else so
- * that boundary is stated before the first import exists; the eight primitives
- * below are still the hand-rolled ones, moved verbatim. Converting them — wrap
- * `Stack`/`Group`/`Panel` where the style prop IS the purpose, re-export
- * `Slider`/`NumberInput`/`Select` where it is incidental — is its own piece of
- * work, and mixing it into a move makes the diff unreviewable.
+ * it. The dependency on `@mantine/core` is declared here and nowhere else, and
+ * so is the one stylesheet: an app imports `@map-editor/ui/styles.css`, which
+ * carries Mantine's base styles and the frame's own rules in that order.
  *
- * Two things issue #12 puts here that are absent, deliberately:
+ * Three layers, in the order a panel author meets them:
  *
- * - The arrow to `@map-editor/registry` (declarations only, never handlers) is
- *   what makes a control able to resolve a command id to its title, icon and
- *   availability reason. `registry` does not exist yet, so the dependency is
- *   not declared — a faked one would claim a boundary nothing enforces.
- * - The primitives still render against class names defined in the app's
- *   `src/editor/styles.css`, which is one interleaved sheet with global element
- *   selectors. Prising their rules out is a rewrite of that sheet, not a move.
+ * - `frame.tsx` — the five regions and what goes in them (rail buttons,
+ *   verbs, icon switches, chips, sections, rows, hints), all icon-only with
+ *   the words in a tooltip per the 2026-09-12 ruling.
+ * - `primitives.tsx` — the form controls a panel is written in, on Mantine.
+ * - `icons.tsx` — the glyphs, by name, so a declaration can carry one.
+ *
+ * Absent, deliberately: the arrow to `@map-editor/registry` (declarations
+ * only, never handlers) that would let a control resolve a command id to its
+ * title and chord. The app does that join today; the day two apps need it,
+ * it moves here.
  *
  * Written out rather than `export *`, matching the other packages.
  */
@@ -32,10 +32,50 @@ export {
   Segmented,
   Select,
   Slider,
+  TextInput,
+  Toggle,
 } from './primitives'
+
+export {
+  Action,
+  Actions,
+  BarDivider,
+  BarGroup,
+  BarLabel,
+  BarSlider,
+  BarValue,
+  Brand,
+  Chip,
+  FileButton,
+  Frame,
+  Hint,
+  IconSegmented,
+  InspectorHead,
+  Item,
+  Kbd,
+  List,
+  Overlay,
+  Pill,
+  RailButton,
+  RailGap,
+  RailRule,
+  Row,
+  Section,
+  StatusHints,
+  StatusRight,
+  Tip,
+  TopButton,
+  TopGroup,
+  TopGrow,
+  TopSep,
+  Verb,
+} from './frame'
+export type { IconOption } from './frame'
+
+export { ICON_NAMES, Icon, isIconName } from './icons'
+export type { IconName } from './icons'
 
 export { UiProvider } from './provider'
 export { cssVariables, darkScale, shades, theme, themeOverride } from './theme'
 export { colors, fontSize, fonts, frame, radius, space, tokens } from './tokens'
 export type { Tokens } from './tokens'
-

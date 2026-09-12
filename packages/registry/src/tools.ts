@@ -28,6 +28,17 @@ import { createRegistry } from './registry'
 export interface ToolDecl {
   readonly id: string
   readonly title: string
+  /**
+   * The name of the glyph the rail draws for it, from the design
+   * vocabulary's icon set — a string rather than a component because this
+   * package sits below React, and a name is as storable as the rest of the
+   * declaration. Absent means the rail shows the title's initial.
+   *
+   * No key here: the chord that selects a tool is a keymap binding on
+   * `tools.set`, and the rail's tooltip reads it from there, so a preset that
+   * rebinds `V` changes what the tooltip says without touching the tool.
+   */
+  readonly icon?: string
   /** Whether the tool can be selected. Absent means always. */
   readonly when?: Predicate
 }

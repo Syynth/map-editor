@@ -8,7 +8,8 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./styles.css": "./src/styles.css"
   },
   "scripts": {
     "build": "tsup --config ../../tsup.config.ts && tsc -p tsconfig.json",

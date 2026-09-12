@@ -45,7 +45,7 @@
  * thing here and holds nothing but an array of chords.
  */
 
-import { canonicalSpec, chordsEqual, isModifierKey, parseChords, type Chord, type Platform } from './chords'
+import { canonicalSpec, chordsEqual, formatChord, isModifierKey, parseChords, type Chord, type Platform } from './chords'
 import { commands } from './commands'
 import { always, and, disjoint, evaluate, type ContextSnapshot, type Predicate } from './context'
 import { onDispose, type OwnerId } from './owners'
@@ -95,6 +95,21 @@ interface Entry {
 
 const entries: Entry[] = []
 let nextSeq = 0
+
+/**
+ * The chord a control should advertise for `(command, args)`, formatted for
+ * the platform — what a tooltip shows beside a name. `keymap.bindingFor`
+ * decides which binding that is; this only spells its chord out, so a
+ * control never learns what a chord is. `undefined` when nothing binds it,
+ * which a control shows as no chord.
+ */
+export function chordFor(command: string, args: unknown, platform: Platform): string | undefined {
+  const binding = keymap.bindingFor(command, platform, args)
+  if (binding === undefined) return undefined
+  return parseChords(binding.chord, platform)
+    .map((chord) => formatChord(chord, platform))
+    .join(' ')
+}
 
 /** Parsed chords are cached per `(spec, platform)`: resolution runs on every keypress and parsing is the only string work in it. */
 const parsed = new Map<string, readonly Chord[]>()
@@ -188,11 +203,30 @@ export const keymap = {
    * The binding a menu prints beside a command (#14's discovery half): the
    * one that would win, which is the last surviving rule naming it. Unbinds
    * are applied first, so a command the user unbound reports nothing.
+   *
+   * With `args`, only a binding carrying those arguments counts, compared
+   * structurally — a binding is `(id, args)`, and `tools.set { tool:
+   * 'select' }` and `tools.set { tool: 'terrain' }` are different keys.
+   * Without `args`, any binding of the command does.
+   *
+   * Among the candidates, one with no `when` is preferred over the last:
+   * it is the chord that always works, so it is the one to advertise —
+   * Select is `V`, not the `Escape` that only returns to it from another
+   * tool. A scoped binding is reported only when nothing unconditional
+   * binds the same thing.
    */
-  bindingFor(command: string, platform: Platform = 'other'): KeyBinding | undefined {
+  bindingFor(command: string, platform: Platform = 'other', args?: unknown): KeyBinding | undefined {
     const live = applyUnbinds(this.all(), platform)
-    for (let i = live.length - 1; i >= 0; i -= 1) if (live[i].command === command) return live[i]
-    return undefined
+    const wanted = args === undefined ? undefined : JSON.stringify(args)
+    let scoped: KeyBinding | undefined
+    for (let i = live.length - 1; i >= 0; i -= 1) {
+      const binding = live[i]
+      if (binding.command !== command) continue
+      if (wanted !== undefined && JSON.stringify(binding.args ?? null) !== wanted) continue
+      if (binding.when === undefined) return binding
+      scoped ??= binding
+    }
+    return scoped
   },
 }
 

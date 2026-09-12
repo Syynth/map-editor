@@ -39,6 +39,8 @@ function makeHost(): { host: Host; dispatch: Host['dispatch'] } {
     dispatched.add(id)
     return host.dispatch(id, args)
   }
+  // Every stroke below is a terrain stroke; the editor opens on Select.
+  host.dispatch('tools.set', { tool: 'terrain' })
   return { host, dispatch }
 }
 
@@ -80,9 +82,13 @@ describe('what the feature declares, before anything is running', () => {
       'terrain.ramp',
       'terrain.water',
     ])
-    expect(tools.get('terrain')?.title).toBe('Terrain')
-    expect(panels.ownerOf('terrain.brush')).toBe(TERRAIN)
-    expect(typeof panels.get('terrain.brush')?.component).toBe('function')
+    expect(tools.get('terrain')).toMatchObject({ title: 'Terrain', icon: 'terrain' })
+    // The bar panel is the tool's row of controls; the inspector ones are gated.
+    expect(panels.ownerOf('terrain.bar')).toBe(TERRAIN)
+    expect(panels.get('terrain.bar')).toMatchObject({ slot: 'bar' })
+    expect(typeof panels.get('terrain.bar')?.component).toBe('function')
+    expect(panels.get('terrain.ramp')?.slot).toBeUndefined()
+    expect(panels.get('terrain.paint')?.when).toBeDefined()
   })
 })
 

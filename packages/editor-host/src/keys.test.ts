@@ -46,10 +46,14 @@ describe('the default keymap', () => {
 
   it('resolves every chord the old keydown handler carried', () => {
     const live = host()
-    // `1`/`2` switch tools outright; `3` is the composite.
-    expect(hit(live, '1')).toMatchObject({ command: 'tools.set', args: { tool: 'terrain' } })
-    expect(hit(live, '2')).toMatchObject({ command: 'tools.set', args: { tool: 'object' } })
-    expect(hit(live, '3')).toMatchObject({ command: 'commands.run' })
+    // The rail's subjects on the letters the reference apps use; Escape only
+    // resolves when there is a tool to return from.
+    expect(hit(live, 'escape')).toEqual({ kind: 'none' })
+    expect(hit(live, 't')).toMatchObject({ command: 'tools.set', args: { tool: 'terrain' } })
+    expect(hit(live, 'o')).toMatchObject({ command: 'tools.set', args: { tool: 'object' } })
+    expect(hit(live, 'v')).toMatchObject({ command: 'tools.set', args: { tool: 'select' } })
+    live.dispatch('tools.set', { tool: 'terrain' })
+    expect(hit(live, 'escape')).toMatchObject({ command: 'tools.set', args: { tool: 'select' } })
     expect(hit(live, '[')).toMatchObject({ command: 'brush.resize', args: { by: -1 } })
     expect(hit(live, ']')).toMatchObject({ command: 'brush.resize', args: { by: 1 } })
     live.stop()

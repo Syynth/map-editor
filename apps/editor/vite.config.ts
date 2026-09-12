@@ -44,6 +44,15 @@ export default defineConfig({
               // vendor-react chunk stays self-contained.
               test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
             },
+            {
+              name: 'vendor-mantine',
+              // Mantine and the floating-ui it positions tooltips with. It
+              // arrived with the frame (#96, the ui vocabulary) and pushed
+              // the entry chunk past the 500 kB ceiling on its own; it changes
+              // on a dependency bump, never on an edit, so it caches well as
+              // one chunk.
+              test: /node_modules[\\/](@mantine|@floating-ui|clsx)[\\/]/,
+            },
           ],
         },
       },

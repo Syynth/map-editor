@@ -1,5 +1,5 @@
 /**
- * The React side: palettes, properties, outliner, coverage.
+ * The React side: the bodies of the inspector's sections, and the tile palette.
  *
  * Every control here is a DISPATCH, not a setter: the app's state object is
  * gone (#11, #66 step 7), so a panel takes what it shows as props and calls a
@@ -8,13 +8,14 @@
  * through `useDocument` — it is the only panel whose work is expensive enough
  * that recomputing it on an unrelated re-render would show.
  *
- * The terrain half of the tool panel is NOT here any more: it is the terrain
- * feature's own component, declared through the registry and rendered below by
- * the tool's owner. That is the point of #12's "panels are components" — the
- * app no longer holds a copy of a feature's controls.
+ * These are section BODIES: `inspector.tsx` wraps each in a `Section` with
+ * the title and the glance, so the header is the frame's and the content is
+ * the panel's. The terrain tool's controls are not here: they are the terrain
+ * feature's own components, declared through the registry with a slot, and
+ * rendered by `bars.tsx` and `inspector.tsx` under the tool's owner.
  */
 
-import { useEffect, useRef, useState, type ComponentType } from 'react'
+import { useEffect, useState } from 'react'
 
 import {
   ATMOSPHERE_PRESETS,
@@ -27,15 +28,26 @@ import {
   type MapObject,
   type RgbaImage,
 } from '@map-editor/document'
-// Behind the `./textures` subpath, not the package root — see the comment in
-// `App.tsx`'s import of the same package.
-import { SPRITE_NAMES } from '@map-editor/fixtures/textures'
-import { useDocument, useHost, type ToolsSnapshot } from '@map-editor/editor-host'
-import type { TerrainPanelProps } from '@map-editor/feature-terrain'
+import { useDocument } from '@map-editor/editor-host'
 import { sheetLayoutFor, tileColumnRow } from '@map-editor/geometry'
-import { always, evaluate, panels, tools } from '@map-editor/registry'
 import { analyseCoverage, type CoverageReport } from '@map-editor/runtime'
-import { ColorInput, Field, Note, NumberInput, Panel, Segmented, Select, Slider } from '@map-editor/ui'
+import {
+  Action,
+  Actions,
+  ColorInput,
+  Field,
+  Item,
+  List,
+  Note,
+  NumberInput,
+  Row,
+  Segmented,
+  Select,
+  Slider,
+  TextInput,
+  Toggle,
+  Verb,
+} from '@map-editor/ui'
 import { rgbaToDataUrl } from './rgba'
 
 // --- tile palette -----------------------------------------------------------
@@ -60,7 +72,7 @@ export function TilePalette({
   }, [sheet])
 
   const { column, row } = tileColumnRow(layout, selected)
-  const scale = Math.min(14, Math.max(6, Math.floor(220 / layout.columns)))
+  const scale = Math.min(14, Math.max(6, Math.floor(240 / layout.columns)))
 
   return (
     <div className="palette">
@@ -84,172 +96,31 @@ export function TilePalette({
           style={{ left: column * scale, top: row * scale, width: scale, height: scale }}
         />
       </div>
-      <p className="palette-legend">
+      <Note>
         Rows 0–3 are the 16 autotile variants; row 4 is cliff top, middle, bottom, then the ramp.
         Each material owns four columns. Alt-click the map to pick a tile up.
-      </p>
+      </Note>
     </div>
   )
 }
 
-// --- tool panel -------------------------------------------------------------
+// --- the selected object ------------------------------------------------------
 
-/**
- * The panels the ACTIVE TOOL's owner declared, in declaration order, each shown
- * only while its own `when` holds (#9, #12).
- *
- * The rule is the registry's rather than a list of feature names: the tool
- * registry says whose tool `terrain` is, and that owner's panels are the ones
- * that edit the parameters a stroke with that tool reads — the same join by
- * declaring owner that `Host.toolContract` makes for the handler (#8). A tool
- * nobody declared, or an owner that contributed no panels, renders nothing,
- * which is what the object and camera tools do.
- *
- * The cast is the app's to make and nobody else's. A `PanelDecl` carries an
- * opaque component because `registry` sits below React (#3), and what props it
- * takes is the feature's business; an app is the only thing that sees both
- * halves (#35), and this app installs one feature, whose panels take the doc,
- * the parameters and a setter.
- */
-function FeaturePanels({
-  tool,
-  doc,
-  params,
-  set,
-}: {
-  tool: ToolsSnapshot['tool']
-  doc: ReadonlyMapDoc
-  params: ToolsSnapshot
-  set: (changes: Partial<ToolsSnapshot>) => void
-}) {
-  const host = useHost()
-  const owner = tools.ownerOf(tool)
-  // Derived per render, never held: the same rule `dispatch` follows (#8's
-  // finding 2). A panel gated on the ramp verb has to appear the render after
-  // the verb changed, and this component re-renders with the parameters.
-  const keys = host.contextKeys()
-  if (owner === undefined) return null
-
-  return (
-    <>
-      {panels
-        .all()
-        .filter((decl) => panels.ownerOf(decl.id) === owner && evaluate(decl.when ?? always, keys).available)
-        .map((decl) => {
-          const Component = decl.component as ComponentType<TerrainPanelProps>
-          return <Component key={decl.id} doc={doc} params={params} set={set} />
-        })}
-    </>
-  )
-}
-
-export function ToolPanel({
-  doc,
-  params,
-  sheet,
-  set,
-  onLoadSheet,
-  sheetWarning,
-}: {
-  doc: ReadonlyMapDoc
-  params: ToolsSnapshot
-  sheet: RgbaImage | null
-  /** One partial of tool parameters, which is exactly what `tools.set` takes. */
-  set: (changes: Partial<ToolsSnapshot>) => void
-  onLoadSheet: (file: File) => void
-  sheetWarning: string | null
-}) {
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  return (
-    <>
-      <Panel title="Tool">
-        <Segmented
-          value={params.tool}
-          onChange={(tool) => set({ tool })}
-          options={[
-            { value: 'terrain', label: 'Terrain', title: '1' },
-            { value: 'object', label: 'Objects', title: '2' },
-            { value: 'camera', label: 'Camera', title: '3' },
-          ]}
-        />
-
-        <FeaturePanels tool={params.tool} doc={doc} params={params} set={set} />
-
-        {params.tool === 'object' ? (
-          <Field label="Sprite">
-            <Select
-              value={params.spriteName}
-              onChange={(spriteName) => set({ spriteName })}
-              options={SPRITE_NAMES.map((name) => ({ value: name, label: name }))}
-            />
-          </Field>
-        ) : null}
-      </Panel>
-
-      {/* The sheet itself is the app's: an artist loads a PNG here, and the
-          generated fallback comes from the composition root (#47). The tile
-          the brush lays down is a tool parameter like any other. */}
-      {params.tool === 'terrain' && params.terrainMode === 'paint' && params.paintVerb === 'tile' ? (
-        <Panel
-          title="Template sheet"
-          aside={
-            <button type="button" onClick={() => fileRef.current?.click()}>
-              Load PNG
-            </button>
-          }
-        >
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/png,image/*"
-            hidden
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) onLoadSheet(file)
-              event.target.value = ''
-            }}
-          />
-          <TilePalette doc={doc} sheet={sheet} selected={params.tile} onSelect={(tile) => set({ tile })} />
-          {sheetWarning ? <Note tone="warn">{sheetWarning}</Note> : null}
-        </Panel>
-      ) : null}
-    </>
-  )
-}
-
-// --- object inspector -------------------------------------------------------
-
-export function ObjectInspector({
+export function ObjectProperties({
   object,
+  deleteKbd,
   onChange,
   onDelete,
 }: {
-  object: DeepReadonly<MapObject> | null
+  object: DeepReadonly<MapObject>
+  deleteKbd?: string
   onChange: (changes: Partial<MapObject>) => void
   onDelete: () => void
 }) {
-  if (!object) {
-    return (
-      <Panel title="Properties">
-        <Note>Nothing selected. Click an object, or place one with the Objects tool.</Note>
-      </Panel>
-    )
-  }
-
-  const facing = object.facing
-
   return (
-    <Panel
-      title="Properties"
-      aside={
-        <button type="button" onClick={onDelete}>
-          Delete
-        </button>
-      }
-    >
+    <>
       <Field label="Name">
-        <input value={object.name} onChange={(event) => onChange({ name: event.target.value })} />
+        <TextInput value={object.name} onChange={(name) => onChange({ name })} />
       </Field>
 
       <Field label="Display" hint="auto picks from the map's camera bounds">
@@ -281,22 +152,38 @@ export function ObjectInspector({
         />
       </Field>
 
-      <Field label="Anchored" hint="Rides the terrain when it is sculpted">
-        <input
-          type="checkbox"
+      <Row label="Anchored to the terrain">
+        <Toggle
+          title="Rides the terrain when it is sculpted"
           checked={object.anchorCell !== null}
-          onChange={(event) =>
+          onChange={(checked) =>
             onChange({
-              anchorCell: event.target.checked
-                ? [Math.floor(object.position[0]), Math.floor(object.position[2])]
-                : null,
+              anchorCell: checked ? [Math.floor(object.position[0]), Math.floor(object.position[2])] : null,
             })
           }
         />
-      </Field>
+      </Row>
 
-      <h3>Facing and flip</h3>
+      <Actions>
+        {/* `selection.delete` is the composite the keymap binds too: it
+            expands to `objects.delete({ ids })` plus clearing the selection,
+            with the ids filled in outside every actor (#11). */}
+        <Action title="Delete" kbd={deleteKbd} tone="danger" onClick={onDelete} />
+      </Actions>
+    </>
+  )
+}
 
+export function FacingProperties({
+  object,
+  onChange,
+}: {
+  object: DeepReadonly<MapObject>
+  onChange: (changes: Partial<MapObject>) => void
+}) {
+  const facing = object.facing
+  return (
+    <>
       <Field label="Facings">
         <Segmented
           value={facing.facings}
@@ -310,13 +197,13 @@ export function ObjectInspector({
         />
       </Field>
 
-      <Field label="Mirror" hint="Left reuses the right-hand art">
-        <input
-          type="checkbox"
+      <Row label="Mirror the left from the right">
+        <Toggle
+          title="Left reuses the right-hand art"
           checked={facing.mirror}
-          onChange={(event) => onChange({ facing: { ...facing, mirror: event.target.checked } })}
+          onChange={(mirror) => onChange({ facing: { ...facing, mirror } })}
         />
-      </Field>
+      </Row>
 
       <Field label="Back side">
         <Select
@@ -375,43 +262,19 @@ export function ObjectInspector({
           ]}
         />
       </Field>
-    </Panel>
+    </>
   )
 }
 
 // --- camera rig -------------------------------------------------------------
 
-export function CameraPanel({
-  rig,
-  onChange,
-  onSweep,
-  onPreview,
-}: {
-  rig: DeepReadonly<CameraRig>
-  onChange: (changes: Partial<CameraRig>) => void
-  onSweep: () => void
-  onPreview: () => void
-}) {
+export function CameraRigProperties({ rig, onChange }: { rig: DeepReadonly<CameraRig>; onChange: (changes: Partial<CameraRig>) => void }) {
   const bounds = rig.bounds
-  const setBounds = (changes: Partial<CameraRig['bounds']>) =>
-    onChange({ bounds: { ...bounds, ...changes } })
-
+  const setBounds = (changes: Partial<CameraRig['bounds']>) => onChange({ bounds: { ...bounds, ...changes } })
   const yawSpan = Math.abs(bounds.yawMax - bounds.yawMin)
 
   return (
-    <Panel
-      title="Camera rig"
-      aside={
-        <>
-          <button type="button" onClick={onPreview}>
-            Reset view
-          </button>
-          <button type="button" onClick={onSweep}>
-            Sweep
-          </button>
-        </>
-      }
-    >
+    <>
       <Field label="Projection">
         <Segmented
           value={rig.projection}
@@ -427,42 +290,26 @@ export function CameraPanel({
         <Slider value={rig.fov} min={12} max={70} onChange={(fov) => onChange({ fov })} format={(v) => `${v}°`} />
       </Field>
 
-      <h3>Bounds</h3>
-
       <Field label="Yaw range" hint="The primary question: how much rotation do the games allow?">
-        <span className="pair">
-          <NumberInput value={bounds.yawMin} min={-180} max={180} onChange={(yawMin) => setBounds({ yawMin })} />
-          <NumberInput value={bounds.yawMax} min={-180} max={180} onChange={(yawMax) => setBounds({ yawMax })} />
-        </span>
+        <NumberInput value={bounds.yawMin} min={-180} max={180} onChange={(yawMin) => setBounds({ yawMin })} />
+        <NumberInput value={bounds.yawMax} min={-180} max={180} onChange={(yawMax) => setBounds({ yawMax })} />
       </Field>
 
-      <div className="preset-row">
-        <button type="button" onClick={() => setBounds({ yawMin: -180, yawMax: 180 })}>
-          Free
-        </button>
-        <button type="button" onClick={() => onChange({ bounds: { ...bounds, yawMin: -180, yawMax: 180 }, yawSnapDeg: 90 })}>
-          4 detents
-        </button>
-        <button type="button" onClick={() => onChange({ bounds: { ...bounds, yawMin: 20, yawMax: 70 }, yawSnapDeg: 0 })}>
-          Narrow
-        </button>
-        <button type="button" onClick={() => onChange({ bounds: { ...bounds, yawMin: 45, yawMax: 45 }, yawSnapDeg: 0 })}>
-          Fixed
-        </button>
-      </div>
+      <Actions>
+        <Action title="Free" onClick={() => setBounds({ yawMin: -180, yawMax: 180 })} />
+        <Action title="4 detents" onClick={() => onChange({ bounds: { ...bounds, yawMin: -180, yawMax: 180 }, yawSnapDeg: 90 })} />
+        <Action title="Narrow" onClick={() => onChange({ bounds: { ...bounds, yawMin: 20, yawMax: 70 }, yawSnapDeg: 0 })} />
+        <Action title="Fixed" onClick={() => onChange({ bounds: { ...bounds, yawMin: 45, yawMax: 45 }, yawSnapDeg: 0 })} />
+      </Actions>
 
       <Field label="Pitch range">
-        <span className="pair">
-          <NumberInput value={bounds.pitchMin} min={0} max={89} onChange={(pitchMin) => setBounds({ pitchMin })} />
-          <NumberInput value={bounds.pitchMax} min={0} max={89} onChange={(pitchMax) => setBounds({ pitchMax })} />
-        </span>
+        <NumberInput value={bounds.pitchMin} min={0} max={89} onChange={(pitchMin) => setBounds({ pitchMin })} />
+        <NumberInput value={bounds.pitchMax} min={0} max={89} onChange={(pitchMax) => setBounds({ pitchMax })} />
       </Field>
 
       <Field label="Zoom range">
-        <span className="pair">
-          <NumberInput value={bounds.distMin} min={2} max={200} onChange={(distMin) => setBounds({ distMin })} />
-          <NumberInput value={bounds.distMax} min={2} max={200} onChange={(distMax) => setBounds({ distMax })} />
-        </span>
+        <NumberInput value={bounds.distMin} min={2} max={200} onChange={(distMin) => setBounds({ distMin })} />
+        <NumberInput value={bounds.distMax} min={2} max={200} onChange={(distMax) => setBounds({ distMax })} />
       </Field>
 
       <Field label="Yaw detents" hint="0 is continuous rotation">
@@ -478,10 +325,9 @@ export function CameraPanel({
 
       <Note>
         The yaw range spans {Math.round(yawSpan)}°. Free orbit stays available while editing; the
-        viewport says when you have left the envelope, and the game-camera toggle (G) clamps you to
-        it.
+        viewport says when you have left the envelope, and the game-camera toggle clamps you to it.
       </Note>
-    </Panel>
+    </>
   )
 }
 
@@ -495,7 +341,12 @@ export function CameraPanel({
  */
 const coverageOf = (doc: ReadonlyMapDoc): CoverageReport => analyseCoverage(doc, doc.camera)
 
-export function CoveragePanel({ onFix, onSelect }: { onFix: (id: string) => void; onSelect: (id: string) => void }) {
+/** The one number the section header shows, without rendering the body. */
+export function useCoverageFlags(): number {
+  return useDocument(coverageOf).readsWrong
+}
+
+export function CoverageProperties({ onFix, onSelect }: { onFix: (id: string) => void; onSelect: (id: string) => void }) {
   const report = useDocument(coverageOf)
   const flagged = report.objects.filter((entry) => entry.readsWrong)
   const hiddenPercent =
@@ -504,47 +355,35 @@ export function CoveragePanel({ onFix, onSelect }: { onFix: (id: string) => void
       : Math.round((report.hiddenSurfaces.hiddenFaces / report.hiddenSurfaces.totalFaces) * 100)
 
   return (
-    <Panel title="Coverage">
-      <p className="readout">
-        <strong>{report.total}</strong> objects · <strong>{report.singleFacing}</strong> with one
-        facing · <strong>{report.readsWrong}</strong> read wrong inside a {Math.round(report.yawSpanDeg)}°
-        yaw range.
-      </p>
-      <p className="readout">
-        Fixing every flag costs about <strong>{report.extraImagesToFix}</strong> more images to draw.
-      </p>
-      <p className="readout">
-        <strong>{hiddenPercent}%</strong> of cliff faces ({report.hiddenSurfaces.hiddenFaces} of{' '}
-        {report.hiddenSurfaces.totalFaces}) can never be seen at these bounds, so they need no
-        painting.
-      </p>
+    <>
+      <Row label="Objects" value={report.total} />
+      <Row label="With one facing" value={report.singleFacing} />
+      <Row label={`Read wrong in a ${Math.round(report.yawSpanDeg)}° yaw range`} value={report.readsWrong} />
+      <Row label="Images to draw to fix them" value={report.extraImagesToFix} />
+      <Row label="Cliff faces never seen at these bounds" value={`${hiddenPercent}%`} muted />
 
       {flagged.length === 0 ? (
         <Note>Nothing reads wrong at the current bounds.</Note>
       ) : (
-        <ul className="coverage-list">
+        <List>
           {flagged.map((entry) => (
-            <li key={entry.id}>
-              <button type="button" className="link" onClick={() => onSelect(entry.id)}>
-                {entry.name}
-              </button>
-              <span className="coverage-why">{entry.suggestion}</span>
-              {entry.edgeOn ? (
-                <button type="button" onClick={() => onFix(entry.id)}>
-                  Billboard it
-                </button>
-              ) : null}
-            </li>
+            <Item
+              key={entry.id}
+              name={entry.name}
+              meta={entry.suggestion}
+              onClick={() => onSelect(entry.id)}
+              trailing={entry.edgeOn ? <Action title="Billboard it" onClick={() => onFix(entry.id)} /> : undefined}
+            />
           ))}
-        </ul>
+        </List>
       )}
-    </Panel>
+    </>
   )
 }
 
 // --- atmosphere -------------------------------------------------------------
 
-export function AtmospherePanel({
+export function AtmosphereProperties({
   atmosphere,
   onChange,
 }: {
@@ -552,7 +391,7 @@ export function AtmospherePanel({
   onChange: (changes: Partial<Atmosphere>) => void
 }) {
   return (
-    <Panel title="Atmosphere">
+    <>
       <Field label="Preset">
         <Select
           value={atmosphere.preset}
@@ -572,102 +411,61 @@ export function AtmospherePanel({
         />
       </Field>
 
-      <details>
-        <summary>Fine tuning</summary>
+      <Field label="Sun">
+        <Slider value={atmosphere.sunIntensity} min={0} max={3} step={0.05} onChange={(sunIntensity) => onChange({ sunIntensity })} format={(v) => v.toFixed(2)} />
+      </Field>
+      <Field label="Ambient">
+        <Slider value={atmosphere.ambientIntensity} min={0} max={2} step={0.05} onChange={(ambientIntensity) => onChange({ ambientIntensity })} format={(v) => v.toFixed(2)} />
+      </Field>
+      <Field label="Sun angle">
+        <Slider value={atmosphere.sunElevation} min={-10} max={89} onChange={(sunElevation) => onChange({ sunElevation })} format={(v) => `${v}°`} />
+      </Field>
+      <Field label="Fog near">
+        <Slider value={atmosphere.fogNear} min={0} max={120} onChange={(fogNear) => onChange({ fogNear })} />
+      </Field>
+      <Field label="Fog far">
+        <Slider value={atmosphere.fogFar} min={10} max={300} onChange={(fogFar) => onChange({ fogFar })} />
+      </Field>
+      <Field label="Bloom">
+        <Slider value={atmosphere.bloom} min={0} max={2} step={0.05} onChange={(bloom) => onChange({ bloom })} format={(v) => v.toFixed(2)} />
+      </Field>
+      <Field label="Tilt shift">
+        <Slider value={atmosphere.tiltShift} min={0} max={1.5} step={0.05} onChange={(tiltShift) => onChange({ tiltShift })} format={(v) => v.toFixed(2)} />
+      </Field>
+      <Field label="Sky top">
+        <ColorInput value={atmosphere.skyTop} onChange={(skyTop) => onChange({ skyTop })} />
+      </Field>
+      <Field label="Horizon">
+        <ColorInput value={atmosphere.skyHorizon} onChange={(skyHorizon) => onChange({ skyHorizon })} />
+      </Field>
+      <Field label="Fog colour">
+        <ColorInput value={atmosphere.fogColor} onChange={(fogColor) => onChange({ fogColor })} />
+      </Field>
 
-        <Field label="Sun">
-          <Slider
-            value={atmosphere.sunIntensity}
-            min={0}
-            max={3}
-            step={0.05}
-            onChange={(sunIntensity) => onChange({ sunIntensity })}
-            format={(v) => v.toFixed(2)}
-          />
-        </Field>
-        <Field label="Ambient">
-          <Slider
-            value={atmosphere.ambientIntensity}
-            min={0}
-            max={2}
-            step={0.05}
-            onChange={(ambientIntensity) => onChange({ ambientIntensity })}
-            format={(v) => v.toFixed(2)}
-          />
-        </Field>
-        <Field label="Sun angle">
-          <Slider
-            value={atmosphere.sunElevation}
-            min={-10}
-            max={89}
-            onChange={(sunElevation) => onChange({ sunElevation })}
-            format={(v) => `${v}°`}
-          />
-        </Field>
-        <Field label="Fog near">
-          <Slider value={atmosphere.fogNear} min={0} max={120} onChange={(fogNear) => onChange({ fogNear })} />
-        </Field>
-        <Field label="Fog far">
-          <Slider value={atmosphere.fogFar} min={10} max={300} onChange={(fogFar) => onChange({ fogFar })} />
-        </Field>
-        <Field label="Bloom">
-          <Slider
-            value={atmosphere.bloom}
-            min={0}
-            max={2}
-            step={0.05}
-            onChange={(bloom) => onChange({ bloom })}
-            format={(v) => v.toFixed(2)}
-          />
-        </Field>
-        <Field label="Tilt shift">
-          <Slider
-            value={atmosphere.tiltShift}
-            min={0}
-            max={1.5}
-            step={0.05}
-            onChange={(tiltShift) => onChange({ tiltShift })}
-            format={(v) => v.toFixed(2)}
-          />
-        </Field>
-        <Field label="Sky top">
-          <ColorInput value={atmosphere.skyTop} onChange={(skyTop) => onChange({ skyTop })} />
-        </Field>
-        <Field label="Horizon">
-          <ColorInput value={atmosphere.skyHorizon} onChange={(skyHorizon) => onChange({ skyHorizon })} />
-        </Field>
-        <Field label="Fog colour">
-          <ColorInput value={atmosphere.fogColor} onChange={(fogColor) => onChange({ fogColor })} />
-        </Field>
-      </details>
-
-      <h3>Backdrop cards</h3>
+      <Row label="Backdrop" value={atmosphere.backdrop.length === 0 ? 'none' : `${atmosphere.backdrop.length} card${atmosphere.backdrop.length === 1 ? '' : 's'}`} muted />
       {atmosphere.backdrop.length === 0 ? (
-        <Note>
-          Painted distant scenery on a cylinder around the map — the no-modeling answer to far-off
-          mountains.
-        </Note>
+        <Note>Painted distant scenery on a cylinder around the map — the no-modeling answer to far-off mountains.</Note>
       ) : null}
-      <button
-        type="button"
-        onClick={() =>
-          onChange({
-            backdrop:
-              atmosphere.backdrop.length > 0
-                ? []
-                : [{ sprite: 'mountains', base: -2, height: 15, radius: 70, parallax: 0.9, opacity: 1 }],
-          })
-        }
-      >
-        {atmosphere.backdrop.length > 0 ? 'Remove mountains' : 'Add mountains'}
-      </button>
-    </Panel>
+      <Actions>
+        <Action
+          title={atmosphere.backdrop.length > 0 ? 'Remove mountains' : 'Add mountains'}
+          onClick={() =>
+            onChange({
+              backdrop:
+                atmosphere.backdrop.length > 0
+                  ? []
+                  : [{ sprite: 'mountains', base: -2, height: 15, radius: 70, parallax: 0.9, opacity: 1 }],
+            })
+          }
+        />
+      </Actions>
+    </>
   )
 }
 
 // --- outliner ---------------------------------------------------------------
 
-export function Outliner({
+export function OutlinerList({
   doc,
   selectedId,
   onSelect,
@@ -678,37 +476,36 @@ export function Outliner({
   onSelect: (id: string) => void
   onChange: (id: string, changes: Partial<MapObject>) => void
 }) {
+  if (doc.objectOrder.length === 0) return <Note>No objects placed yet. Place one with the Objects tool.</Note>
   return (
-    <Panel title={`Outliner (${doc.objectOrder.length})`}>
-      {doc.objectOrder.length === 0 ? <Note>No objects placed yet.</Note> : null}
-      <ul className="outliner">
-        {doc.objectOrder.map((id) => {
-          const object = doc.objects[id]
-          if (!object) return null
-          return (
-            <li key={id} className={id === selectedId ? 'selected' : ''}>
-              <button type="button" className="link" onClick={() => onSelect(id)}>
-                {object.name}
-              </button>
-              <span className="outliner-meta">{object.facing.facings}f</span>
-              <button
-                type="button"
-                title={object.hidden ? 'Show' : 'Hide'}
-                onClick={() => onChange(id, { hidden: !object.hidden })}
-              >
-                {object.hidden ? '○' : '●'}
-              </button>
-              <button
-                type="button"
-                title={object.locked ? 'Unlock' : 'Lock'}
-                onClick={() => onChange(id, { locked: !object.locked })}
-              >
-                {object.locked ? '🔒' : '🔓'}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-    </Panel>
+    <List>
+      {doc.objectOrder.map((id) => {
+        const object = doc.objects[id]
+        if (!object) return null
+        return (
+          <Item
+            key={id}
+            name={object.name}
+            meta={`${object.facing.facings}f`}
+            active={id === selectedId}
+            onClick={() => onSelect(id)}
+            trailing={
+              <>
+                <Verb
+                  icon={object.hidden ? 'eyeOff' : 'eye'}
+                  title={object.hidden ? 'Show' : 'Hide'}
+                  onClick={() => onChange(id, { hidden: !object.hidden })}
+                />
+                <Verb
+                  icon={object.locked ? 'lock' : 'unlock'}
+                  title={object.locked ? 'Unlock' : 'Lock'}
+                  onClick={() => onChange(id, { locked: !object.locked })}
+                />
+              </>
+            }
+          />
+        )
+      })}
+    </List>
   )
 }

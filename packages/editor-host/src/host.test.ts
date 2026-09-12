@@ -317,7 +317,7 @@ describe('tools: eleven parameters, one command', () => {
 
   it('exposes the active tool as a key', () => {
     const { host, dispatch } = makeHost()
-    expect(host.contextKeys()['tools.tool']).toBe('terrain')
+    expect(host.contextKeys()['tools.tool']).toBe('select')
     dispatch('tools.set', { tool: 'object' })
     expect(host.contextKeys()['tools.tool']).toBe('object')
   })
@@ -510,11 +510,12 @@ describe('pointer input through the host', () => {
   })
 
   it('a press with a tool whose feature was never installed starts nothing', () => {
-    // The default tool is `terrain`, whose handler belongs to a feature this
-    // host was not given. `toolContract` answers `undefined`, so the gesture
-    // actor spawns no stroke — the same fall-through a declined press gets,
-    // rather than a half-live stroke over a tool nothing implements.
-    const { host } = makeHost()
+    // `terrain`'s handler belongs to a feature this host was not given.
+    // `toolContract` answers `undefined`, so the gesture actor spawns no
+    // stroke — the same fall-through a declined press gets, rather than a
+    // half-live stroke over a tool nothing implements.
+    const { host, dispatch } = makeHost()
+    dispatch('tools.set', { tool: 'terrain' })
     expect(host.contextKeys()['tools.tool']).toBe('terrain')
     expect(host.toolContract('terrain')).toBeUndefined()
 
@@ -564,10 +565,35 @@ describe('pointer input through the host', () => {
     expect(host.reader.undoLabel()).toBe('Edit object')
   })
 
-  it('camera tool: a left press is no gesture at all', () => {
+  it('the select tool selects what it presses, clears on empty ground unless shift is held, and never places', () => {
     const { host, dispatch } = makeHost()
-    dispatch('tools.set', { tool: 'camera' })
-    expect(host.input.pointerDown(pressAt(1, 1))).toBe('none')
+    dispatch('tools.set', { tool: 'object', spriteName: 'tree' })
+    host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.5, z: 2.5 }, objectId: null } }))
+    host.input.pointerUp({ x: 20, y: 20 })
+    const doc = host.reader.doc
+    const id = doc.objectOrder[0]
+    expect(id).toBeDefined()
+
+    // The default tool. Pressing empty ground with something selected clears it and adds nothing.
+    dispatch('tools.set', { tool: 'select' })
+    host.input.pointerDown(pressAt(5, 5, { pick: { surface: topAt(5, 5), point: { x: 5.5, z: 5.5 }, objectId: null } }))
+    host.input.pointerUp({ x: 50, y: 50 })
+    expect(doc.objectOrder).toHaveLength(1)
+    expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
+
+    // Pressing the object selects it, and the rest of the drag moves it.
+    host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.5, z: 2.5 }, objectId: id } }))
+    expect(host.children.view.getSnapshot().context.selectedObjectId).toBe(id)
+    host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.5, z: 4.5 }, objectId: null }, NO_MODIFIERS)
+    expect(doc.objects[id].position[0]).toBeCloseTo(4.5)
+    host.input.pointerUp({ x: 40, y: 40 })
+    expect(host.reader.undoLabel()).toBe('Move object')
+
+    // Shift on empty ground keeps the selection.
+    host.input.pointerDown(pressAt(6, 6, { pick: { surface: topAt(6, 6), point: { x: 6.5, z: 6.5 }, objectId: null }, modifiers: { ...NO_MODIFIERS, shift: true } }))
+    host.input.pointerUp({ x: 60, y: 60 })
+    expect(host.children.view.getSnapshot().context.selectedObjectId).toBe(id)
+    expect(doc.objectOrder).toHaveLength(1)
   })
 
   it('held keys round-trip for the play loop', () => {
@@ -633,8 +659,8 @@ describe('a child with a lifetime: dead letters are observable', () => {
     expect(host.actor.getSnapshot().status).toBe('active')
 
     // And the router still works afterwards — the real proof.
-    expect(dispatch('tools.set', { tool: 'camera' })).toEqual({ ok: true })
-    expect(host.children.tools.getSnapshot().context.tool).toBe('camera')
+    expect(dispatch('tools.set', { tool: 'object' })).toEqual({ ok: true })
+    expect(host.children.tools.getSnapshot().context.tool).toBe('object')
   })
 
   it('dispose(owner): revokes the declarations, sends dispose, stops the ref, keeps the ref', () => {
@@ -842,12 +868,12 @@ describe('the relative and composite commands the keymap needs', () => {
     expect(
       dispatch('commands.run', {
         commands: [
-          { id: 'tools.set', args: { tool: 'camera' } },
+          { id: 'tools.set', args: { tool: 'object' } },
           { id: 'view.set', args: { inspector: 'coverage' } },
         ],
       }),
     ).toEqual({ ok: true })
-    expect(host.children.tools.getSnapshot().context.tool).toBe('camera')
+    expect(host.children.tools.getSnapshot().context.tool).toBe('object')
     expect(host.children.view.getSnapshot().context.inspector).toBe('coverage')
   })
 
@@ -858,14 +884,14 @@ describe('the relative and composite commands the keymap needs', () => {
         commands: [
           { id: 'view.set', args: { showGrid: false } },
           { id: 'view.set', args: { inspector: 'nonsense' } },
-          { id: 'tools.set', args: { tool: 'camera' } },
+          { id: 'tools.set', args: { tool: 'object' } },
         ],
       }),
     ).toMatchObject({ ok: false, kind: 'invalid-args' })
     // The first step landed and the third never ran: a composite is a
     // sequence of dispatches, not a transaction.
     expect(host.children.view.getSnapshot().context.showGrid).toBe(false)
-    expect(host.children.tools.getSnapshot().context.tool).toBe('terrain')
+    expect(host.children.tools.getSnapshot().context.tool).toBe('select')
   })
 
   it('refuses a composite that recurses instead of looping forever', () => {
