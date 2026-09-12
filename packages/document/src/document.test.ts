@@ -13,19 +13,13 @@ function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
   doc.terrain.height[cellIndex(doc.size, x, y)] = h
 }
 
-/**
- * A serialised document loosened enough for the migration and rejection tests
- * to mangle it — `formatVersion` optional so it can be deleted, everything else
- * open so a field can be set to something the loader must refuse.
- *
- * `JSON.parse` returns `any`, and the whole point of these tests is the shape
- * the loader is handed, so the shape is stated once here rather than left
- * untyped at each call.
- */
-type OnDisk = { formatVersion?: number; terrain: { height: unknown } } & Record<string, unknown>
-
-function parseOnDisk(doc: MapDoc): OnDisk {
-  return JSON.parse(serialize(doc)) as OnDisk
+// `JSON.parse` returns `any` here on purpose: the whole point of these tests
+// is to mangle the on-disk shape into something the loader must refuse, so
+// typing it more tightly would just fight the tests. `OnDisk` used to pin this
+// down for `no-unsafe-*`, but test files are now exempt from lint entirely
+// (#38), so the type stopped earning its place.
+function parseOnDisk(doc: MapDoc) {
+  return JSON.parse(serialize(doc))
 }
 
 describe('edits', () => {
