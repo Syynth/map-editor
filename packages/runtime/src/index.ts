@@ -48,5 +48,4 @@ export type { PickResult } from './picking'
 export { RuntimeScene } from './scene'
 export type { SceneAssets } from './scene'
 
-export { CUT_TINT, GHOST_TINT, layerView, withinLayers } from './layers'
 export type { LayerRange } from './layers'
