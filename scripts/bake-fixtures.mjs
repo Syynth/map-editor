@@ -54,6 +54,7 @@ async function waitForServer() {
   throw new Error('vite dev server did not start')
 }
 
+/** @type {string[]} */
 const problems = []
 
 try {
@@ -71,7 +72,10 @@ try {
 
   await page.goto(`http://localhost:${PORT}/bake.html`, { waitUntil: 'load' })
   await page.waitForFunction(() => window.__bake !== undefined, null, { timeout: 30_000 })
-  const { manifest, files } = await page.evaluate(() => window.__bake)
+  // The `waitForFunction` above ran in the page and already proved this; the
+  // non-null assertion is for `tsc`, which cannot see across two separate
+  // `evaluate` calls into a page-side global.
+  const { manifest, files } = await page.evaluate(() => /** @type {NonNullable<typeof window.__bake>} */ (window.__bake))
   await browser.close()
 
   // Wipe first so a sprite that leaves the library does not leave its PNGs
@@ -84,7 +88,13 @@ try {
   }
   writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
 
-  const written = readdirSync(OUT, { recursive: true }).filter((entry) => entry.endsWith('.png')).length
+  // `encoding: 'utf8'` picks the `string[]` overload explicitly — omitting it
+  // still returns strings at runtime, but the recursive-plus-no-encoding
+  // overload types the result as `(string | Buffer)[]`, which has no
+  // `.endsWith`.
+  const written = readdirSync(OUT, { recursive: true, encoding: 'utf8' }).filter((entry) =>
+    entry.endsWith('.png'),
+  ).length
   console.log(`Baked ${written} PNGs + manifest.json into ${OUT}`)
 } finally {
   server.kill()

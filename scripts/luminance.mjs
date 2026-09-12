@@ -19,6 +19,7 @@ export async function meanLuminance(page, clip) {
     canvas.width = bitmap.width
     canvas.height = bitmap.height
     const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('2d context unavailable for the luminance measurement')
     ctx.drawImage(bitmap, 0, 0)
     const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
     let sum = 0

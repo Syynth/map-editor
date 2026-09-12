@@ -59,12 +59,23 @@ page.on('pageerror', (error) => console.log('PAGEERROR', error.message))
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' })
 await sleep(5000)
 
-const box = await (await page.$('.stage canvas')).boundingBox()
+const canvasHandle = await page.$('.stage canvas')
+if (!canvasHandle) throw new Error('".stage canvas" not found — did the editor mount?')
+const box = await canvasHandle.boundingBox()
+if (!box) throw new Error('".stage canvas" has no bounding box — is it hidden or zero-sized?')
+// Pulled into plain numbers rather than read off `box` inside `report`:
+// `report` below is a hoisted `function` declaration, and `tsc` does not
+// carry a `const` null-check's narrowing into a hoisted function's body (an
+// arrow function assigned to a const would keep it) — so `report` would
+// still see `box` as possibly-null even though it is only ever called after
+// the throw above.
+const { x: boxX, y: boxY, width: boxW, height: boxH } = box
 
+/** @param {string} label */
 async function report(label) {
   const luma = await meanLuminance(page, {
-    x: box.x + box.width / 2 - 30,
-    y: box.y + box.height / 2 - 30,
+    x: boxX + boxW / 2 - 30,
+    y: boxY + boxH / 2 - 30,
     width: 60,
     height: 60,
   })

@@ -37,7 +37,10 @@ export function stripGpuFlag(argv = process.argv.slice(2)) {
   return argv.filter((arg) => arg !== '--gpu')
 }
 
-/** Launch args for `chromium.launch`. */
+/**
+ * Launch args for `chromium.launch`.
+ * @param {boolean} gpu
+ */
 export function chromiumArgs(gpu) {
   return gpu ? GPU_ARGS : SOFTWARE_ARGS
 }
