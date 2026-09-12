@@ -26,5 +26,14 @@
   // `tests` is repo-wide by the same definition — it holds the workspace
   // dependency-direction test, whose subject is the set of `package.json`s
   // rather than any one package's source, so it belongs to no package.
-  "include": ["scripts", "tests", "vitest.config.ts"]
+  //
+  // `scripts` is deliberately NOT here (issue #28): those are `.mjs`, and
+  // `allowJs` is off, so an `include` entry for them type-checks nothing —
+  // `tsc --listFiles` confirms zero files from `scripts/` enter the program.
+  // Turning them on would mean `allowJs` + `checkJs` against 770 lines of
+  // unannotated Playwright drivers under this config's `strict`, which is a
+  // real lift, not a two-line fix; ESLint's `scripts/**` globals block is
+  // already what keeps them honest. Add the entry back, with `allowJs` and
+  // `checkJs`, the day someone is willing to pay for that.
+  "include": ["tests", "vitest.config.ts"]
 }
