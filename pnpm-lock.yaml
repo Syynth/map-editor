@@ -186,6 +186,34 @@ importers:
         specifier: ^8.3.0
         version: 8.3.0(@types/node@22.20.2)
 
+  apps/export-cli:
+    dependencies:
+      '@map-editor/document':
+        specifier: workspace:*
+        version: link:../../packages/document
+      '@map-editor/fixtures':
+        specifier: workspace:*
+        version: link:../../packages/fixtures
+      '@map-editor/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      fast-png:
+        specifier: 8.0.0
+        version: 8.0.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.2
+        version: 22.20.2
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.3.0
+        version: 8.3.0(@types/node@22.20.2)
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.20.2)(vite@8.3.0(@types/node@22.20.2))
+
   packages/document:
     devDependencies:
       typescript:
@@ -906,6 +934,9 @@ packages:
   fast-levenshtein@2.0.6:
     resolution: {integrity: sha512-DCXu6Ifhqcks7TZKY3Hxp3y6qphY5SJZmrWMDrKcERSOXWQdMhU9Ig/PYrzyw/ul9jOIyh0N4M0tbC5hodg8dw==}
 
+  fast-png@8.0.0:
+    resolution: {integrity: sha512-gCysNasJ8KEMgfdYIKd/wTDo6ENK1PWT0RJO7O+0pgmuHPw2O6tA1WvdxFRJoLf9V8yFYpG0FA1YgI8X97OhJA==}
+
   fdir@6.5.0:
     resolution: {integrity: sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg==}
     engines: {node: '>=12.0.0'}
@@ -979,6 +1010,9 @@ packages:
   imurmurhash@0.1.4:
     resolution: {integrity: sha512-JmXMZ6wuvDmLiHEml9ykzqO6lwFbof0GG4IkcGaENdCRDDmMVnny7s5HsIgHCbaq0w2MyPhDqkhTUgS2LU2PHA==}
     engines: {node: '>=0.8.19'}
+
+  iobuffer@6.0.1:
+    resolution: {integrity: sha512-SZWYkWNfjIXIBYSDpXDYIgshqtbOPsi4lviawAEceR1Kqk+sHDlcQjWrzNQsii80AyBY0q5c8HCTNjqo74ul+Q==}
 
   is-extglob@2.1.1:
     resolution: {integrity: sha512-SbKbANkN603Vi4jEZv49LeVJMn4yGwsbzZworEoyEiutsN3nJYdbO36zfhGJ6QEDpOZIFkDtnq5JRxmvl3jsoQ==}
@@ -2073,6 +2107,11 @@ snapshots:
 
   fast-levenshtein@2.0.6: {}
 
+  fast-png@8.0.0:
+    dependencies:
+      fflate: 0.8.3
+      iobuffer: 6.0.1
+
   fdir@6.5.0(picomatch@4.0.7):
     optionalDependencies:
       picomatch: 4.0.7
@@ -2128,6 +2167,8 @@ snapshots:
   ignore@7.0.9: {}
 
   imurmurhash@0.1.4: {}
+
+  iobuffer@6.0.1: {}
 
   is-extglob@2.1.1: {}
 

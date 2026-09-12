@@ -21,7 +21,11 @@ import {
   type RgbaImage,
   type SurfaceAddress,
 } from '@map-editor/document'
-import { createSampleMap, generateSprites, generateTerrainSheet } from '@map-editor/fixtures'
+import { createSampleMap } from '@map-editor/fixtures'
+// The canvas-drawing generator lives behind its own subpath (#48): re-exporting it
+// from the package root would force `DOM` into every consumer's tsconfig, including
+// `apps/export-cli`'s, whose whole point is compiling without it.
+import { generateSprites, generateTerrainSheet } from '@map-editor/fixtures/textures'
 import type { PickResult } from '@map-editor/runtime'
 import { exportGltf } from '@map-editor/runtime/export'
 import { Note } from '@map-editor/ui'

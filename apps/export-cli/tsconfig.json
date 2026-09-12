@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // No `DOM`: the headless claim (#3, #48) is that this app never reaches
+    // for a browser global, and with `DOM` out of `lib` the compiler is what
+    // says so, not a grep of the finished bundle. `@map-editor/runtime` made
+    // the same call for the same reason once #47 gave it a canvas-free path;
+    // this app is the other half of that claim, the one that actually runs
+    // under plain `node`.
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // The one package here that WANTS Node's globals: unlike `runtime` or
+    // `fixtures`, which stay portable by leaving `types` empty, this app's
+    // entire job is to run under `node` — reading argv, the filesystem, and
+    // `process.exitCode`. Declaring `@types/node` is the honest version of
+    // that, not a leak to grep for.
+    "types": ["node"]
+  },
+
+  // No `references`, matching every other package: nothing here emits, and
+  // resolution reaches `document`, `fixtures` and `runtime` through their own
+  // `exports` maps.
+  "include": ["src", "vite.config.ts"]
+}

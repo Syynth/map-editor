@@ -103,11 +103,7 @@ const PLACEMENT: Record<string, Placement> = {
   '@map-editor/eslint-rules': { kind: 'tooling' },
 
   '@map-editor/editor': { kind: 'app' },
-  // '@map-editor/export-cli' was cut 2026-09-11: producing a .glb headlessly needed a
-  // native canvas (@napi-rs/canvas), and the owner ruled no native binaries over a dev
-  // CLI. The texture path has been canvas-free since #47; it returns as { kind: 'app' }
-  // once three's GLB assembly (FileReader-based) has a headless route too — see
-  // docs/monorepo-migration.md.
+  '@map-editor/export-cli': { kind: 'app' },
 }
 
 interface PackageJson {

@@ -1,19 +1,25 @@
 /**
- * The fixtures package's public surface.
+ * The fixtures package's public surface — the DOM-free half of it.
  *
  * Dev-only, in the sense that nothing shipped depends on it — but deliberately
  * NOT lint-exempt, because its output is real data the editor loads and has to
  * satisfy the same invariants as anything else (see `eslint.config.js`).
  *
- * Two kinds of fixture live here. The sample map is pure document verbs. The
- * placeholder art generator (#3 parked it here; #47 moved it) draws with a 2D
- * canvas where one exists and hands back raw `RgbaImage`s, so `runtime` never
- * sees the canvas — that is the boundary this package sits on the drawing side
- * of. Where no canvas exists, `baked/` carries the same output pre-rendered as
- * PNG; `pnpm bake` regenerates it.
+ * `textures.ts` (the placeholder art generator, #3 parked it here, #47 moved
+ * it) draws with a 2D canvas and is reached through the separate `./textures`
+ * export instead of here (#48): it is the one file in this package that needs
+ * `DOM` in `lib` to typecheck at all, and tsc type-checks a whole imported
+ * file under the IMPORTER's compiler options, not the file's own package's —
+ * so re-exporting it from this barrel would force `DOM` into every
+ * consumer's `tsconfig`, including `apps/export-cli`'s, whose entire
+ * acceptance criterion is compiling without it. `createSampleMap` and
+ * `bakedDir` need no canvas of their own and belong here; where a headless
+ * caller needs the pixels `textures.ts` would have drawn, `bakedDir()` points
+ * at the checked-in, pre-rendered stand-in under `baked/` (`pnpm bake`
+ * regenerates it).
  *
  * Written out rather than `export *`, matching the other packages.
  */
 
 export { createSampleMap } from './sample'
-export { SPRITE_NAMES, generateSprites, generateTerrainSheet } from './textures'
+export { bakedDir } from './baked-dir'
