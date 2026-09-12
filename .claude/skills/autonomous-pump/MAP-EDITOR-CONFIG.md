@@ -75,6 +75,13 @@ apply. Peak disk is `node_modules` per worktree, which pnpm hard-links from its
 content-addressable store — keep worktrees on the same volume and clone `node_modules`
 with `cp -c -R` (APFS) as the `DISK` preamble already instructs.
 
+## Model tiers (owner's ruling, 2026-09-12)
+
+**Opus for review and for hard builds; Sonnet for ordinary builds, the merge train, fixes,
+lessons and retro; Haiku for the light lane.** Fable only when the work is genuinely critical
+— the actor migration qualified; a config sweep does not. The default `pump.js` tiers already
+say this; the one deviation to avoid is running everything on the session model.
+
 ## Repo
 
 - **Repo:** `Syynth/map-editor` · **default branch:** `main` · **assignee:** `Syynth`
