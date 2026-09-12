@@ -190,22 +190,37 @@ export class RuntimeScene {
     return new THREE.Vector3(this.doc.size.width / 2, 0, this.doc.size.height / 2)
   }
 
+  /** Remove a chunk's meshes from the scene and free their geometry. */
+  private dropChunk(key: string): void {
+    const existing = this.chunks.get(key)
+    if (!existing) return
+    this.terrainGroup.remove(existing.solid)
+    existing.solid.geometry.dispose()
+    if (existing.water) {
+      this.terrainGroup.remove(existing.water)
+      existing.water.geometry.dispose()
+    }
+    this.chunks.delete(key)
+  }
+
   /** Rebuild the given chunks. Pass nothing to rebuild everything. */
   rebuildChunks(keys?: string[]): void {
     const list = keys ?? allChunkKeys(this.doc.size.width, this.doc.size.height)
     const start = performance.now()
 
+    // A full rebuild is authoritative about which chunks exist, so it also has
+    // to drop the ones that no longer do. Replacing a map with a smaller one
+    // leaves keys behind that the new document has no cells for, and nothing
+    // else would ever remove them: they would keep drawing the replaced map
+    // and keep answering hover and terrain picking. Same reconciliation
+    // `syncObjects` does for object views.
+    if (!keys) {
+      const wanted = new Set(list)
+      for (const key of [...this.chunks.keys()]) if (!wanted.has(key)) this.dropChunk(key)
+    }
+
     for (const key of list) {
-      const existing = this.chunks.get(key)
-      if (existing) {
-        this.terrainGroup.remove(existing.solid)
-        existing.solid.geometry.dispose()
-        if (existing.water) {
-          this.terrainGroup.remove(existing.water)
-          existing.water.geometry.dispose()
-        }
-        this.chunks.delete(key)
-      }
+      this.dropChunk(key)
 
       const mesh = meshTerrainChunk(this.doc, key)
       if (mesh.solid.triangleCount === 0 && !mesh.water) continue

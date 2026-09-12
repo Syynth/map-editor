@@ -200,6 +200,22 @@ export function removeObject(doc: ReadonlyMapDoc, id: string): Patch[] {
   ]
 }
 
+/**
+ * The plural form, for `objects.delete`. Not `ids.flatMap(removeObject)`:
+ * every call rebuilds the WHOLE order from the document as it stands now, and
+ * the document has not been written yet, so the second list would still
+ * contain the first id and the last patch to land would put it back. The
+ * order is filtered once, against the whole doomed set.
+ */
+export function removeObjects(doc: ReadonlyMapDoc, ids: readonly string[]): Patch[] {
+  const doomed = new Set(ids.filter((id) => doc.objects[id]))
+  if (doomed.size === 0) return []
+  return [
+    ...[...doomed].map((id): Patch => ({ t: 'object', id, value: undefined })),
+    { t: 'objectOrder', value: doc.objectOrder.filter((id) => !doomed.has(id)) },
+  ]
+}
+
 export function updateObject(doc: ReadonlyMapDoc, id: string, changes: Partial<MapObject>): Patch[] {
   const existing = doc.objects[id]
   if (!existing) return []

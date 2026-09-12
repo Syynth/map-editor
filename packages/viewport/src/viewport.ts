@@ -24,7 +24,7 @@ import {
   cornerHeights,
   groundHeight,
   inBounds,
-  type EditorStore,
+  type DocumentReader,
   type ReadonlyMapDoc,
   type SurfaceAddress,
 } from '@map-editor/document'
@@ -85,16 +85,63 @@ export interface PointerModifiers {
   shift: boolean
   alt: boolean
   ctrl: boolean
+}
+
+/**
+ * Which gesture a press turned out to be — the arbitration actor's answer,
+ * not a flag this class keeps (#11). The `dragging` union that used to live
+ * here SPLIT: deciding which gesture a press is, and replaying an alt press
+ * that never travelled as a click, went to `editor-host`'s gesture actor;
+ * the per-frame yaw, pitch and pan deltas stayed, because sixty round trips
+ * a second through an actor is not what an actor is for.
+ */
+export type Gesture = 'none' | 'pending' | 'stroke' | 'orbit' | 'pan'
+
+export interface PointerPress {
+  x: number
+  y: number
+  /** DOM button: 0 left, 1 middle, 2 right. */
   button: number
+  modifiers: PointerModifiers
+  /**
+   * What is under a left press, picked HERE and picked ONCE. The old code
+   * kept the press event and re-picked it at release to replay an alt click,
+   * against a scene the drag may have moved; carrying the pick with the press
+   * is what makes the replay land on the cell that was actually pressed.
+   */
+  pick: PickResult | null
+}
+
+export interface PointerMotion {
+  x: number
+  y: number
+  modifiers: PointerModifiers
 }
 
 export interface ViewportHandlers {
-  onStrokeStart(pick: PickResult, modifiers: PointerModifiers): void
+  /** A press on the canvas. What gesture it became is not answered here: a press moves nothing, and the next move asks. */
+  onPointerDown(press: PointerPress): void
+  /** Motion anywhere; the answer is the gesture now in progress, which is what the deltas below are applied against. */
+  onPointerMove(motion: PointerMotion): Gesture
+  onPointerUp(release: { x: number; y: number }): void
+  /** One tick of an open stroke: only sent while `onPointerMove` answers `'stroke'`. */
   onStrokeMove(pick: PickResult, modifiers: PointerModifiers): void
-  onStrokeEnd(): void
+  /**
+   * Keys held right now, lower-cased. Read every frame for WASD; the set
+   * itself lives in the gesture actor and is fed by the app's one keydown
+   * dispatcher (#14). This class installed its own `keydown`/`keyup` pair
+   * until #66 step 6 — two independent listeners on `window` was the thing
+   * that ticket exists to remove.
+   */
+  heldKeys(): ReadonlySet<string>
   onHover(pick: PickResult): void
   onCameraChange(state: { yaw: number; pitch: number; distance: number; inBounds: boolean }): void
   onStats(stats: { fps: number; triangles: number; meshMs: number }): void
+}
+
+/** Where a play session puts the character down, in world units. The host's play actor computes it. */
+export interface PlaySession {
+  readonly start: readonly [number, number, number]
 }
 
 export interface ViewportOptions {
@@ -103,22 +150,25 @@ export interface ViewportOptions {
   showGrid: boolean
   /** Clamp the editor camera to what the game rig allows. */
   gameCamera: boolean
-  playing: boolean
+  /**
+   * The play session, or `null` while editing (#11). Not a boolean: the
+   * session is an ACTOR in the host, spawned by `mode.play` and stopped by
+   * `mode.edit`, and where the hero starts is the one thing it reads off the
+   * document when it starts. Taking the start from the session rather than
+   * recomputing it here is what makes the session's lifetime and the
+   * character's the same lifetime.
+   */
+  play: PlaySession | null
   /** Hovered surface, highlighted. */
   hover: SurfaceAddress | null
   selectedObjectId: string | null
 }
 
-/** How far an alt+left press must travel before it counts as an orbit drag
- *  rather than an eyedropper click. Small enough that a deliberate drag is
- *  never swallowed, large enough to absorb trackpad jitter during a tap. */
-const ORBIT_DRAG_THRESHOLD = 4
-
 const DEFAULT_OPTIONS: ViewportOptions = {
   brushPreview: [],
   showGrid: true,
   gameCamera: false,
-  playing: false,
+  play: null,
   hover: null,
   selectedObjectId: null,
 }
@@ -159,7 +209,7 @@ export class Viewport {
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera
   private scene: RuntimeScene
   private picker = new Picker()
-  private store: EditorStore
+  private reader: DocumentReader
 
   private orbit = { yaw: 45, pitch: 35, distance: 26, target: new THREE.Vector3() }
   private options: ViewportOptions = { ...DEFAULT_OPTIONS }
@@ -172,12 +222,7 @@ export class Viewport {
   private selectionBox: THREE.Box3Helper
 
   private character: Character | null = null
-  private keys = new Set<string>()
 
-  private dragging: 'none' | 'stroke' | 'orbit' | 'pan' | 'pending' = 'none'
-  /** An alt+left press that has not yet moved far enough to count as an orbit.
-   *  Held here so a click can still reach the eyedropper on release. */
-  private pending: { x: number; y: number; event: PointerEvent } | null = null
   private lastPointer = { x: 0, y: 0 }
   private frameHandle = 0
   private lastTime = performance.now()
@@ -185,16 +230,23 @@ export class Viewport {
   private fpsFrames = 0
   private sweep: { active: boolean; t: number; yaws: number[] } = { active: false, t: 0, yaws: [] }
   private disposed = false
+  /**
+   * The `reader.generation` this viewport last drew. `syncDirty` compares it
+   * every frame, so a `document.load` or `document.new` from ANY dispatcher
+   * re-points the scene; nothing has to remember to call `reset()` beside the
+   * dispatch.
+   */
+  private drawnGeneration = 0
 
   constructor(
     private canvas: HTMLCanvasElement,
-    store: EditorStore,
+    reader: DocumentReader,
     // The art comes in from the composition root, never from here (#47): the
     // viewport is a GL shell around the runtime and draws nothing itself.
     assets: SceneAssets,
     handlers: ViewportHandlers,
   ) {
-    this.store = store
+    this.reader = reader
     this.handlers = handlers
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
@@ -204,16 +256,17 @@ export class Viewport {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.0
 
-    this.scene = new RuntimeScene(store.reader.doc, assets)
+    this.scene = new RuntimeScene(reader.doc, assets)
     this.scene.rebuildChunks()
+    this.drawnGeneration = reader.generation
 
     const centre = this.scene.mapCentre()
     this.orbit.target.copy(centre)
-    this.orbit.yaw = store.reader.doc.camera.yaw
-    this.orbit.pitch = store.reader.doc.camera.pitch
-    this.orbit.distance = store.reader.doc.camera.distance
+    this.orbit.yaw = reader.doc.camera.yaw
+    this.orbit.pitch = reader.doc.camera.pitch
+    this.orbit.distance = reader.doc.camera.distance
 
-    this.camera = createCamera(store.reader.doc.camera, canvas.clientWidth / Math.max(1, canvas.clientHeight))
+    this.camera = createCamera(reader.doc.camera, canvas.clientWidth / Math.max(1, canvas.clientHeight))
     applyRig(this.camera, this.orbit)
 
     this.composer = new EffectComposer(this.renderer)
@@ -276,25 +329,50 @@ export class Viewport {
   // --- public API -------------------------------------------------------------
 
   setOptions(options: Partial<ViewportOptions>): void {
-    const wasPlaying = this.options.playing
+    const wasPlaying = this.playing
     this.options = { ...this.options, ...options }
-    if (this.options.playing !== wasPlaying) this.togglePlay(this.options.playing)
+    if (this.playing !== wasPlaying) this.togglePlay(this.options.play)
   }
 
-  /** Called when the store's document changed identity (load, new map). */
+  /** A session is running. The flag this replaced was a second copy of the same fact. */
+  private get playing(): boolean {
+    return this.options.play !== null
+  }
+
+  /**
+   * Called when the document changed identity (load, new map) — the one
+   * change no patch and no dirty chunk describes.
+   *
+   * `syncDirty` drives this off `reader.generation`, so it is not something a
+   * dispatch site has to remember; it stays public only because a script may
+   * want to force a full rebuild.
+   */
   reset(): void {
-    this.scene.setDocument(this.store.reader.doc)
+    this.scene.setDocument(this.reader.doc)
     this.scene.applyAtmosphere()
     this.scene.rebuildChunks()
     this.rebuildGrid()
-    const centre = this.scene.mapCentre()
-    this.orbit.target.copy(centre)
+    // Framing, not re-pointing: the previous map's orbit target can sit
+    // outside a smaller new map entirely, and the new map carries its own rig.
+    this.frameMap()
   }
 
-  /** Rebuild only what the store says moved. */
+  /**
+   * Rebuild only what the reader says moved — or everything, when what moved
+   * is the document itself.
+   */
   syncDirty(): void {
-    if (!this.store.hasDirtyChunks()) return
-    this.scene.rebuildChunks(this.store.takeDirtyChunks())
+    // Identity first. `replace` marks every chunk dirty as well, so draining
+    // the queue against the OLD document is exactly what this branch exists
+    // to prevent: the keys are sized for the new map, the arrays are not.
+    if (this.reader.generation !== this.drawnGeneration) {
+      this.drawnGeneration = this.reader.generation
+      this.reader.takeDirtyChunks()
+      this.reset()
+      return
+    }
+    if (!this.reader.hasDirtyChunks()) return
+    this.scene.rebuildChunks(this.reader.takeDirtyChunks())
     // The grid follows the terrain, so sculpting invalidates it too. Rebuilt
     // wholesale rather than per chunk: it is one cheap line buffer, and only
     // the editor pays for it.
@@ -314,7 +392,7 @@ export class Viewport {
   }
 
   startSweep(): void {
-    this.sweep = { active: true, t: 0, yaws: sampleYawEnvelope(this.store.reader.doc.camera, 64) }
+    this.sweep = { active: true, t: 0, yaws: sampleYawEnvelope(this.reader.doc.camera, 64) }
   }
 
   cameraState(): { yaw: number; pitch: number; distance: number } {
@@ -339,7 +417,7 @@ export class Viewport {
 
   /** Look at a particular cell, so a script can click something specific. */
   focusCellForProbe(x: number, y: number, distance?: number): void {
-    this.orbit.target.set(x + 0.5, groundHeight(this.store.reader.doc, x + 0.5, y + 0.5), y + 0.5)
+    this.orbit.target.set(x + 0.5, groundHeight(this.reader.doc, x + 0.5, y + 0.5), y + 0.5)
     if (distance !== undefined) this.orbit.distance = distance
   }
 
@@ -361,7 +439,7 @@ export class Viewport {
 
   /** Adopt the document's rig as the current view, for the "preview" button. */
   applyRigDefaults(): void {
-    const rig = this.store.reader.doc.camera
+    const rig = this.reader.doc.camera
     this.orbit.yaw = rig.yaw
     this.orbit.pitch = rig.pitch
     this.orbit.distance = rig.distance
@@ -377,8 +455,8 @@ export class Viewport {
    * thing to open on. Zooming out from there is one scroll away.
    */
   frameMap(): void {
-    const { width, height } = this.store.reader.doc.size
-    const rig = this.store.reader.doc.camera
+    const { width, height } = this.reader.doc.size
+    const rig = this.reader.doc.camera
     this.orbit.target.set(width / 2, 1, height / 2)
     this.orbit.distance = Math.min(rig.bounds.distMax, Math.max(rig.bounds.distMin, rig.distance))
   }
@@ -402,7 +480,7 @@ export class Viewport {
     }
     // The grid hugs the terrain rather than lying on the ground plane, where
     // any raised cell would bury it.
-    const doc = this.store.reader.doc
+    const doc = this.reader.doc
     const { width, height } = doc.size
     const points: number[] = []
     const lift = 0.025
@@ -437,18 +515,18 @@ export class Viewport {
   }
 
   private updateBrushPreview(): void {
-    const doc = this.store.reader.doc
+    const doc = this.reader.doc
     const points: number[] = []
     for (const [x, y] of this.options.brushPreview) this.cellQuad(doc, x, y, points)
     const geometry = this.brushMesh.geometry
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
     geometry.computeBoundingSphere()
-    this.brushMesh.visible = points.length > 0 && !this.options.playing
+    this.brushMesh.visible = points.length > 0 && !this.playing
   }
 
   private updateHover(): void {
     const address = this.options.hover
-    const doc = this.store.reader.doc
+    const doc = this.reader.doc
     const points: number[] = []
 
     if (address && address.kind === SURFACE_TOP) {
@@ -480,12 +558,12 @@ export class Viewport {
     const geometry = this.hoverMesh.geometry
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
     geometry.computeBoundingSphere()
-    this.hoverMesh.visible = points.length > 0 && !this.options.playing
+    this.hoverMesh.visible = points.length > 0 && !this.playing
   }
 
   private updateSelection(): void {
     const id = this.options.selectedObjectId
-    if (!id || this.options.playing) {
+    if (!id || this.playing) {
       this.selectionBox.visible = false
       return
     }
@@ -506,30 +584,24 @@ export class Viewport {
 
   private viewContext(): ObjectViewContext {
     return {
-      rig: this.store.reader.doc.camera,
-      nearest: this.store.reader.doc.filtering === 'nearest',
+      rig: this.reader.doc.camera,
+      nearest: this.reader.doc.filtering === 'nearest',
       facingOverride: null,
     }
   }
 
-  private togglePlay(playing: boolean): void {
-    if (playing && !this.character) {
-      const doc = this.store.reader.doc
-      const start = new THREE.Vector3(
-        doc.size.width / 2,
-        0,
-        doc.size.height / 2,
-      )
-      start.y = groundHeight(doc, start.x, start.z)
+  private togglePlay(session: PlaySession | null): void {
+    if (session && !this.character) {
+      const start = new THREE.Vector3(session.start[0], session.start[1], session.start[2])
       this.character = new Character(this.scene.sprites.hero, this.viewContext(), start)
       this.scene.scene.add(this.character.view.group)
       this.orbit.distance = Math.min(this.orbit.distance, 14)
-    } else if (!playing && this.character) {
+    } else if (!session && this.character) {
       this.scene.scene.remove(this.character.view.group)
       this.character.dispose()
       this.character = null
     }
-    this.overlay.visible = !playing
+    this.overlay.visible = session === null
   }
 
   private ndc(event: PointerEvent): [number, number] {
@@ -545,7 +617,6 @@ export class Viewport {
       shift: event.shiftKey,
       alt: event.altKey,
       ctrl: event.ctrlKey || event.metaKey,
-      button: (event as PointerEvent).button ?? 0,
     }
   }
 
@@ -558,27 +629,18 @@ export class Viewport {
     this.canvas.setPointerCapture(event.pointerId)
     this.lastPointer = { x: event.clientX, y: event.clientY }
 
-    // Middle drags orbit and right drags pan, but a MacBook trackpad has no
-    // middle button, so alt+drag orbits as well — the Maya/Unity gesture. Alt
-    // is also the eyedropper, so the press is held as 'pending' until it moves
-    // far enough to be a drag; a release before that is treated as the click.
-    if (event.button === 1) {
-      this.dragging = 'orbit'
-      return
-    }
-    if (event.button === 2) {
-      this.dragging = 'pan'
-      return
-    }
-    if (event.button === 0 && event.altKey) {
-      this.dragging = 'pending'
-      this.pending = { x: event.clientX, y: event.clientY, event }
-      return
-    }
-    if (event.button !== 0 || this.options.playing) return
-
-    this.dragging = 'stroke'
-    this.handlers.onStrokeStart(this.pickAt(event), this.modifiers(event))
+    // Which gesture this is, is not decided here any more. A left press is
+    // picked unconditionally — including an alt press, which may yet turn out
+    // to be an eyedropper click rather than an orbit — because the pick has to
+    // be taken at the press to be the press's, and one raycast per click is
+    // not worth arbitrating over.
+    this.handlers.onPointerDown({
+      x: event.clientX,
+      y: event.clientY,
+      button: event.button,
+      modifiers: this.modifiers(event),
+      pick: event.button === 0 ? this.pickAt(event) : null,
+    })
   }
 
   private onPointerMove = (event: PointerEvent): void => {
@@ -586,46 +648,36 @@ export class Viewport {
     const dy = event.clientY - this.lastPointer.y
     this.lastPointer = { x: event.clientX, y: event.clientY }
 
-    if (this.dragging === 'pending' && this.pending) {
-      const moved = Math.hypot(event.clientX - this.pending.x, event.clientY - this.pending.y)
-      if (moved < ORBIT_DRAG_THRESHOLD) return
-      this.dragging = 'orbit'
-      this.pending = null
-    }
-    if (this.dragging === 'orbit') {
+    const gesture = this.handlers.onPointerMove({ x: event.clientX, y: event.clientY, modifiers: this.modifiers(event) })
+    // An alt press that crossed the threshold on THIS event answers 'orbit',
+    // so its first frame of travel turns the camera rather than being eaten.
+    if (gesture === 'orbit') {
       this.orbit.yaw = wrapDegrees(this.orbit.yaw - dx * 0.4)
       this.orbit.pitch = Math.min(89, Math.max(-5, this.orbit.pitch + dy * 0.3))
       return
     }
-    if (this.dragging === 'pan') {
+    if (gesture === 'pan') {
       const yaw = this.orbit.yaw * (Math.PI / 180)
       const scale = this.orbit.distance * 0.0016
       this.orbit.target.x -= (Math.cos(yaw) * dx - Math.sin(yaw) * dy) * scale
       this.orbit.target.z += (Math.sin(yaw) * dx + Math.cos(yaw) * dy) * scale
       return
     }
-    if (this.options.playing) return
+    // Still undeclared: no hover either, exactly as before — an alt press
+    // jittering under the threshold must not repaint the highlight.
+    if (gesture === 'pending') return
+    if (this.playing) return
 
     const pick = this.pickAt(event)
     this.handlers.onHover(pick)
-    if (this.dragging === 'stroke') this.handlers.onStrokeMove(pick, this.modifiers(event))
+    if (gesture === 'stroke') this.handlers.onStrokeMove(pick, this.modifiers(event))
   }
 
   private onPointerUp = (event: PointerEvent): void => {
     if (this.canvas.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId)
     }
-    if (this.dragging === 'stroke') this.handlers.onStrokeEnd()
-    if (this.dragging === 'pending' && this.pending && !this.options.playing) {
-      // Never moved: replay it as the click it turned out to be. Picking uses
-      // the press position, not the release position, so a stray pixel of
-      // travel cannot land the eyedropper on a different cell.
-      const press = this.pending.event
-      this.handlers.onStrokeStart(this.pickAt(press), this.modifiers(press))
-      this.handlers.onStrokeEnd()
-    }
-    this.pending = null
-    this.dragging = 'none'
+    this.handlers.onPointerUp({ x: event.clientX, y: event.clientY })
   }
 
   private onWheel = (event: WheelEvent): void => {
@@ -636,22 +688,12 @@ export class Viewport {
 
   private onContextMenu = (event: Event): void => event.preventDefault()
 
-  private onKeyDown = (event: KeyboardEvent): void => {
-    this.keys.add(event.key.toLowerCase())
-  }
-
-  private onKeyUp = (event: KeyboardEvent): void => {
-    this.keys.delete(event.key.toLowerCase())
-  }
-
   private attachEvents(): void {
     this.canvas.addEventListener('pointerdown', this.onPointerDown)
     this.canvas.addEventListener('pointermove', this.onPointerMove)
     window.addEventListener('pointerup', this.onPointerUp)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('contextmenu', this.onContextMenu)
-    window.addEventListener('keydown', this.onKeyDown)
-    window.addEventListener('keyup', this.onKeyUp)
     window.addEventListener('resize', this.resize)
   }
 
@@ -661,8 +703,6 @@ export class Viewport {
     window.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onContextMenu)
-    window.removeEventListener('keydown', this.onKeyDown)
-    window.removeEventListener('keyup', this.onKeyUp)
     window.removeEventListener('resize', this.resize)
   }
 
@@ -672,7 +712,7 @@ export class Viewport {
     this.renderer.setSize(width, height, false)
     this.composer.setSize(width, height)
     this.bloom.setSize(width, height)
-    updateCameraProjection(this.camera, this.store.reader.doc.camera, width / height, this.orbit.distance)
+    updateCameraProjection(this.camera, this.reader.doc.camera, width / height, this.orbit.distance)
   }
 
   private loop = (): void => {
@@ -687,7 +727,7 @@ export class Viewport {
     const dt = Math.min(0.05, realDt)
     this.lastTime = now
 
-    const doc = this.store.reader.doc
+    const doc = this.reader.doc
     const rig = doc.camera
 
     // --- camera ------------------------------------------------------------
@@ -701,7 +741,7 @@ export class Viewport {
       this.orbit.yaw = this.sweep.yaws[index] ?? this.orbit.yaw
     }
 
-    if (this.options.gameCamera || this.options.playing) {
+    if (this.options.gameCamera || this.playing) {
       const clamped = clampToBounds(rig, this.orbit)
       this.orbit.yaw = clamped.yaw
       this.orbit.pitch = clamped.pitch
@@ -711,10 +751,11 @@ export class Viewport {
     const insideEnvelope = withinBounds(rig, this.orbit)
 
     // --- play mode ---------------------------------------------------------
-    if (this.options.playing && this.character) {
+    if (this.playing && this.character) {
+      const keys = this.handlers.heldKeys()
       const input = {
-        forward: (this.keys.has('w') ? 1 : 0) - (this.keys.has('s') ? 1 : 0),
-        strafe: (this.keys.has('d') ? 1 : 0) - (this.keys.has('a') ? 1 : 0),
+        forward: (keys.has('w') ? 1 : 0) - (keys.has('s') ? 1 : 0),
+        strafe: (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0),
       }
       this.character.update(doc, input, this.orbit.yaw, dt, this.viewContext())
       // The camera trails the character rather than the map centre.
@@ -738,7 +779,7 @@ export class Viewport {
     this.scene.updateObjects(this.orbit.yaw, dt, this.viewContext())
     this.scene.sky.update(this.camera.position, this.scene.mapCentre())
 
-    if (this.gridLines) this.gridLines.visible = this.options.showGrid && !this.options.playing
+    if (this.gridLines) this.gridLines.visible = this.options.showGrid && !this.playing
     this.updateBrushPreview()
     this.updateHover()
     this.updateSelection()
@@ -783,7 +824,7 @@ export class Viewport {
 
   cellUnder(address: SurfaceAddress | null): number | null {
     if (!address) return null
-    const doc = this.store.reader.doc
+    const doc = this.reader.doc
     if (!inBounds(doc.size, address.x, address.y)) return null
     return doc.terrain.height[cellIndex(doc.size, address.x, address.y)]
   }

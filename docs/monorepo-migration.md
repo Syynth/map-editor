@@ -132,11 +132,17 @@ move rather than to the whole restructure. Order follows the dependency directio
 ## Phase 3 — Development practices
 
 - [x] ~~ESLint~~ — moved to Phase 1 by [#20](https://github.com/Syynth/map-editor/issues/20). Prettier still to decide.
-- [ ] A rule for the stale-memo trap: the store mutates the document in place
+- [x] ~~A rule for the stale-memo trap: the store mutates the document in place
       behind a revision counter, so any `useMemo`/`useEffect` keyed on `doc`
       never recomputes. This already shipped one bug (the frozen coverage
-      readout). Prefer a `useRevision()` hook that makes the correct thing the
-      easy thing, with a lint rule as backstop.
+      readout).~~ — the hook came first and the lint rule turned out to be the
+      stock one. `useDocument(selector)` in `editor-host` subscribes to the
+      revision and re-selects on it, which is the "make the correct thing the
+      easy thing" half; #66 step 7 moved every React read in the app onto it
+      and turned `react-hooks/exhaustive-deps` on repo-wide, with no
+      suppressions available (`noInlineConfig`), which is the backstop. The
+      coverage readout is a `useDocument` selector now rather than a `useMemo`
+      keyed on a counter.
 - [x] ~~GitHub Actions: typecheck, lint, test, build on every PR.~~ —
       [#25](https://github.com/Syynth/map-editor/issues/25): `.github/workflows/gate.yml`,
       build ordered before lint so a fresh runner exercises the case that would actually
@@ -150,8 +156,14 @@ move rather than to the whole restructure. Order follows the dependency directio
 
 The largest gap, and not where it looks.
 
-- [ ] **`src/editor` is the biggest layer (~2,640 lines) and has zero tests.**
-      All 53 tests live in core and runtime.
+- [x] ~~**`src/editor` is the biggest layer (~2,640 lines) and has zero tests.**
+      All 53 tests live in core and runtime.~~ — `apps/editor` carries three
+      test files now: the keyboard dispatcher (`keys.test.ts`), the app's
+      composition of host and feature (`features/features.test.ts` — the only
+      place both halves are visible, #35), and the React glue under jsdom
+      (`react-glue.test.tsx`). The panels and `App` themselves are still
+      untested as components; what they now hold is wiring, since every control
+      dispatches a declared command that is tested where it is handled.
 - [x] ~~Put `scripts/tour.mjs` in CI as a smoke test.~~ — [#56](https://github.com/Syynth/map-editor/issues/56):
       a separate `visual` job in `.github/workflows/gate.yml` installs Chromium and runs
       `pnpm tour`, which now fails CI on a console error, a below-floor luminance reading
@@ -168,8 +180,11 @@ The largest gap, and not where it looks.
       (SwiftShader-vs-Metal and run-to-run GL noise would make tolerance tuning a
       treadmill without a stable GPU runner); CI asserts structural signals instead and
       keeps `shots/` gitignored, uploading it as a workflow artifact per run.
-- [ ] Break up `viewport.ts` (770), `panels.tsx` (749) and `App.tsx` (533) as
-      tests arrive.
+- [ ] Break up `viewport.ts` (831), `panels.tsx` (714) and `App.tsx` (565) as
+      tests arrive. None of the three shrank much through the actor migration
+      and that is expected: what left them was ownership, not lines — the
+      state, the arbitration and the write path moved to actors, and the files
+      kept the rendering, the GL and the wiring.
 
 ## Phase 5 — Debt carried from the prototype
 

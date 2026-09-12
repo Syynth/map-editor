@@ -96,7 +96,7 @@ const PLACEMENT: Record<string, Placement> = {
   // Sits beside editor-host, not under it: see the comment above PLACEMENT
   // for the two mechanisms (an allow-list one way, a kind-guard the other)
   // that keep the two from ever importing each other.
-  '@map-editor/feature-terrain': { kind: 'feature', planned: true },
+  '@map-editor/feature-terrain': { kind: 'feature' },
 
   // Tooling describes the system from outside it, so it sits off the ladder
   // entirely rather than at the bottom of it: a rung of 0 would let any layer

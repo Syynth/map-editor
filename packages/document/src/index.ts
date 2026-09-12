@@ -5,15 +5,20 @@
  * verbs (#3) — an op like `raise` returns patches this package applies — but
  * the applying is now the actor's job, so the machinery it hides has left the
  * barrel: `History`, `applyPatches`, `pruneNoops`, `Edit` and the `Patch`
- * family (`Patch`, `DocField`, `TerrainField`, `PaintLayer`) are internal. A
- * consumer never imports `Patch`; it sends the actor whatever an op returned.
+ * family's members (`DocField`, `TerrainField`, `PaintLayer`) are internal.
+ * `Patch` itself is exported as a type, with `patchAddress` and
+ * `inversePatch`, because it now has an outside consumer (#34): the stroke
+ * actor in `editor-host` compacts a stroke per address and needs to key a
+ * patch and read its before-value without ever seeing a writer (#11). A
+ * consumer still never constructs one; it sends the actor what an op returned.
  *
- * `createDocumentStore` and `DocumentWriter` are not here either, and that is
- * the whole point: the write handle's only consumer is `actor.ts`, so the
- * package exposes a pre-wired `createDocumentActorLogic` and never a writer.
- * `EditorStore` stays exported for one reason — `App.tsx` constructs it and
- * writes through it directly until #66 step 7 rewires the app onto the host.
- * That is a documented, temporary second write path; the class leaves with it.
+ * `createDocumentStore`, `DocumentWriter` and `EditorStore` are not here
+ * either, and that is the whole point: the write handle's only consumer is
+ * `actor.ts`, so the package exposes `createDocument` — a reader and the
+ * actor's logic — and never a writer or the store behind it. The class was
+ * exported until #66 step 7 because `main.tsx` constructed it and `App.tsx`
+ * wrote through it; both go through the host now, so the second write path
+ * closed and the class left with it.
  *
  * The list is written out rather than `export *` (#34) so that a narrowing
  * is a visible edit in one file rather than implied by a wildcard.
@@ -98,11 +103,13 @@ export {
   topPaint,
 } from './paint'
 
-export { EditorStore } from './store'
 export type { DocumentReader } from './store'
 
-export { createDocumentActorLogic } from './actor'
-export type { DocumentActorLogic, DocumentEvent } from './actor'
+export { inversePatch, patchAddress } from './edits'
+export type { Patch, StrokeRecord } from './edits'
+
+export { createDocument } from './actor'
+export type { DocumentActorLogic, DocumentEvent, DocumentSource } from './actor'
 
 export { DOCUMENT_OWNER, documentKeys } from './commands'
 

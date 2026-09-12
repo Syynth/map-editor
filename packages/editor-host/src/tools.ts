@@ -4,9 +4,11 @@
  * These are properties of the person editing, not of the map — which tool is
  * active, how big the brush is, which tile the paint brush lays down — so
  * none of it is serialised and none of it touches the document. They came
- * out of the 18-field `EditorState` that `App.tsx` still holds in one
- * `useState` (#66 step 7 rewires it onto this actor); the split is by owner
- * and lifetime, not for re-renders, which `useSelector` fixes on its own.
+ * out of the 18-field `EditorState` that `App.tsx` held in one `useState`;
+ * since #66 step 4 this actor IS that state, and the app assembles the panels'
+ * object from this snapshot and the view actor's. The split is by owner and
+ * lifetime, not for re-renders, which `useSelector` fixes on its own — and the
+ * app has yet to take that half, since it still selects whole snapshots.
  *
  * `terrainMode` is a STATE and the rest is CONTEXT, deliberately (#11): the
  * mode changes what a pointer-drag means, so it is the one parameter whose
@@ -15,12 +17,26 @@
  * from machine shape, so a hierarchy would buy illegal-state-unrepresentable
  * at the cost of a transition per `brush.size` change.
  *
- * One command, `tools.set`, with a partial object of typed arguments (#8:
+ * Two commands: `tools.set`, with a partial object of typed arguments (#8:
  * `(id, args)`, not one command per parameter). The schema is where the
  * argument discipline is enforced (#23): a stray key or an out-of-range size
  * is an `invalid-args` result before anything is sent, and the handler may
  * trust what arrives. Nothing here calls `enq` — the transition is pure
- * context — so v6 runs the body once (#2's `enq` constraint).
+ * context — so v6 runs the body once (#2's `enq` constraint). `brush.resize`
+ * is the second, and it is relative rather than absolute for the reason
+ * spelled out beside its schema.
+ *
+ * `settings` is the same patch arriving by the HOST-INTERNAL door. The
+ * eyedropper writes a tool parameter from inside a stroke effect, and
+ * re-entering `dispatch` from there would run the registry's resolution
+ * inside an enqueued effect; sending the sibling ref a hand-rolled
+ * `{ type: 'command', id: 'tools.set', args }` instead was worse, because
+ * `args: unknown` meant the cast, not the schema, decided what was legal and
+ * a change to `toolSettings` would not have reached the call site. This event
+ * carries `ToolSettings` as a TYPE, so it does. It is not a second command
+ * path: it has no id, the registry never sees it, and nothing outside this
+ * package holds a ref to send it — `dispatch` remains the only entry point
+ * for anything a command is (#8).
  */
 
 import { NO_RAMP } from '@map-editor/document'
@@ -39,8 +55,8 @@ export type TerrainMode = 'sculpt' | 'paint'
  * numeric parameters are not, since no command is gated on a brush size.
  */
 export const toolKeys = {
-  tool: defineContextKey<ToolId>('tools.tool', 'terrain'),
-  terrainMode: defineContextKey<TerrainMode>('tools.terrainMode', 'sculpt'),
+  tool: defineContextKey<ToolId>(TOOLS_OWNER, 'tools.tool', 'terrain'),
+  terrainMode: defineContextKey<TerrainMode>(TOOLS_OWNER, 'tools.terrainMode', 'sculpt'),
 }
 
 /**
@@ -79,7 +95,18 @@ export type ToolSettings = z.infer<typeof toolSettings>
 /** The ten parameters held as context; `terrainMode` is the state. */
 export type ToolsContext = Required<Omit<ToolSettings, 'terrainMode'>>
 
+/**
+ * The brush size RELATIVELY (#8: one `camera.orbit` with `{axis, dir}` rather
+ * than four commands). `tools.set` cannot express `[` and `]`: a binding's
+ * arguments are static data authored before the editor runs, and `brush` is
+ * set whole, so an absolute command would need one binding per size and would
+ * still have to know the shape. The delta is plain serialisable data, so a
+ * macro and a preferences file hold it as happily as a keybinding does.
+ */
+const brushResize = z.object({ by: z.int().min(-12).max(12) }).strict()
+
 commands.declare(TOOLS_OWNER, { id: 'tools.set', title: 'Set Tool Parameters', category: 'Tools', args: toolSettings })
+commands.declare(TOOLS_OWNER, { id: 'brush.resize', title: 'Resize Brush', category: 'Tools', args: brushResize })
 
 const initialTools: ToolsContext = {
   tool: 'terrain',
@@ -105,10 +132,25 @@ function applySettings(settings: ToolSettings, current: TerrainMode): { target?:
   return terrainMode !== undefined && terrainMode !== current ? { target: terrainMode, context } : { context }
 }
 
+/** The clamp the old `[`/`]` keydown handler carried, moved to the one place that owns the parameter. */
+function resizeBrush(brush: ToolsContext['brush'], by: number): { context: Partial<ToolsContext> } {
+  return { context: { brush: { ...brush, size: Math.min(12, Math.max(1, brush.size + by)) } } }
+}
+
+/** Both states route a command the same way; only the mode they resolve `terrainMode` against differs. */
+function runCommand(context: ToolsContext, event: { id: string; args: unknown }, mode: TerrainMode) {
+  if (event.id === 'tools.set') return applySettings(event.args as ToolSettings, mode)
+  if (event.id === 'brush.resize') return resizeBrush(context.brush, (event.args as { by: number }).by)
+  return undefined
+}
+
 export const toolsLogic = setup({
   schemas: {
     context: types<ToolsContext>(),
-    events: { command: types<{ id: string; args: unknown }>() },
+    events: {
+      command: types<{ id: string; args: unknown }>(),
+      settings: types<{ settings: ToolSettings }>(),
+    },
   },
 }).createMachine({
   id: 'tools',
@@ -117,12 +159,14 @@ export const toolsLogic = setup({
   states: {
     sculpt: {
       on: {
-        command: ({ event }) => (event.id === 'tools.set' ? applySettings(event.args as ToolSettings, 'sculpt') : undefined),
+        command: ({ context, event }) => runCommand(context, event, 'sculpt'),
+        settings: ({ event }) => applySettings(event.settings, 'sculpt'),
       },
     },
     paint: {
       on: {
-        command: ({ event }) => (event.id === 'tools.set' ? applySettings(event.args as ToolSettings, 'paint') : undefined),
+        command: ({ context, event }) => runCommand(context, event, 'paint'),
+        settings: ({ event }) => applySettings(event.settings, 'paint'),
       },
     },
   },

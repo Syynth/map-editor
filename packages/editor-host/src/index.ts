@@ -4,18 +4,45 @@
  *
  * An app builds a host with `createHost` and dispatches through it; the
  * React glue reads actors through selectors and the document through
- * `useDocument`. The child logics are not exported: the host spawns them,
- * and a consumer reaches their state through `Host.children` and the typed
- * selector hooks. Features never import this package (#35) — the contract
- * they implement lives in `registry`, and an app hands them in as `Feature`.
+ * `useDocument`; the viewport's pointer handlers are `Host.input` (#11). The
+ * child logics are not exported: the host spawns them, and a consumer reaches
+ * their state through `Host.children` and the typed selector hooks. Features
+ * never import this package (#35) — the contract they implement lives in
+ * `registry`, and an app hands them in as `Feature`. The stroke actor runs a
+ * feature's handler through that contract, so nothing terrain-shaped is
+ * exported here any more: the brush preview's `strokeCells` is the terrain
+ * feature's, and the app imports it from there.
  *
  * Written out longhand rather than `export *` (#34): a barrel exports what
  * has an outside consumer plus the types to name what those consumers
  * receive, so narrowing it is a visible edit here.
  */
 
-export { HOST_OWNER, createHost, hostKeys } from './host'
-export type { Clock, DeadLetter, Feature, Host, HostActor, HostChildren, HostOptions, Mode } from './host'
+export { GESTURE_OWNER, HOST_OWNER, createHost, gestureKeys, hostKeys } from './host'
+export type {
+  Clock,
+  DeadLetter,
+  EditorFeatureDeps,
+  EditorFeatureInstance,
+  EditorInput,
+  Feature,
+  Host,
+  HostActor,
+  HostChildren,
+  HostOptions,
+  Mode,
+  PlaySession,
+} from './host'
+
+// Side-effect-bearing: importing it declares the default keymap (#14). The
+// owner id is exported so a test can enumerate what it declared and an app
+// could dispose it to install a keymap of its own.
+export { CORE_KEYMAP_OWNER } from './keys'
+
+export { ORBIT_DRAG_THRESHOLD } from './gesture'
+export type { Gesture, PointerMotion, PointerPress, PointerRelease } from './gesture'
+
+export type { PickSample, PointerModifiers, StrokeSample, ToolsSnapshot } from './strokes'
 
 export { TOOLS_OWNER, toolKeys } from './tools'
 export type { TerrainMode, ToolId, ToolSettings, ToolsContext } from './tools'
