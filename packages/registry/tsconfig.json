@@ -10,7 +10,23 @@
     "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "noEmit": true,
+    // #46, implementing #33's ruling that packages are built as if
+    // publishable. `composite` is what makes `references` legal — a
+    // referenced project must be composite — and it forbids `noEmit`, which
+    // is why that setting is gone. `emitDeclarationOnly` splits the emit:
+    // `tsc` owns `dist/*.d.ts`, `tsup` owns `dist/*.js` (see the root
+    // `tsup.config.ts` for why the JS half needs a bundler at all).
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    // Inside `dist/` so it is covered by `.gitignore`, by `eslint.config.js`'s
+    // `**/dist/**` ignore, and by this package's turbo `outputs` — tsc's
+    // default with `emitDeclarationOnly` puts it beside the config instead,
+    // where it would show up as an untracked file after every build.
+    "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -25,7 +41,11 @@
     "types": []
   },
 
-  // No `references`: the only dependency is `@standard-schema/spec`, which
-  // ships zero bytes of runtime and is imported as types only.
+  // Tests and benches are typechecked by `tsconfig.typecheck.json`, not
+  // built: a test file is not part of the published surface.
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/*.bench.ts"],
+
   "include": ["src"]
+
+  // No `references`: this package declares no workspace dependency.
 }

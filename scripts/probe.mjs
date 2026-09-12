@@ -19,13 +19,25 @@ import { spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { chromiumArgs, wantsGpu } from './chromium-launch.mjs'
+import { buildWorkspacePackages } from './build-workspace.mjs'
 import { meanLuminance } from './luminance.mjs'
 
 // Vite's config, `index.html` and `dist/` all live with the app now, so both
 // spawns below run from there rather than from the repo root.
 const APP = fileURLToPath(new URL('../apps/editor', import.meta.url))
 
-spawnSync('npx', ['vite', 'build'], { cwd: APP, stdio: ['ignore', 'ignore', 'inherit'] })
+// The packages' `dist/` has to exist before the bundle below can be assembled;
+// see scripts/build-workspace.mjs for why, and why it lives there rather than
+// in each of the three scripts that need it.
+buildWorkspacePackages()
+
+// Both statuses are checked: preview serves whatever is in `dist/`, so a build
+// that failed silently would hand the probe an absent or stale bundle and it
+// would go on to report luminance figures for the wrong code — a misleading
+// answer to the exact question this script exists to ask.
+console.log('Building...')
+const build = spawnSync('npx', ['vite', 'build'], { cwd: APP, stdio: ['ignore', 'ignore', 'inherit'] })
+if (build.status !== 0) process.exit(build.status ?? 1)
 
 const PORT = 4700 + Math.floor(Math.random() * 200)
 const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], {

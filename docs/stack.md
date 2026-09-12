@@ -13,7 +13,7 @@ repository structure rather than technology choice.
 
 | Concern | Choice |
 |---|---|
-| Language / build | TypeScript, Vite, pnpm + Turborepo |
+| Language / build | TypeScript, Vite, pnpm + Turborepo; `tsup` for package JS emit, `tsc` for `.d.ts` (#46) |
 | Rendering | three.js, WebGL2 |
 | UI framework | React |
 | Components | Mantine |

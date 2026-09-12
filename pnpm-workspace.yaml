@@ -56,3 +56,16 @@ minimumReleaseAgeExclude:
 # `package.json`'s `devEngines.runtime`, which pnpm 12.3.4 does enforce
 # against the workspace's own manifest.
 engineStrict: true
+# #46: `tsup` brings `esbuild`, whose `postinstall` is a downloader that
+# fetches the platform binary when the matching optional dependency is
+# missing. pnpm installs `@esbuild/darwin-arm64` (and its siblings on other
+# platforms) as a real optional dependency, so the binary is already on disk
+# and the script has nothing to do — verified by running the emitter with the
+# script declined: `node -e "require('esbuild')"` loads and every package
+# builds. Declining it is therefore free, and an install script that reaches
+# the network is exactly the kind of thing this workspace's other
+# supply-chain settings exist to keep out. pnpm 12 hard-fails an install
+# (`ERR_PNPM_IGNORED_BUILDS`) on an UNDECLARED ignored build, so this entry is
+# what keeps `pnpm install` green on a fresh clone rather than a silent skip.
+allowBuilds:
+  esbuild: false

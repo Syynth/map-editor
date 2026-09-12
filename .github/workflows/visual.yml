@@ -41,13 +41,18 @@ jobs:
       - name: Install browsers
         run: pnpm browsers --with-deps
 
-      # No separate "build workspace deps" step: every `packages/*` `exports`
-      # its `./src/index.ts` directly (see e.g. `packages/viewport/package.json`)
-      # rather than a built `dist/`, and none declares a `build` script — verified
-      # by running `turbo run build --filter='@map-editor/editor^...'` here, which
-      # reports 0 tasks. `apps/editor` is the only package with a real build, and
-      # scripts/tour.mjs already runs it (`vite build`, from its own header
-      # comment) against those sources directly before driving the result.
+      # No separate "build workspace deps" step, but no longer because there is
+      # nothing to build: before #46 every `packages/*` `exports`ed its
+      # `./src/index.ts` directly and none declared a `build`, so
+      # `turbo run build --filter='@map-editor/editor^...'` reported 0 tasks;
+      # it now reports 10, and `apps/editor`'s production bundle is assembled
+      # from those packages' `dist/*.js` (the `default` condition), so this job
+      # on a fresh checkout would fail at `vite build` with an unresolved
+      # `@map-editor/geometry`. scripts/tour.mjs runs that same filtered
+      # `turbo run build` itself, immediately before its `vite build`, so
+      # `pnpm tour` stays self-contained here and on a contributor's machine
+      # alike rather than depending on a build step this job would have to
+      # remember to keep.
       # The smoke test #56/#60 asked for: `pnpm tour` already fails on a
       # console error or a scripted step whose own assertion did not hold
       # (see scripts/tour.mjs's `expect()`), and now also on a below-floor
