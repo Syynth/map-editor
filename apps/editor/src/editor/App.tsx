@@ -32,21 +32,32 @@ import { strokeCells } from '@map-editor/feature-terrain'
 // from the package root would force `DOM` into every consumer's tsconfig, including
 // `apps/export-cli`'s, whose whole point is compiling without it.
 import { generateSprites, generateTerrainSheet } from '@map-editor/fixtures/textures'
+import { chordFor } from '@map-editor/registry'
 import { exportGltf } from '@map-editor/runtime/export'
-import { Note } from '@map-editor/ui'
 import {
-  AtmospherePanel,
-  CameraPanel,
-  CoveragePanel,
-  ObjectInspector,
-  Outliner,
-  ToolPanel,
-} from './panels'
-import { saveAutosave } from './autosave'
-import { encodePngWithCanvas } from './rgba'
-import { installKeyDispatcher } from './keys'
-import { loadSheetFromFile } from './sheet'
+  Brand,
+  FileButton,
+  Frame,
+  Hint,
+  Kbd,
+  Overlay,
+  Pill,
+  StatusHints,
+  StatusRight,
+  TopButton,
+  TopGroup,
+  TopGrow,
+  TopSep,
+} from '@map-editor/ui'
 import { Viewport } from '@map-editor/viewport'
+
+import { saveAutosave } from './autosave'
+import { FeaturePanels, ObjectBar, SelectBar } from './bars'
+import { Inspector } from './inspector'
+import { detectPlatform, installKeyDispatcher } from './keys'
+import { Rail } from './rail'
+import { encodePngWithCanvas } from './rgba'
+import { loadSheetFromFile } from './sheet'
 
 /**
  * Selectors, at module scope so they are the same function every render:
@@ -97,12 +108,43 @@ function report(id: string, result: ReturnType<Host['dispatch']>): void {
   if (why !== null) console.warn(`[editor] ${id} refused: ${why}`)
 }
 
+/** The status bar's hints per tool: what the pointer and the modifiers do right now. */
+function hintsFor(params: ToolsSnapshot): ReadonlyArray<{ kbd?: string; text: string }> {
+  switch (params.tool) {
+    case 'select':
+      return [
+        { kbd: 'click', text: 'select an object' },
+        { kbd: 'drag', text: 'move it' },
+        { kbd: '⇧ click', text: 'keep the selection' },
+        { kbd: '⌥ click', text: 'pick up its sprite' },
+      ]
+    case 'object':
+      return [
+        { kbd: 'click', text: `place ${params.spriteName}` },
+        { kbd: 'drag', text: 'move what you placed' },
+        { kbd: '⇧ click', text: 'place nothing' },
+      ]
+    case 'terrain':
+      return params.terrainMode === 'sculpt'
+        ? [
+            { kbd: 'drag', text: params.sculptVerb },
+            { kbd: '⇧', text: params.sculptVerb === 'water' ? 'remove water' : 'lower instead' },
+            { kbd: '⌥ click', text: 'pick up the tile' },
+          ]
+        : [
+            { kbd: 'drag', text: `paint ${params.paintVerb}` },
+            { kbd: '⌥ click', text: 'pick up the tile' },
+          ]
+  }
+}
+
 export default function App() {
   // Built at the composition root (`main.tsx`), never here: the viewport is
   // handed `host.input` before React has rendered anything, and a host built
   // by a hook is rebuilt when React remounts.
   const host = useHost()
   const { reader } = host
+  const platform = useMemo(detectPlatform, [])
 
   // `EditorState`'s eighteen fields are gone (#11, #66 step 7): eleven belong
   // to the host's tools actor, four to its view actor, and `playing` IS the
@@ -135,6 +177,8 @@ export default function App() {
   const [sheet, setSheet] = useState<RgbaImage | null>(null)
   const [sheetWarning, setSheetWarning] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  // The rail's gear: opens the three Level sections of the inspector together.
+  const [levelOpen, setLevelOpen] = useState(false)
 
   /** The one write verb the panels get, routed to the actor that owns the parameters. */
   const setParams = useCallback(
@@ -251,7 +295,7 @@ export default function App() {
   // bound is declared in `editor-host`'s keymap and resolved through the
   // registry (#14). The switch over `event.key` that used to be here, and the
   // viewport's own `Set` of held keys, are both gone into it.
-  useEffect(() => installKeyDispatcher(host), [host])
+  useEffect(() => installKeyDispatcher(host, { platform }), [host, platform])
 
   // --- the play session -----------------------------------------------------
   // The session is an actor the host spawns for the duration of play (#11);
@@ -290,6 +334,13 @@ export default function App() {
     },
     [host, view.selectedObjectId],
   )
+
+  const updateObject = useCallback(
+    (id: string, changes: Partial<MapObject>) => report('objects.update', host.dispatch('objects.update', { id, changes })),
+    [host],
+  )
+
+  const deleteSelection = useCallback(() => report('selection.delete', host.dispatch('selection.delete')), [host])
 
   const setRig = useCallback(
     (changes: Partial<CameraRig>) => report('camera.set', host.dispatch('camera.set', changes)),
@@ -373,193 +424,175 @@ export default function App() {
     [doc],
   )
 
+  /** Select an object from a list, and go to Select so the drag and the keys act on it. */
+  const selectFromList = useCallback(
+    (id: string) => {
+      select(id)
+      setParams({ tool: 'select' })
+    },
+    [select, setParams],
+  )
+
   const selected = view.selectedObjectId ? doc.objects[view.selectedObjectId] ?? null : null
+  const deleteKbd = chordFor('selection.delete', undefined, platform)
+  const hints = hintsFor(params)
 
   return (
-    <div className="app">
-      <header className="toolbar">
-        <strong className="brand">{doc.name}</strong>
-        <span className="toolbar-group">
-          <button type="button" onClick={() => report('undo', host.dispatch('undo'))} disabled={!reader.canUndo()}>
-            Undo
-          </button>
-          <button type="button" onClick={() => report('redo', host.dispatch('redo'))} disabled={!reader.canRedo()}>
-            Redo
-          </button>
-        </span>
-        <span className="toolbar-group">
-          <button type="button" onClick={onSave}>
-            Save
-          </button>
-          <label className="file-button">
-            Load
-            <input
-              type="file"
-              accept=".json,application/json"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) void onLoad(file)
-                event.target.value = ''
-              }}
+    <Frame
+      top={
+        <>
+          <Brand name="map-editor" level={doc.name} />
+          <TopGrow />
+          <TopGroup>
+            <TopButton icon="undo" title="Undo" kbd={chordFor('undo', undefined, platform)} disabled={!reader.canUndo()} onClick={() => report('undo', host.dispatch('undo'))} />
+            <TopButton icon="redo" title="Redo" kbd={chordFor('redo', undefined, platform)} disabled={!reader.canRedo()} onClick={() => report('redo', host.dispatch('redo'))} />
+            <TopSep />
+            <TopButton icon="frameAll" title="Reset view — frame the whole level" onClick={() => viewportRef.current?.frameMap()} />
+            <TopButton icon="sweep" title="Sweep — fly the game camera through its bounds" onClick={() => viewportRef.current?.startSweep()} />
+            <TopSep />
+            <TopButton
+              icon="grid"
+              title={view.showGrid ? 'Hide the grid' : 'Show the grid'}
+              active={view.showGrid}
+              onClick={() => report('view.set', host.dispatch('view.set', { showGrid: !view.showGrid }))}
             />
-          </label>
-          <button type="button" onClick={() => void onExport()}>
-            Export glTF
-          </button>
-        </span>
-        <span className="toolbar-group">
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={view.showGrid}
-              onChange={(event) => report('view.set', host.dispatch('view.set', { showGrid: event.target.checked }))}
+            <TopButton
+              icon="camera"
+              title={view.gameCamera ? 'Free the camera' : "Clamp the view to the game's camera bounds"}
+              kbd={chordFor('view.set', { gameCamera: !view.gameCamera }, platform)}
+              active={view.gameCamera}
+              onClick={() => report('view.set', host.dispatch('view.set', { gameCamera: !view.gameCamera }))}
             />
-            Grid
-          </label>
-          <label className="toggle" title="G — clamp the view to the game's camera bounds">
-            <input
-              type="checkbox"
-              checked={view.gameCamera}
-              onChange={(event) => report('view.set', host.dispatch('view.set', { gameCamera: event.target.checked }))}
-            />
-            Game camera
-          </label>
-          <button
-            type="button"
-            className={playing ? 'active' : ''}
+          </TopGroup>
+          <TopGrow />
+          <TopGroup>
+            <TopButton icon="save" title="Save" labelled onClick={onSave} />
+            <FileButton icon="open" title="Load" accept=".json,application/json" onFile={(file) => void onLoad(file)} />
+            <TopButton icon="export" title="Export glTF" labelled onClick={() => void onExport()} />
+          </TopGroup>
+          <TopButton
+            icon={playing ? 'stop' : 'play'}
+            title={playing ? 'Stop' : 'Play'}
+            kbd={chordFor(playing ? 'mode.edit' : 'mode.play', undefined, platform)}
+            primary
             onClick={() => {
               const id = playing ? 'mode.edit' : 'mode.play'
               report(id, host.dispatch(id))
             }}
-            title="P — walk the map with WASD"
-          >
-            {playing ? 'Stop' : 'Play'}
-          </button>
-        </span>
-      </header>
-
-      <div className="body">
-        <aside className="left">
-          <ToolPanel
-            doc={doc}
-            params={params}
-            sheet={sheet}
-            set={setParams}
-            onLoadSheet={(file) => void onLoadSheet(file)}
-            sheetWarning={sheetWarning}
           />
-        </aside>
-
-        <main className="stage">
-          <canvas ref={canvasRef} className={playing ? 'playing' : ''} />
+        </>
+      }
+      rail={
+        <Rail
+          tool={params.tool}
+          onTool={(tool) => setParams({ tool })}
+          levelOpen={levelOpen}
+          onLevel={() => setLevelOpen((open) => !open)}
+          platform={platform}
+        />
+      }
+      bar={
+        params.tool === 'select' ? (
+          <SelectBar selected={selected} platform={platform} onDelete={deleteSelection} onClear={() => select(null)} />
+        ) : params.tool === 'object' ? (
+          <ObjectBar params={params} set={setParams} />
+        ) : (
+          <FeaturePanels slot="bar" tool={params.tool} doc={doc} params={params} set={setParams} platform={platform} />
+        )
+      }
+      stage={
+        <>
+          <canvas ref={canvasRef} className={`stage-canvas ${playing ? 'is-playing' : ''}`} />
+          <Overlay at="top-left">
+            <Pill>
+              <span className="ui-num">
+                {doc.size.width} × {doc.size.height}
+              </span>
+            </Pill>
+          </Overlay>
           {!camera.inBounds && !playing ? (
-            <div className="envelope-warning">
-              Outside the game's camera envelope — press G to clamp
-            </div>
+            <Overlay at="top-center">
+              <Pill warn>
+                Outside the game's camera envelope <Kbd>{chordFor('view.set', { gameCamera: true }, platform) ?? 'G'}</Kbd> clamps
+              </Pill>
+            </Overlay>
           ) : null}
-          {playing ? <div className="play-hint">WASD to walk · P to stop</div> : null}
-        </main>
-
-        <aside className="right">
-          <nav className="tabs">
-            {(['properties', 'coverage', 'atmosphere', 'outliner'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                className={view.inspector === tab ? 'active' : ''}
-                onClick={() => report('view.set', host.dispatch('view.set', { inspector: tab }))}
-              >
-                {tab}
-              </button>
+          {playing ? (
+            <Overlay at="bottom-center">
+              <Pill>
+                <Kbd>WASD</Kbd> walk <Kbd>{chordFor('mode.edit', undefined, platform) ?? 'P'}</Kbd> stop
+              </Pill>
+            </Overlay>
+          ) : (
+            <Overlay at="bottom-right">
+              <Pill>
+                <span>
+                  <Kbd>⌥ drag</Kbd> orbit
+                </span>
+                <span>
+                  <Kbd>right drag</Kbd> pan
+                </span>
+                <span>
+                  <Kbd>scroll</Kbd> zoom
+                </span>
+              </Pill>
+            </Overlay>
+          )}
+        </>
+      }
+      inspector={
+        <Inspector
+          doc={doc}
+          params={params}
+          set={setParams}
+          platform={platform}
+          selected={selected}
+          deleteKbd={deleteKbd}
+          levelOpen={levelOpen}
+          onLevelToggle={setLevelOpen}
+          sheet={sheet}
+          sheetWarning={sheetWarning}
+          onLoadSheet={(file) => void onLoadSheet(file)}
+          onSelect={selectFromList}
+          onObject={updateSelected}
+          onObjectChange={updateObject}
+          onDelete={deleteSelection}
+          onRig={setRig}
+          onAtmosphere={setAtmosphere}
+          onFix={(id) => updateObject(id, { display: 'billboardY' })}
+          message={message}
+        />
+      }
+      status={
+        <>
+          <StatusHints>
+            {hints.map((hint) => (
+              <Hint key={hint.text} kbd={hint.kbd}>
+                {hint.text}
+              </Hint>
             ))}
-          </nav>
-
-          {view.inspector === 'properties' ? (
-            params.tool === 'select' ? (
-              <CameraPanel
-                rig={doc.camera}
-                onChange={setRig}
-                onSweep={() => viewportRef.current?.startSweep()}
-                onPreview={() => viewportRef.current?.applyRigDefaults()}
-              />
-            ) : (
-              <ObjectInspector
-                object={selected}
-                onChange={updateSelected}
-                // `selection.delete` is the composite the keymap binds too: it
-                // expands to `objects.delete({ ids })` plus clearing the
-                // selection, with the ids filled in outside every actor (#11).
-                onDelete={() => report('selection.delete', host.dispatch('selection.delete'))}
-              />
-            )
-          ) : null}
-
-          {view.inspector === 'coverage' ? (
-            <>
-              <CameraPanel
-                rig={doc.camera}
-                onChange={setRig}
-                onSweep={() => viewportRef.current?.startSweep()}
-                onPreview={() => viewportRef.current?.applyRigDefaults()}
-              />
-              <CoveragePanel
-                onSelect={(id) => {
-                  select(id)
-                  report('view.set', host.dispatch('view.set', { inspector: 'properties' }))
-                  setParams({ tool: 'object' })
-                }}
-                onFix={(id) => report('objects.update', host.dispatch('objects.update', { id, changes: { display: 'billboardY' } }))}
-              />
-            </>
-          ) : null}
-
-          {view.inspector === 'atmosphere' ? (
-            <AtmospherePanel atmosphere={doc.atmosphere} onChange={setAtmosphere} />
-          ) : null}
-
-          {view.inspector === 'outliner' ? (
-            <Outliner
-              doc={doc}
-              selectedId={view.selectedObjectId}
-              onSelect={(id) => {
-                select(id)
-                setParams({ tool: 'object' })
-              }}
-              onChange={(id, changes) => report('objects.update', host.dispatch('objects.update', { id, changes }))}
-            />
-          ) : null}
-
-          {message ? (
-            <div className="panel">
-              <Note>{message}</Note>
-            </div>
-          ) : null}
-        </aside>
-      </div>
-
-      <footer className="status">
-        <span>{describeSurface(hover)}</span>
-        <span>
-          {hover && hover.kind === SURFACE_CLIFF ? 'paints by absolute level' : `${hoverCells.length} cells`}
-        </span>
-        <span title="Painted work that is currently hidden by geometry, and would come back">
-          dormant paint: {dormant.top + dormant.cliff}
-        </span>
-        <span className={camera.inBounds ? '' : 'out'}>
-          yaw {Math.round(camera.yaw)}° · pitch {Math.round(camera.pitch)}° · {camera.distance.toFixed(1)}u
-        </span>
-        <span>
-          {stats.fps.toFixed(0)} fps · {(stats.triangles / 1000).toFixed(0)}k tris · mesh{' '}
-          {stats.meshMs.toFixed(1)}ms
-          {softwareRenderer ? ' · software GL, post-processing off' : ''}
-        </span>
-        {/* Gated on `canUndo`, not on the label: mid-drag the store refuses
-            undo and reports `canUndo` false while `undoLabel` still names the
-            entry underneath the stroke, so naming it here would advertise
-            something the disabled button beside it will not do. */}
-        <span>{reader.canUndo() ? reader.undoLabel() : 'nothing to undo'}</span>
-      </footer>
-    </div>
+          </StatusHints>
+          <StatusRight>
+            <span>{describeSurface(hover)}</span>
+            {params.tool === 'terrain' ? (
+              <span>{hover && hover.kind === SURFACE_CLIFF ? 'paints by absolute level' : `${hoverCells.length} cells`}</span>
+            ) : null}
+            <span title="Painted work that is currently hidden by geometry, and would come back">dormant paint {dormant.top + dormant.cliff}</span>
+            <span className={`ui-num ${camera.inBounds ? '' : 'is-warn'}`}>
+              yaw {Math.round(camera.yaw)}° · pitch {Math.round(camera.pitch)}° · {camera.distance.toFixed(1)}u
+            </span>
+            <span className="ui-num">
+              {stats.fps.toFixed(0)} fps · {(stats.triangles / 1000).toFixed(0)}k tris · mesh {stats.meshMs.toFixed(1)}ms
+              {softwareRenderer ? ' · software GL' : ''}
+            </span>
+            {/* Gated on `canUndo`, not on the label: mid-drag the store refuses
+                undo and reports `canUndo` false while `undoLabel` still names the
+                entry underneath the stroke, so naming it here would advertise
+                something the disabled button beside it will not do. */}
+            <span>{reader.canUndo() ? reader.undoLabel() : 'nothing to undo'}</span>
+          </StatusRight>
+        </>
+      }
+    />
   )
 }

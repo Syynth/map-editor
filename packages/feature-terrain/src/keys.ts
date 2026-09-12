@@ -23,16 +23,25 @@
  * re-mints the owner.
  */
 
-import { defineContextKey, type ContextKey, type OwnerId } from '@map-editor/registry'
+import { defineContextKey, type ContextKey, type KeyValue, type OwnerId } from '@map-editor/registry'
 
-import type { PaintVerb, SculptVerb } from './verbs'
+import type { PaintVerb, SculptVerb, TerrainMode } from './verbs'
 
 export type TerrainVerb = SculptVerb | PaintVerb
 
 let verb: ContextKey<TerrainVerb> | null = null
+let mode: ContextKey<TerrainMode> | null = null
 
 export function defineTerrainKeys(owner: OwnerId): void {
   verb = defineContextKey<TerrainVerb>(owner, 'terrain.verb', 'raise')
+  // The mode under the feature's own owner, for a panel's `when`: the host
+  // mints one too, but a feature may not import the host to name it.
+  mode = defineContextKey<TerrainMode>(owner, 'terrain.mode', 'sculpt')
+}
+
+function minted<T extends KeyValue>(key: ContextKey<T> | null): ContextKey<T> {
+  if (!key) throw new Error('terrain context keys are not minted yet: defineTerrainKeys(owner) runs first, in index.ts')
+  return key
 }
 
 /**
@@ -42,7 +51,9 @@ export function defineTerrainKeys(owner: OwnerId): void {
  */
 export const terrainKeys = {
   get verb(): ContextKey<TerrainVerb> {
-    if (!verb) throw new Error('terrain context keys are not minted yet: defineTerrainKeys(owner) runs first, in index.ts')
-    return verb
+    return minted(verb)
+  },
+  get mode(): ContextKey<TerrainMode> {
+    return minted(mode)
   },
 }

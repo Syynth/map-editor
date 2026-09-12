@@ -60,7 +60,7 @@ export const terrainFeature = provideFeature({
     return {
       logic: terrainLogic(deps),
       tools: { terrain: terrainContract(deps) },
-      keys: () => ({ [terrainKeys.verb.id]: activeVerb(deps.params()) }),
+      keys: () => ({ [terrainKeys.verb.id]: activeVerb(deps.params()), [terrainKeys.mode.id]: deps.params().terrainMode }),
     }
   },
 })

@@ -13,7 +13,7 @@
  * against the viewport edge is exactly the kind of thing worth not writing.
  */
 
-import { Tooltip } from '@mantine/core'
+import { Slider as MantineSlider, Tooltip } from '@mantine/core'
 import { useState, type ReactNode } from 'react'
 
 import { Icon, type IconName } from './icons'
@@ -127,7 +127,7 @@ export function TopButton({
   const showLabel = primary || labelled
   const className = ['ui-btn', showLabel ? '' : 'is-icon', active ? 'is-active' : '', primary ? 'is-primary' : ''].join(' ')
   const button = (
-    <button type="button" className={className} onClick={onClick} disabled={disabled}>
+    <button type="button" className={className} onClick={onClick} disabled={disabled} aria-label={showLabel ? undefined : title}>
       <Icon name={icon} size={showLabel ? 13 : 16} />
       {showLabel ? <span>{title}</span> : null}
       {showLabel && kbd ? <Kbd>{kbd}</Kbd> : null}
@@ -182,7 +182,7 @@ export function RailButton({
   const className = ['ui-rail-btn', active ? 'is-active' : '', planned ? 'is-planned' : ''].join(' ')
   return (
     <Tip title={planned ? `${title} (planned)` : title} kbd={kbd}>
-      <button type="button" className={className} onClick={onClick} aria-pressed={active}>
+      <button type="button" className={className} onClick={onClick} aria-pressed={active} aria-label={title}>
         <Icon name={icon} />
       </button>
     </Tip>
@@ -233,9 +233,41 @@ export function Verb({
 }) {
   return (
     <Tip title={title} kbd={kbd}>
-      <button type="button" className={`ui-verb ${active ? 'is-active' : ''}`} onClick={onClick} disabled={disabled} aria-pressed={active}>
+      <button type="button" className={`ui-verb ${active ? 'is-active' : ''}`} onClick={onClick} disabled={disabled} aria-pressed={active} aria-label={title}>
         <Icon name={icon} size={17} />
       </button>
+    </Tip>
+  )
+}
+
+/** A parameter in the bar: a short slider with its value beside it, the name and chord in the tooltip. */
+export function BarSlider({
+  title,
+  kbd,
+  value,
+  min,
+  max,
+  step = 1,
+  onChange,
+  format,
+}: {
+  title: string
+  kbd?: string
+  value: number
+  min: number
+  max: number
+  step?: number
+  onChange: (value: number) => void
+  format?: (value: number) => string
+}) {
+  return (
+    <Tip title={title} kbd={kbd}>
+      <span className="ui-bar-group">
+        <span className="ui-bar-slider">
+          <MantineSlider size="xs" min={min} max={max} step={step} value={value} onChange={onChange} label={null} />
+        </span>
+        <BarValue>{format ? format(value) : value}</BarValue>
+      </span>
     </Tip>
   )
 }
@@ -265,6 +297,7 @@ export function IconSegmented<T extends string | number>({
             type="button"
             role="radio"
             aria-checked={option.value === value}
+            aria-label={option.title}
             className={`ui-seg-btn ${option.value === value ? 'is-active' : ''}`}
             onClick={() => onChange(option.value)}
           >
@@ -297,7 +330,7 @@ export function Chip({
 }) {
   return (
     <Tip title={title}>
-      <button type="button" className={`ui-chip ${active ? 'is-active' : ''}`} onClick={onClick} aria-pressed={active}>
+      <button type="button" className={`ui-chip ${active ? 'is-active' : ''}`} onClick={onClick} aria-pressed={active} aria-label={title}>
         {icon ? (
           <Icon name={icon} size={16} />
         ) : swatch ? (
@@ -325,25 +358,41 @@ export function InspectorHead({ children }: { children: ReactNode }) {
 /**
  * One collapsible section of the inspector. `summary` is the glance at the
  * right of the header — "10 voxels", "Layer 2" — accented when it names
- * something selected. Open state is the section's own: what the artist
- * folded stays folded across re-renders, and a caller sets only the default.
+ * something selected. Open state is the section's own by default: what the
+ * artist folded stays folded across re-renders, and a caller sets only
+ * `defaultOpen`. A caller that needs to open a group of sections from
+ * elsewhere — the Level gear on the rail — passes `open` and `onToggle`.
  */
 export function Section({
   title,
   summary,
   accent,
   defaultOpen = true,
+  open: controlled,
+  onToggle,
   children,
 }: {
   title: string
   summary?: ReactNode
   accent?: boolean
   defaultOpen?: boolean
+  open?: boolean
+  onToggle?: (open: boolean) => void
   children: ReactNode
 }) {
-  const [open, setOpen] = useState(defaultOpen)
+  const [own, setOwn] = useState(defaultOpen)
+  const open = controlled ?? own
   return (
-    <details className="ui-sec" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}>
+    <details
+      className="ui-sec"
+      open={open}
+      onToggle={(event) => {
+        const next = event.currentTarget.open
+        if (next === open) return
+        setOwn(next)
+        onToggle?.(next)
+      }}
+    >
       <summary>
         {title}
         {summary !== undefined ? <span className={`ui-sec-sum ${accent ? 'is-accent' : ''}`}>{summary}</span> : null}

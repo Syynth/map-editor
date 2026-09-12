@@ -47,7 +47,7 @@ export interface KeyDispatcherOptions {
 
 const TEXT_ENTRY = ['INPUT', 'TEXTAREA', 'SELECT']
 
-function detectPlatform(): Platform {
+export function detectPlatform(): Platform {
   return typeof navigator !== 'undefined' && /mac|iphone|ipad|ipod/i.test(navigator.userAgent) ? 'mac' : 'other'
 }
 

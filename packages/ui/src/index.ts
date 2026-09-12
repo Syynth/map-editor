@@ -32,6 +32,8 @@ export {
   Segmented,
   Select,
   Slider,
+  TextInput,
+  Toggle,
 } from './primitives'
 
 export {
@@ -40,6 +42,7 @@ export {
   BarDivider,
   BarGroup,
   BarLabel,
+  BarSlider,
   BarValue,
   Brand,
   Chip,

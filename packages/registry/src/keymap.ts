@@ -45,7 +45,7 @@
  * thing here and holds nothing but an array of chords.
  */
 
-import { canonicalSpec, chordsEqual, isModifierKey, parseChords, type Chord, type Platform } from './chords'
+import { canonicalSpec, chordsEqual, formatChord, isModifierKey, parseChords, type Chord, type Platform } from './chords'
 import { commands } from './commands'
 import { always, and, disjoint, evaluate, type ContextSnapshot, type Predicate } from './context'
 import { onDispose, type OwnerId } from './owners'
@@ -95,6 +95,28 @@ interface Entry {
 
 const entries: Entry[] = []
 let nextSeq = 0
+
+/**
+ * The chord a control should advertise for `(command, args)`, formatted for
+ * the platform — what a tooltip or a menu item shows beside its name. The
+ * LAST binding wins, matching the resolver's reverse scan, so a user preset
+ * that rebinds a tool changes what the rail says without touching the tool.
+ * `args` are compared structurally: a binding is `(id, args)`, and `tools.set
+ * { tool: 'select' }` and `tools.set { tool: 'terrain' }` are different keys.
+ * `undefined` when nothing binds it, which a control shows as no chord.
+ */
+export function chordFor(command: string, args: unknown, platform: Platform): string | undefined {
+  const wanted = JSON.stringify(args ?? null)
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const { binding } = entries[index]
+    if (binding.unbind || binding.command !== command) continue
+    if (JSON.stringify(binding.args ?? null) !== wanted) continue
+    return parseChords(binding.chord, platform)
+      .map((chord) => formatChord(chord, platform))
+      .join(' ')
+  }
+  return undefined
+}
 
 /** Parsed chords are cached per `(spec, platform)`: resolution runs on every keypress and parsing is the only string work in it. */
 const parsed = new Map<string, readonly Chord[]>()

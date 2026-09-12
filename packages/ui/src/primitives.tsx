@@ -12,8 +12,25 @@
  * `IconSegmented` in `frame.tsx`.
  */
 
-import { ColorInput as MantineColorInput, NativeSelect, NumberInput as MantineNumberInput, SegmentedControl, Slider as MantineSlider } from '@mantine/core'
+import {
+  ColorInput as MantineColorInput,
+  NativeSelect,
+  NumberInput as MantineNumberInput,
+  SegmentedControl,
+  Slider as MantineSlider,
+  Switch,
+  TextInput as MantineTextInput,
+} from '@mantine/core'
 import type { ReactNode } from 'react'
+
+export function TextInput({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder?: string }) {
+  return <MantineTextInput size="xs" value={value} placeholder={placeholder} onChange={(event) => onChange(event.currentTarget.value)} />
+}
+
+/** An on/off, as a switch: reads as a setting rather than a form checkbox. */
+export function Toggle({ checked, onChange, title }: { checked: boolean; onChange: (checked: boolean) => void; title?: string }) {
+  return <Switch size="xs" checked={checked} title={title} onChange={(event) => onChange(event.currentTarget.checked)} />
+}
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (

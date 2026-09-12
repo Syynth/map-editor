@@ -48,5 +48,5 @@ export type { PanelDecl, PanelSlot } from './panels'
 export { canonicalSpec, chordFromEvent, chordsEqual, formatChord, parseChords } from './chords'
 export type { Chord, KeyEventLike, Platform } from './chords'
 
-export { createChordSession, keymap, resolve } from './keymap'
+export { chordFor, createChordSession, keymap, resolve } from './keymap'
 export type { BindingWeight, ChordSession, KeyBinding, KeymapContext, KeyResolution } from './keymap'
