@@ -63,9 +63,11 @@ if (!canvasHandle) throw new Error('".stage canvas" not found — did the editor
 const box = await canvasHandle.boundingBox()
 if (!box) throw new Error('".stage canvas" has no bounding box — is it hidden or zero-sized?')
 // Pulled into plain numbers rather than read off `box` inside `report`:
-// `tsc` does not carry a `const` null-check's narrowing across a closure
-// boundary, so `report` would still see `box` as possibly-null even though
-// it is only ever called after the throw above.
+// `report` below is a hoisted `function` declaration, and `tsc` does not
+// carry a `const` null-check's narrowing into a hoisted function's body (an
+// arrow function assigned to a const would keep it) — so `report` would
+// still see `box` as possibly-null even though it is only ever called after
+// the throw above.
 const { x: boxX, y: boxY, width: boxW, height: boxH } = box
 
 /** @param {string} label */

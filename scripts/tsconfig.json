@@ -3,17 +3,20 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    // `false`, unlike every package config in this repo: `skipLibCheck`
-    // skips checking `.d.ts` files, and `global.d.ts` below is a `.d.ts`
-    // file — with it on, a broken import there (a typo'd package name, a
-    // type this repo later renames or removes) is swallowed silently and
-    // shows up only as scattered implicit-`any` errors in whichever `.mjs`
-    // files use the affected global, with no line pointing at the real
-    // cause. Verified: pointing `global.d.ts`'s import at a nonexistent
-    // package reports nothing under `skipLibCheck: true` except those
-    // downstream implicit-`any`s, and reports the real `TS2307` at the
-    // `import` line itself once this is `false`.
-    "skipLibCheck": false,
+    // `true`, same as every other package config in this repo: `skipLibCheck`
+    // only skips `.d.ts` files, so setting it `false` here to catch a broken
+    // import in the ambient globals below would also turn on strict checking
+    // for all 723 `.d.ts` files under `node_modules` (`tsc -p scripts
+    // --listFiles | grep -c node_modules`) — a future @types/three,
+    // @types/playwright or @types/node bump could then break this gate for
+    // reasons that have nothing to do with `scripts/**`. The globals instead
+    // live in `global.ts`, a regular module (see its own header) rather than
+    // a `.d.ts` file, precisely so `skipLibCheck` can stay `true`: non-
+    // declaration `.ts`/`.mjs` sources are always checked regardless of this
+    // setting. Verified: pointing `global.ts`'s import at a nonexistent
+    // package reports `TS2307` right at the `import` line with `skipLibCheck`
+    // left `true`.
+    "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "moduleDetection": "force",
@@ -47,5 +50,5 @@
   // Node source `tsc` can check, even though `eslint.config.js`'s
   // `OUTSIDE_THE_SYSTEM` exempts every file under `scripts/**`, tests
   // included, from lint (#38).
-  "include": ["**/*.mjs", "global.d.ts"]
+  "include": ["**/*.mjs", "global.ts"]
 }

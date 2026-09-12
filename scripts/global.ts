@@ -1,3 +1,10 @@
+// `.ts`, not `.d.ts`, despite this file being nothing but ambient
+// declarations: `scripts/tsconfig.json` keeps `skipLibCheck: true` (its own
+// comment says why), which skips `.d.ts` files entirely — a `.ts` module is
+// checked like any other source file, so a broken import below still fails
+// loudly at the `import` line instead of silently widening every consumer
+// to `any`.
+//
 // Ambient shape of the debug globals `apps/editor/src/editor/App.tsx` puts on
 // `window` for exactly this purpose ("scripts/tour.mjs and scripts/probe.mjs
 // drive the real editor in a headless browser"). App.tsx itself widens them

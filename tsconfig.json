@@ -31,7 +31,7 @@
   // those are `.mjs`, and `allowJs`/`checkJs` against 770-plus lines of
   // Playwright drivers under this config's `strict` needs its own `lib`
   // (`DOM`, for the browser closures handed to `page.evaluate`) and its own
-  // ambient globals (`scripts/global.d.ts`, typing the debug hooks
+  // ambient globals (`scripts/global.ts`, typing the debug hooks
   // `apps/editor/src/editor/App.tsx` puts on `window`) that no other file
   // under this config wants — folding them in here would mean every root
   // file compiling against a `lib`/`types` set only `scripts/**` needs.

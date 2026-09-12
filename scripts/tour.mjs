@@ -78,8 +78,10 @@ const box = await stage.boundingBox()
 if (!box) throw new Error('".stage canvas" has no bounding box — is it hidden or zero-sized?')
 const cx = box.x + box.width / 2
 const cy = box.y + box.height / 2
-// `shot` below reads this from inside a closure, where `tsc` cannot see the
-// null checks just above — see `probe.mjs`'s `stageBox` for the same reason.
+// `shot` below is a hoisted `function` declaration, and `tsc` does not carry
+// the null checks just above into it — see `probe.mjs`'s
+// `boxX`/`boxY`/`boxW`/`boxH` destructuring for the same reason (an arrow
+// function would keep the narrowing; a hoisted `function` does not).
 const stageBox = box
 
 /**
