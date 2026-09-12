@@ -110,8 +110,12 @@ move rather than to the whole restructure. Order follows the dependency directio
       never recomputes. This already shipped one bug (the frozen coverage
       readout). Prefer a `useRevision()` hook that makes the correct thing the
       easy thing, with a lint rule as backstop.
-- [ ] GitHub Actions: typecheck, lint, test, build on every PR.
-- [ ] Branch protection on `main` once CI is green.
+- [x] ~~GitHub Actions: typecheck, lint, test, build on every PR.~~ —
+      [#25](https://github.com/Syynth/map-editor/issues/25): `.github/workflows/gate.yml`,
+      build ordered before lint so a fresh runner exercises the case that would actually
+      catch a broken `dist/` ignore (see the workflow's header comment).
+- [x] ~~Branch protection on `main` once CI is green.~~ — same PR: the `gate` check is
+      required, `strict`, and applies to admins.
 - [ ] husky + lint-staged for format and lint only — tests belong in CI.
 - [ ] Issue and PR templates.
 
