@@ -339,6 +339,9 @@ describe('view and selection', () => {
     expect(context.levelOpen).toBe(true)
     expect(context.notice).toBe('Saved sample.map.json')
     expect(dispatch('view.set', { notice: null })).toEqual({ ok: true })
+    expect(dispatch('view.set', { projection: 'orthographic' })).toEqual({ ok: true })
+    expect(host.children.view.getSnapshot().context.projection).toBe('orthographic')
+    expect(dispatch('view.set', { projection: 'isometric' })).toMatchObject({ ok: false, kind: 'invalid-args' })
     expect(host.children.view.getSnapshot().context.notice).toBeNull()
   })
 

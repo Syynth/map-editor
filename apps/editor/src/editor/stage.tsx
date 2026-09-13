@@ -85,6 +85,7 @@ export function Stage({ platform }: { platform: Platform }) {
   const tool = useToolsSelector((snapshot) => snapshot.context.tool)
   const showGrid = useViewSelector((snapshot) => snapshot.context.showGrid)
   const gameCamera = useViewSelector((snapshot) => snapshot.context.gameCamera)
+  const projection = useViewSelector((snapshot) => snapshot.context.projection)
   const selection = useViewSelector((snapshot) => snapshot.context.selection)
   const layers = useViewSelector((snapshot) => snapshot.context.layers)
   const atmosphere = useDocumentSelector(atmosphereOf, { equal: same })
@@ -111,6 +112,11 @@ export function Stage({ platform }: { platform: Platform }) {
       onHover: (pick) => observed.send({ type: 'hover', surface: pick.surface, cells: brushCellsAt(host, pick.surface) }),
       onCameraChange: (camera) => observed.send({ type: 'camera', camera }),
       onStats: (stats) => observed.send({ type: 'stats', stats }),
+      // The view cube's second click on the view the camera is already at: a view setting, not a document edit.
+      onProjectionToggle: () => {
+        const current = host.children.view.getSnapshot().context.projection
+        void host.dispatch('view.set', { projection: current === 'perspective' ? 'orthographic' : 'perspective' })
+      },
     })
     viewportRef.current = viewport
     observed.send({ type: 'renderer', software: viewport.softwareRenderer })
@@ -149,8 +155,8 @@ export function Stage({ platform }: { platform: Platform }) {
   // where the character stands up, read at the transition.
   const play = useMemo(() => (playing ? host.playSession() : null), [host, playing])
   useEffect(() => {
-    viewportRef.current?.setOptions({ showGrid, gameCamera, play, selection: selectionSubject(selection), layers })
-  }, [showGrid, gameCamera, play, selection, layers])
+    viewportRef.current?.setOptions({ showGrid, gameCamera, projection, play, selection: selectionSubject(selection), layers })
+  }, [showGrid, gameCamera, projection, play, selection, layers])
 
   useEffect(() => {
     if (tool !== 'sketch') viewportRef.current?.setOptions({ sketch: null })

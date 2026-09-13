@@ -29,6 +29,8 @@ const viewSettings = z
   .object({
     showGrid: z.boolean().exactOptional(),
     gameCamera: z.boolean().exactOptional(),
+    /** How the editor camera projects while free: the view cube's second click flips it. The game's rig has its own. */
+    projection: z.enum(['perspective', 'orthographic']).exactOptional(),
     inspector: z.enum(['properties', 'coverage', 'atmosphere', 'outliner']).exactOptional(),
     layers: layerRange.nullable().exactOptional(),
     /** The level's own sections — camera rig, atmosphere, coverage — opened and closed together from the rail's gear. */
@@ -97,7 +99,7 @@ export const viewLogic = setup({
   },
 }).createMachine({
   id: 'view',
-  context: { showGrid: true, gameCamera: false, inspector: 'properties', layers: null, levelOpen: false, notice: null, selection: null, selectedObjectId: null },
+  context: { showGrid: true, gameCamera: false, projection: 'perspective', inspector: 'properties', layers: null, levelOpen: false, notice: null, selection: null, selectedObjectId: null },
   initial: 'ready',
   states: {
     ready: {
