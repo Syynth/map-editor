@@ -102,6 +102,21 @@ export function applyRig(camera: THREE.Camera, state: RigState): void {
 }
 
 /**
+ * One step of a pan that keeps the grabbed point under the cursor.
+ *
+ * `grab` is where the cursor's ray met the pan plane at the press; `under` is
+ * where this event's ray meets the same plane with the rig where it is now.
+ * The camera orbits the target, so sliding the target by their difference
+ * slides the whole rig rigidly — and a rigid slide parallel to a horizontal
+ * plane carries the plane hit by exactly that much, so the cursor's ray meets
+ * the plane at `grab` again. One step, no iteration, either projection.
+ */
+export function panToHold(state: RigState, grab: THREE.Vector3, under: THREE.Vector3): void {
+  state.target.x += grab.x - under.x
+  state.target.z += grab.z - under.z
+}
+
+/**
  * Build the camera a rig describes. Orthographic is offered because a fixed
  * perspective HD-2D look often wants it, and swapping is cheap here.
  */

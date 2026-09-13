@@ -31,6 +31,7 @@ export {
   applyRig,
   clampToBounds,
   createCamera,
+  panToHold,
   sampleYawEnvelope,
   updateCameraProjection,
   withinBounds,

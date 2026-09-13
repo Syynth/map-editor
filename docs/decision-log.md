@@ -345,3 +345,11 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** The layer view is drawn on the GPU, not by clamping heights and remeshing. A clipping plane removes everything above the ceiling; what the ceiling cuts through shows a flat cap in the cut colour (not the terrain's top texture); what lies below the floor darkens in the shader. Picking lands on the cap at the ceiling. Moving the slider changes uniforms and never rebuilds geometry.
 - **WHY:** Remeshing every chunk per slider step cost 863 ms of script and 425 MiB a second, and near the bottom of the range almost every chunk changes every step, so rebuilding only what changed could not fix it. A flat cap is an acceptable look for a view that exists to show structure, not finished art.
+
+## Pan holds the pressed point under the cursor
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** editor-viewport
+- **SCOPE:** minor/local
+- **WHAT:** A right-drag pan keeps the world point that was under the cursor at the press under the cursor for the whole drag. The press grabs the surface under it (or the plane at the orbit target's height over the sky); each move re-casts the cursor's ray onto that plane and slides the rig by the difference. Pixels-per-unit scaling is only a fallback for a ray that misses the plane (cursor above the horizon).
+- **WHY:** The old pan slid the target by a fixed per-pixel amount scaled by distance, so the ground drifted relative to the cursor — the tools felt janky and unusable. Anchoring the gesture to the thing under the cursor is the convention every 2D and CAD tool uses, and it makes the pan feel like dragging the map itself.
