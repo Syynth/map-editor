@@ -42,15 +42,43 @@ export function hintsFor(params: EditorParams): ReadonlyArray<{ kbd?: string; te
         { kbd: '⇧ click', text: 'place nothing' },
       ]
     case 'terrain':
-      return params.terrainMode === 'sculpt'
+      if (params.terrainMode === 'sculpt') {
+        switch (params.sculptVerb) {
+          case 'raise':
+            return [
+              { kbd: 'drag', text: `raise by ${params.strength}` },
+              { kbd: '⇧ drag', text: 'lower' },
+              { kbd: '⌥ click', text: 'pick up a height' },
+            ]
+          case 'flatten':
+            return [
+              { kbd: 'drag', text: params.heightPinned ? `flatten to ${params.height}` : 'flatten to the pressed height' },
+              { kbd: '⌥ click', text: 'pick up a height and pin it' },
+            ]
+          case 'smooth':
+            return [{ kbd: 'drag', text: `smooth by up to ${params.strength}` }]
+          case 'ramp':
+            return [
+              { kbd: 'press a cliff face', text: 'drag back to cut a ramp' },
+              { kbd: 'click a ramp', text: 'remove it' },
+            ]
+          case 'water':
+            return [
+              { kbd: 'drag', text: 'pool water' },
+              { kbd: '⇧ drag', text: 'drain' },
+            ]
+        }
+      }
+      return params.paintVerb === 'tint'
         ? [
-            { kbd: 'drag', text: params.sculptVerb },
-            { kbd: '⇧', text: params.sculptVerb === 'water' ? 'remove water' : 'lower instead' },
-            { kbd: '⌥ click', text: 'pick up the tile' },
+            { kbd: 'drag', text: 'tint' },
+            { kbd: '⇧ drag', text: 'clear the tint' },
+            { kbd: '⌥ click', text: 'pick up a colour' },
           ]
         : [
-            { kbd: 'drag', text: `paint ${params.paintVerb}` },
-            { kbd: '⌥ click', text: 'pick up the tile' },
+            { kbd: 'drag', text: 'paint a top, or a cliff band' },
+            { kbd: '⇧ drag', text: 'clear a band to its own material' },
+            { kbd: '⌥ click', text: 'pick up a material' },
           ]
     case 'sketch':
       return params.sketchMode === 'draw'
@@ -125,7 +153,7 @@ function HoverReadout() {
   return (
     <>
       <span>{describeSurface(hover)}</span>
-      {terrain ? <span>{hover && hover.kind === SURFACE_CLIFF ? 'paints by absolute level' : `${cells} cells`}</span> : null}
+      {terrain ? <span>{hover && hover.kind === SURFACE_CLIFF ? `band · layer ${Math.floor(hover.level / 2)}` : `${cells} cells`}</span> : null}
     </>
   )
 }
@@ -141,15 +169,16 @@ function MissingTransitions() {
   const host = useHost()
   const missing = useViewportSelector((snapshot) => snapshot.context.stats.missingTransitions)
   const shown = useViewSelector((snapshot) => snapshot.context.showMissing)
+  const names = missing.length ? `\n${missing.join('\n')}` : ''
   return (
     <button
       type="button"
       className={`ui-status-toggle ${shown ? 'is-on' : ''}`}
-      title={`${missing} corner combinations composed from edge sets because nobody has drawn the transition; each is a tile to author. Click to ${shown ? 'hide' : 'show'} where they are.`}
+      title={`${missing.length} transitions composed from edge sets because nobody has drawn them, each a tile to author. Click to ${shown ? 'hide' : 'show'} where they are.${names}`}
       aria-pressed={shown}
       onClick={() => run(host, 'view.set', { showMissing: !shown })}
     >
-      {missing} to author
+      {missing.length} to author
     </button>
   )
 }

@@ -4,33 +4,11 @@ import { applyPatches, History, inversePatch, patchAddress, type Patch, type Str
 import { createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
 import { childrenOf, descendantsOf, outlineOf, type VoxelStructure } from './structure'
 import { deserialize, LoadError, serialize } from './io'
-import {
-  addObject,
-  addSketchPoint,
-  addStructure,
-  brushCells,
-  clearRampRun,
-  closeSketch,
-  columnPatches,
-  createSketch,
-  deleteSketchPoint,
-  fillCells,
-  flatten,
-  paintFace,
-  placeStructureOnto,
-  raise,
-  rampRun,
-  rampRunLength,
-  removeObject,
-  removeStructure,
-  reparentStructure,
-  setSketch,
-  updateObject,
-} from './ops'
+import { addObject, addSketchPoint, addStructure, brushCells, clearRampRun, closeSketch, columnPatches, createSketch, deleteSketchPoint, fillCells, flatten, paintFace, placeStructureOnto, raise, rampPlan, rampRun, rampRunBlocked, rampRunLength, removeObject, removeStructure, reparentStructure, setSketch, updateObject } from './ops'
 import { FACE_TOP, countDormant, faceKey, parseFaceKey } from './paint'
 import { EditorStore } from './store'
-import { frameOf, groundHeight, structureAt } from './terrain'
-import { columnHeights, columnTopAt, faceExposed, fillColumn, materialAt, rampDirAt, rampShape, topHeight, voxelIndex } from './voxels'
+import { cornerHeights, frameOf, groundHeight, structureAt } from './terrain'
+import { columnHeights, columnTopAt, faceExposed, fillColumn, halfRampShape, halfRampUpShape, materialAt, rampDirAt, rampShape, topHeight, voxelIndex } from './voxels'
 
 function objectAt(id: string, x: number, z: number): MapObject {
   return {
@@ -435,16 +413,54 @@ describe('ramps', () => {
 
   it('finishes an odd drop with a half ramp', () => {
     const doc = createMap(4, 4)
-    // Three half-tiles of drop: a full ramp and a half ramp.
+    // Three half-tiles of drop from a plateau two cells deep: a full ramp and a half ramp.
     setHeight(doc, 2, 1, 5)
+    setHeight(doc, 1, 1, 5)
     const edge = { x: 2, z: 1, dir: 0 }
     expect(rampRunLength(ground(doc), edge)).toBe(2)
+    expect(rampRunBlocked(ground(doc), edge)).toBeNull()
     applyPatches(doc, rampRun(doc, ground(doc), edge, 2))
     expect(rampDirAt(ground(doc), 2, 1)).toBe(0)
     expect(rampDirAt(ground(doc), 1, 1)).toBe(0)
     // The run keeps its high end at the top of the cliff and descends to the low side.
     expect(topHeight(ground(doc), 1, 1)).toBe(5)
     expect(groundHeight(doc, 3.5, 1.5)).toBeCloseTo(1, 6)
+  })
+
+  it('starts an odd drop from a slab with the half ramp that rides one, so every full ramp has a whole-tile floor', () => {
+    const doc = createMap(4, 4)
+    // The low side is a slab at 1; the plateau stands at 5: a drop of four, which a full ramp on an odd floor could not meet.
+    setHeight(doc, 3, 1, 1)
+    for (const x of [0, 1, 2]) setHeight(doc, x, 1, 5)
+    const edge = { x: 2, z: 1, dir: 0 }
+    const plan = rampPlan(ground(doc), edge)
+    expect(plan?.map((step) => [step.height, step.shape])).toEqual([
+      [2, halfRampUpShape(0)],
+      [4, rampShape(0)],
+      [5, halfRampShape(0)],
+    ])
+    applyPatches(doc, rampRun(doc, ground(doc), edge, 3))
+    // Each cell's low edge meets the next cell's high edge, and the last meets the plateau.
+    expect(cornerHeights(ground(doc), 2, 1)).toEqual([2, 2, 1, 1])
+    expect(cornerHeights(ground(doc), 1, 1)).toEqual([4, 4, 2, 2])
+    expect(cornerHeights(ground(doc), 0, 1)).toEqual([5, 5, 4, 4])
+  })
+
+  it('refuses a run through ground that is not level with the edge, or that leaves the volume', () => {
+    const doc = createMap(4, 4)
+    setHeight(doc, 2, 1, 6)
+    // Two cells of run wanted; the cell behind the edge stands at 2, not 6.
+    expect(rampRunBlocked(ground(doc), { x: 2, z: 1, dir: 0 })).toBe('the ground behind the edge is not level with it')
+    expect(rampRun(doc, ground(doc), { x: 2, z: 1, dir: 0 }, 2)).toEqual([])
+    // A ramp already cut behind the edge blocks it too.
+    setHeight(doc, 1, 1, 6)
+    fillColumn(ground(doc), 1, 1, 6, 0, rampShape(1))
+    expect(rampRunBlocked(ground(doc), { x: 2, z: 1, dir: 0 })).toBe('the run crosses another ramp')
+    // And a run that would step off the volume: a drop of three tiles from a plateau only two cells deep.
+    const small = createMap(3, 2)
+    setHeight(small, 1, 0, 8)
+    setHeight(small, 0, 0, 8)
+    expect(rampRunBlocked(ground(small), { x: 1, z: 0, dir: 0 })).toBe('the run would leave the volume')
   })
 })
 

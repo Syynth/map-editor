@@ -9,10 +9,13 @@
  * three copies.
  *
  * A terrain set the artist loaded from files lives on the viewport actor and
- * wins over the generated one until the document's texel density changes.
+ * is drawn beside the generated one until the document's texel density
+ * changes.
  * When the artist can configure terrains and sheets live, this is the one
  * place that learns where the art comes from.
  */
+
+import { useMemo } from 'react'
 
 import type { ReadonlyMapDoc, RgbaImage, SpriteAsset } from '@papercut/document'
 import { useDocumentSelector, useViewportSelector } from '@papercut/editor-host'
@@ -64,5 +67,8 @@ export function useArt(): Art {
   const loaded = useViewportSelector((snapshot) => snapshot.context.loadedTerrain) as LoadedSet | null
   const terrainWarning = useViewportSelector((snapshot) => snapshot.context.terrainWarning)
   const generatedTerrain = terrainFor(density)
-  return { terrain: loaded ? [loaded] : generatedTerrain, generatedTerrain, sprites: spritesFor(density), textures: texturesFor(density), terrainWarning }
+  // The loaded set joins the generated one rather than replacing it: the default materials point into the placeholder
+  // sheet, and would draw as nothing without it. A set named like a generated one stands in for it.
+  const terrain = useMemo(() => (loaded ? [...generatedTerrain.filter((s) => s.set.sheet !== loaded.set.sheet), loaded] : generatedTerrain), [loaded, generatedTerrain])
+  return { terrain, generatedTerrain, sprites: spritesFor(density), textures: texturesFor(density), terrainWarning }
 }

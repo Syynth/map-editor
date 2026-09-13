@@ -46,11 +46,14 @@ node apps/export-cli/dist/cli.js in.json out.glb [--merge]
 
 ## What works
 
-- **Terrain sculpt** — raise, lower, flatten, ramps, water. Brush, rectangle and
-  flood-fill strokes, any brush size, square or round.
-- **Terrain paint** — tile painting with autotiling, cliff faces painted band by
-  band, per-cell tint, and a material brush that changes what the template picks
-  automatically.
+- **Terrain sculpt** — raise, lower, smooth and flatten by a strength or to a
+  height, ramps cut from a cliff face by dragging. Brush, rectangle and flood-fill
+  strokes, any brush size, square or round. Water pools per cell until the Water
+  tool lands.
+- **Terrain paint** — one material brush over a dual grid: the tile at every
+  corner follows from the four cells around it, on tops and on cliff bands alike,
+  from terrain sets the artist authors as transition tiles; per-cell tint; and a
+  count of the transitions still to draw.
 - **Image objects** — six display modes including the extruded paper-cutout
   slab, one to eight facings, mirroring, and the Paper Mario flip with
   hysteresis and a configurable hinge.
@@ -93,7 +96,7 @@ A pnpm workspace, orchestrated by Turborepo.
 ```
 packages/registry/      command, tool, panel and keymap declarations; the availability DSL  — no deps at all
 packages/document/      document, the document actor, undo, ops, paint  — xstate; no three.js, no React
-packages/geometry/      meshers and the autotile template     — no three.js, no React
+packages/geometry/      meshers, terrain sets and the runtime atlas — no three.js, no React
 packages/runtime/       the reference runtime: scene, billboards, camera, export
 packages/viewport/      the imperative GL shell the editor drives
 packages/editor-host/   the root actor, dispatch, the tools, view, gesture and play actors, React glue  — xstate, React
@@ -136,16 +139,17 @@ dependency direction test with a `visibleTo` allowlist.
 
 ## Two things worth knowing before reading the code
 
-**Paint is addressed in stable grid coordinates.** Cliff faces are keyed by
-cell, side and *absolute half-tile level* — never by mesh face, and never by a
-row index into a swept profile. Sculpt operations never write to the paint
-layers, which is the entire mechanism behind painted work surviving geometry
-edits. `packages/document/src/paint.ts` explains it properly, and there is a
-test that lowers a cliff and raises it back.
+**Paint is addressed in stable grid coordinates.** A face override is keyed by
+cell, *layer* and side — never by mesh face, and never by a row index into a
+swept profile — and holds a material, never a tile. Sculpt operations never
+write to the paint layers, which is the entire mechanism behind painted work
+surviving geometry edits. `packages/document/src/paint.ts` explains it properly,
+and there is a test that lowers a cliff and raises it back.
 
-**Assets are generated, not vendored.** The placeholder tile sheet and sprites
-are drawn procedurally at runtime, so nothing in this repository carries a
-licence. The autotile sheet draws a rim on exactly the sides where a tile is not
-connected to its neighbour, which makes it its own guide layer. Load a real
-sheet with the Load PNG button; the editor checks its dimensions against the
-template layout and says so when the texel density does not match.
+**Assets are generated, not vendored.** The placeholder terrain set — a sheet
+and the sidecar that tags what every tile on it is — and the sprites are drawn
+procedurally at runtime, so nothing in this repository carries a licence. Load a
+real sheet together with its sidecar from the Terrain set section; the editor
+checks the sheet against the sidecar and says so when the tile size does not
+match the map's texel density. `docs/terrain-spec.md` describes the whole
+system.

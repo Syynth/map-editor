@@ -66,7 +66,11 @@ function place(
 export function createSampleMap(width = 36, height = 36): MapDoc {
   const doc = createMap(width, height, 'Sample Valley')
   const ground = doc.structures.ground as VoxelStructure
-  const material = (id: string) => doc.materials.findIndex((m) => m.id === id)
+  const material = (name: string): number => {
+    const found = doc.materials.find((m) => m.name === name)
+    if (!found) throw new Error(`The sample map wants a ${name} material.`)
+    return found.id
+  }
   const centreX = width / 2
   const centreY = height / 2
 
@@ -87,7 +91,7 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
       h = Math.max(0, Math.min(18, h))
 
       // Material follows height: sand low, grass mid, stone high. Every voxel of a column takes it.
-      fillColumn(ground, x, y, h, h <= 1 ? material('sand') : h >= 8 ? material('stone') : hash(x, y, 1) > 0.88 ? material('dirt') : material('grass'))
+      fillColumn(ground, x, y, h, h <= 1 ? material('Sand') : h >= 8 ? material('Stone') : hash(x, y, 1) > 0.88 ? material('Dirt') : material('Grass'))
 
       // Water pools in the river bed.
       if (h <= 1) ground.water[index] = 2
@@ -104,7 +108,8 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
       const h = topHeight(ground, x, y)
-      if (h < 3) continue
+      // A full ramp is a cube-tall shape: it wants a column standing on whole tiles, not a slab.
+      if (h < 3 || h % 2 === 1) continue
       for (let dir = 0; dir < 4; dir++) {
         const [dx, dy] = DIR_VECTORS[dir]
         if (topHeight(ground, x + dx, y + dy) === h - 2) stepDowns.push([x, y, dir])
@@ -123,7 +128,7 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   const path = (x: number, y: number) => {
     if (x < 0 || x >= width || y < 0 || y >= height) return
     const top = columnTopAt(ground, x, y)
-    if (top >= 0) ground.voxels.material[voxelIndex(ground, x, y, top)] = material('path')
+    if (top >= 0) ground.voxels.material[voxelIndex(ground, x, y, top)] = material('Path')
   }
   for (let step = 0; step < 22; step++) {
     const x = Math.round(4 + step)
@@ -138,7 +143,7 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   for (let x = 0; x < width; x++) {
     const z = Math.round(centreY - 8)
     const top = columnTopAt(ground, x, z)
-    if (top >= 2) ground.paint.faces[faceKey(x, z, top - 1, 1)] = material('stone')
+    if (top >= 2) ground.paint.faces[faceKey(x, z, top - 1, 1)] = material('Stone')
   }
 
   // A cool tint in the river bed, quantised per cell rather than blended.

@@ -175,6 +175,30 @@ describe('the terrain tool contract', () => {
     expect(cellsTouched(handler?.move(sample(top(4, 4))))).toBe(9)
   })
 
+  it('alt under Sculpt picks a height up and pins it, for Flatten', () => {
+    const doc = createMap(8, 8)
+    fillColumn(ground(doc), 2, 2, 6)
+    const { deps, current } = stub(doc, { sculptVerb: 'flatten' })
+    const handler = terrainContract(deps).stroke(sample(top(2, 2), { alt: true }))
+    expect(handler?.begin(sample(top(2, 2), { alt: true }))).toEqual([])
+    expect(current().height).toBe(6)
+    expect(current().heightPinned).toBe(true)
+  })
+
+  it('shows why a ramp cannot be cut, and cuts nothing on release', () => {
+    const cliff: SurfaceAddress = { structure: 'ground', x: 2, y: 2, kind: SURFACE_CLIFF, dir: 3, level: 1 }
+    const doc = createMap(8, 8)
+    // (2,2) stands two cubes above (2,1): a run of two, but (2,3) behind the edge stays at one cube.
+    fillColumn(ground(doc), 2, 2, 6)
+    const { deps, current } = stub(doc, { sculptVerb: 'ramp' })
+    const handler = terrainContract(deps).stroke(sample(cliff))
+    expect(handler?.begin(sample(cliff))).toEqual([])
+    expect(current().rampRun).toMatchObject({ needed: 2, blocked: 'the ground behind the edge is not level with it' })
+    expect(handler?.end(sample(cliff))).toEqual([])
+    expect(current().rampRun).toBeNull()
+    expect(rampDirAt(ground(doc), 2, 2)).toBe(NO_RAMP)
+  })
+
   it('alt picks a material up instead of editing, and only on the press', () => {
     const doc = createMap(8, 8)
     // (2,2) stands two cubes tall; its upper cube's west face carries an

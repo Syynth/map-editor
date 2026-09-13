@@ -167,57 +167,76 @@ export interface RampEdge {
   dir: number
 }
 
+/** One cell of a ramp run: where it is, the height it is stood at, and the sloped shape on top. */
+export interface RampStep {
+  x: number
+  z: number
+  height: number
+  shape: number
+}
+
 /**
- * How many ramp cells a drop needs at 45°: one per tile, and one more for
- * an odd half-tile, which a half ramp finishes. `null` when there is no drop
- * to ramp.
+ * The run a ramp needs from a cliff edge, bottom cell first: at 45° a full
+ * ramp takes one cell per tile of drop, and a half ramp finishes an odd
+ * half-tile — hugging the floor at the top of the run when the low side sits
+ * on a whole tile, riding a slab at the bottom when it sits on one, so every
+ * full ramp in between has a whole-tile floor. `null` when there is no drop.
  */
-export function rampRunLength(voxel: ReadonlyVoxel, edge: RampEdge): number | null {
+export function rampPlan(voxel: ReadonlyVoxel, edge: RampEdge): RampStep[] | null {
   const [dx, dz] = DIR_VECTORS[edge.dir]
   if (!inBounds(voxel.size, edge.x, edge.z) || !inBounds(voxel.size, edge.x + dx, edge.z + dz)) return null
-  const drop = topHeight(voxel, edge.x, edge.z) - topHeight(voxel, edge.x + dx, edge.z + dz)
-  return drop <= 0 ? null : Math.ceil(drop / 2)
+  const low = topHeight(voxel, edge.x + dx, edge.z + dz)
+  const high = topHeight(voxel, edge.x, edge.z)
+  if (high <= low) return null
+  const plan: RampStep[] = []
+  let h = low
+  for (let k = 0; h < high; k++) {
+    const x = edge.x - k * dx
+    const z = edge.z - k * dz
+    if (h % 2 === 1) plan.push({ x, z, height: h + 1, shape: halfRampUpShape(edge.dir) })
+    else if (high - h >= 2) plan.push({ x, z, height: h + 2, shape: rampShape(edge.dir) })
+    else plan.push({ x, z, height: h + 1, shape: halfRampShape(edge.dir) })
+    h = plan[plan.length - 1].height
+  }
+  return plan
+}
+
+/** How many cells a ramp from this edge takes, or `null` when there is no drop to ramp. */
+export function rampRunLength(voxel: ReadonlyVoxel, edge: RampEdge): number | null {
+  return rampPlan(voxel, edge)?.length ?? null
+}
+
+/**
+ * Why a ramp cannot be cut from `edge`, in the artist's words, or `null`
+ * when it can. A run may only be cut through ground that stands level with
+ * the edge cell and is not already sloped: anything else would be silently
+ * re-stood at the ramp's height (spec §4, "a run that does not meet the drop
+ * is refused").
+ */
+export function rampRunBlocked(voxel: ReadonlyVoxel, edge: RampEdge): string | null {
+  const plan = rampPlan(voxel, edge)
+  if (!plan) return 'no drop at this edge'
+  const high = topHeight(voxel, edge.x, edge.z)
+  for (const step of plan) {
+    if (!inBounds(voxel.size, step.x, step.z)) return 'the run would leave the volume'
+    if (step.x === edge.x && step.z === edge.z) continue
+    if (topHeight(voxel, step.x, step.z) !== high) return 'the ground behind the edge is not level with it'
+    if (rampDirAt(voxel, step.x, step.z) !== NO_RAMP) return 'the run crosses another ramp'
+  }
+  return null
 }
 
 /**
  * Cut a ramp of `run` cells back from a cliff edge, descending toward the
- * edge's side. Every cell of the run is re-stood at the height a 45° slope
- * needs there, with a sloped top voxel; an odd drop is finished by a half
- * ramp, at the top of the run when the low side sits on a whole tile, at
- * the bottom when it sits on a slab. Refused (empty) when `run` is not what
- * the drop needs, or the run would leave the volume.
+ * edge's side, every cell re-stood at the height a 45° slope needs there
+ * with a sloped top voxel. Refused (empty) when `run` is not what the drop
+ * needs, or when the run is blocked (`rampRunBlocked`).
  */
 export function rampRun(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, edge: RampEdge, run: number): Patch[] {
-  const needed = rampRunLength(voxel, edge)
-  if (needed === null || run !== needed) return []
-  const [dx, dz] = DIR_VECTORS[edge.dir]
-  const low = topHeight(voxel, edge.x + dx, edge.z + dz)
-  const high = topHeight(voxel, edge.x, edge.z)
-  const odd = (high - low) % 2 === 1
-  const cells: Cell[] = []
-  const patches: Patch[] = []
-  for (let k = 0; k < needed; k++) {
-    const x = edge.x - k * dx
-    const z = edge.z - k * dz
-    if (!inBounds(voxel.size, x, z)) return []
-    cells.push([x, z])
-    let height: number
-    let shape: number
-    if (!odd) {
-      height = low + 2 * (k + 1)
-      shape = rampShape(edge.dir)
-    } else if (low % 2 === 1) {
-      // The low side sits on a slab: the half ramp rides one at the bottom of the run.
-      height = low + 1 + 2 * k
-      shape = k === 0 ? halfRampUpShape(edge.dir) : rampShape(edge.dir)
-    } else {
-      // The odd half is at the top of the run, hugging the floor.
-      const last = k === needed - 1
-      height = last ? high : low + 2 * (k + 1)
-      shape = last ? halfRampShape(edge.dir) : rampShape(edge.dir)
-    }
-    patches.push(...columnPatches(voxel, x, z, height, shape))
-  }
+  const plan = rampPlan(voxel, edge)
+  if (!plan || run !== plan.length || rampRunBlocked(voxel, edge) !== null) return []
+  const cells: Cell[] = plan.map((step) => [step.x, step.z])
+  const patches = plan.flatMap((step) => columnPatches(voxel, step.x, step.z, step.height, step.shape))
   return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
 }
 

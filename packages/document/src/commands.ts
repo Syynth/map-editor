@@ -103,7 +103,7 @@ const cameraBounds = z
 const terrainRef = z.object({ sheet: z.string().min(1), terrain: z.string().min(1) }).strict()
 const materialDef = z
   .object({
-    id: z.string().min(1),
+    id: z.int().min(0),
     name: z.string().min(1),
     color: z.int().min(0).max(0xffffff),
     role: z.enum(['top', 'wall', 'any']),
@@ -112,7 +112,10 @@ const materialDef = z
   })
   .strict()
 /** The whole list, replaced: its order is the materials' priority, so a reorder is as much an edit as a rename. */
-const materialsSet = z.object({ materials: z.array(materialDef).min(1) }).strict()
+const materialsSet = z
+  .object({ materials: z.array(materialDef).min(1) })
+  .strict()
+  .refine(({ materials }) => new Set(materials.map((m) => m.id)).size === materials.length, { message: 'material ids must be unique' })
 
 const cameraChanges = z
   .object({

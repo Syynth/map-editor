@@ -1,24 +1,4 @@
-import {
-  FORMAT_VERSION,
-  HALF,
-  addObject,
-  createDocument,
-  createMap,
-  frameOf,
-  groundHeight,
-  defaultFacing,
-  raise,
-  removeObject,
-  serialize,
-  topHeight,
-  type MapObject,
-  type Patch,
-  type SurfaceAddress,
-  type SurfaceKind,
-  type MapDoc,
-  type ReadonlyMapDoc,
-  type VoxelStructure,
-} from '@papercut/document'
+import { FORMAT_VERSION, HALF, addObject, createDocument, createMap, defaultFacing, frameOf, groundHeight, materialById, raise, removeObject, serialize, topHeight, type MapDoc, type MapObject, type Patch, type ReadonlyMapDoc, type SurfaceAddress, type SurfaceKind, type VoxelStructure } from '@papercut/document'
 import { commands, defineFeature, dispose, provideFeature, type HotHandle, reserveOwner, tools as toolDeclarations } from '@papercut/registry'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from 'xstate'
@@ -154,11 +134,17 @@ describe('the document commands, routed to the document actor', () => {
     const { host, dispatch } = makeHost()
     const before = host.reader.doc.materials
     const reordered = [...before].reverse()
+    const voxels = ground(host.reader.doc).voxels.material.slice()
     expect(dispatch('materials.set', { materials: reordered })).toEqual({ ok: true })
     expect(host.reader.doc.materials.map((m) => m.id)).toEqual(reordered.map((m) => m.id))
     expect(host.reader.undoLabel()).toBe('Materials')
+    // The list's order is only its priority: a voxel names its material by id, so no voxel changed what it is made of.
+    expect(ground(host.reader.doc).voxels.material).toEqual(voxels)
+    expect(materialById(host.reader.doc.materials, voxels[0])?.name).toBe(materialById(before, voxels[0])?.name)
     // A material that names no terrain is not a material.
-    expect(dispatch('materials.set', { materials: [{ id: 'x', name: 'X', color: 0, role: 'any' }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('materials.set', { materials: [{ id: 9, name: 'X', color: 0, role: 'any' }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    // And two materials may not share an id: a voxel names its material by it.
+    expect(dispatch('materials.set', { materials: [before[0], { ...before[1], id: before[0].id }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
   })
 
   it('merges the camera rig and the atmosphere, one entry each', () => {
@@ -964,7 +950,7 @@ describe('the viewport actor: what the viewport observed', () => {
     viewport.send({ type: 'camera', camera: { ...camera, inBounds: false } })
     expect(viewport.getSnapshot().context.camera.inBounds).toBe(false)
 
-    viewport.send({ type: 'stats', stats: { fps: 60, triangles: 5000, meshMs: 1.5, missingTransitions: 0 } })
+    viewport.send({ type: 'stats', stats: { fps: 60, triangles: 5000, meshMs: 1.5, missingTransitions: [] } })
     viewport.send({ type: 'renderer', software: true })
     expect(viewport.getSnapshot().context).toMatchObject({ stats: { fps: 60 }, softwareRenderer: true })
   })

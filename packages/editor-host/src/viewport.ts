@@ -46,8 +46,8 @@ export interface FrameStats {
   readonly fps: number
   readonly triangles: number
   readonly meshMs: number
-  /** Corner combinations the atlas had to compose because no tile is authored for them (spec §3). */
-  readonly missingTransitions: number
+  /** The transitions composed somewhere on screen because no tile is authored for them, by name (spec §3). */
+  readonly missingTransitions: readonly string[]
 }
 
 export type BrushCells = ReadonlyArray<readonly [number, number]>
@@ -81,7 +81,7 @@ const INITIAL: ViewportState = {
   hover: null,
   brushCells: [],
   camera: { yaw: 45, pitch: 35, distance: 26, inBounds: true },
-  stats: { fps: 0, triangles: 0, meshMs: 0, missingTransitions: 0 },
+  stats: { fps: 0, triangles: 0, meshMs: 0, missingTransitions: [] },
   softwareRenderer: false,
   loadedTerrain: null,
   terrainWarning: null,

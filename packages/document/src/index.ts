@@ -28,7 +28,9 @@ export {
   defaultFacing,
   inBounds,
   makeAtmosphere,
+  materialById,
   newId,
+  nextMaterialId,
   worldHeight,
 } from './document'
 export {
@@ -124,7 +126,9 @@ export {
   placeStructure,
   placeStructureOnto,
   raise,
+  rampPlan,
   rampRun,
+  rampRunBlocked,
   rampRunLength,
   rectCells,
   regroundObjects,
@@ -139,7 +143,7 @@ export {
   updateObject,
   updateSketchPoint,
 } from './ops'
-export type { Brush, BrushShape, Cell, FaceRef, RampEdge, SketchChanges } from './ops'
+export type { Brush, BrushShape, Cell, FaceRef, RampEdge, RampStep, SketchChanges } from './ops'
 export { FACE_BOTTOM, FACE_TOP, countDormant, faceKey, facePaint, parseFaceKey, tintKey, tintPaint } from './paint'
 export type { DocumentReader } from './store'
 export { applyPatches, inversePatch, patchAddress } from './edits'

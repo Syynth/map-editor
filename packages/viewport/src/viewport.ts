@@ -147,7 +147,7 @@ export interface ViewportHandlers {
   onCameraChange(state: { yaw: number; pitch: number; distance: number; inBounds: boolean }): void
   /** The view cube was clicked on the view the camera already has: flip the editor's projection. */
   onProjectionToggle(): void
-  onStats(stats: { fps: number; triangles: number; meshMs: number; missingTransitions: number }): void
+  onStats(stats: { fps: number; triangles: number; meshMs: number; missingTransitions: readonly string[] }): void
 }
 
 /** Where a play session puts the character down, in world units. The host's play actor computes it. */
@@ -1222,7 +1222,7 @@ export class Viewport {
         // last pass, which is a fullscreen quad.
         triangles: this.scene.stats.triangles,
         meshMs: this.scene.stats.lastMeshMs,
-        missingTransitions: this.scene.missingTransitions().length,
+        missingTransitions: this.scene.missingTransitions(),
       })
       this.fpsAccumulator = 0
       this.fpsFrames = 0

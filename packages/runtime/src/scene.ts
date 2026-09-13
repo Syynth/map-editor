@@ -63,6 +63,8 @@ interface ChunkView {
   water: THREE.Mesh | null
   /** A dot on every corner the atlas composited, shown while the editor asks for them. */
   marks: THREE.Points | null
+  /** The distinct combinations this chunk composited, by name. */
+  composites: readonly string[]
   faceAddr: Int32Array
   waterFaceAddr: Int32Array | null
   triangleCount: number
@@ -162,6 +164,8 @@ export class RuntimeScene {
   private sets: LoadedSet[]
   /** The look the chunks were meshed with: the atlas and what each material draws with. Replaced whole, never edited. */
   private look: TerrainLook
+  /** The materials the look was built from: a document patch swaps the array, and the look has to follow. */
+  private lookMaterials: ReadonlyMapDoc['materials']
   /** The atlas image on the GPU, and the atlas version it was taken at. */
   private atlasImage: RgbaImage | null = null
   private atlasVersion = -1
@@ -178,6 +182,7 @@ export class RuntimeScene {
     this.doc = doc
     this.sets = assets.terrain
     this.look = createTerrainLook(doc.materials, this.sets)
+    this.lookMaterials = doc.materials
     this.sprites = assets.sprites
     this.textures = assets.textures
 
@@ -244,13 +249,16 @@ export class RuntimeScene {
     this.relook()
   }
 
-  /** The transitions the atlas had to compose because nobody drew them: the artist's to-do list (spec §3). */
+  /** The transitions composed somewhere on screen, named once each: the artist's to-do list (spec §3). Counted over the chunks as they stand, so painting a corner over takes it off the list. */
   missingTransitions(): readonly string[] {
-    return this.look.atlas.compositeReport().map((c) => c.combo)
+    const names = new Set<string>()
+    for (const view of this.structures.values()) for (const chunk of view.chunks.values()) for (const combo of chunk.composites) names.add(combo)
+    return [...names].sort()
   }
 
   private relook(): void {
     this.look = createTerrainLook(this.doc.materials, this.sets)
+    this.lookMaterials = this.doc.materials
     for (const [id, view] of this.structures) {
       const voxel = this.doc.structures[id]
       if (!voxel || voxel.kind !== 'voxel') continue
@@ -463,7 +471,7 @@ export class RuntimeScene {
       marks.raycast = () => undefined
       view.group.add(marks)
     }
-    view.chunks.set(key, { solid, water, marks, faceAddr: mesh.solid.faceAddr, waterFaceAddr: mesh.water?.faceAddr ?? null, triangleCount: mesh.solid.triangleCount })
+    view.chunks.set(key, { solid, water, marks, composites: mesh.composites, faceAddr: mesh.solid.faceAddr, waterFaceAddr: mesh.water?.faceAddr ?? null, triangleCount: mesh.solid.triangleCount })
   }
 
   private surfaceMaterial(textureName: string | null, band: boolean): THREE.MeshStandardMaterial {
@@ -555,9 +563,11 @@ export class RuntimeScene {
   /** Rebuild everything: the document's set of structures is authoritative. */
   rebuildAll(): void {
     const start = performance.now()
+    if (this.doc.materials !== this.lookMaterials) this.relook()
     const wanted = new Set(this.doc.structureOrder)
     for (const id of [...this.structures.keys()]) if (!wanted.has(id)) this.dropStructure(id)
     for (const id of this.doc.structureOrder) this.buildStructure(id)
+    this.applyAtlas()
     this.finishStats(start, this.doc.structureOrder.length)
   }
 
@@ -567,6 +577,13 @@ export class RuntimeScene {
    */
   rebuild(dirty: { chunks: readonly string[]; structures: readonly string[]; moved?: readonly string[] }): void {
     const start = performance.now()
+    // A materials edit reaches the scene as a document patch that marks every chunk dirty; the look it meshes with
+    // has to be the new list's, or nothing on screen changes until a reload.
+    if (this.doc.materials !== this.lookMaterials) {
+      this.relook()
+      this.finishStats(start, this.doc.structureOrder.length)
+      return
+    }
     const whole = new Set(dirty.structures)
     for (const id of whole) this.buildStructure(id)
     for (const id of dirty.moved ?? []) {

@@ -124,7 +124,7 @@ export function TerrainBar(props: TerrainPanelProps) {
           />
           <BarDivider />
           {params.sculptVerb === 'ramp' ? (
-            <BarLabel>{ramp ? `Run ${ramp.run} of ${ramp.needed}` : 'Press a cliff face, drag back'}</BarLabel>
+            <BarLabel>{ramp ? (ramp.blocked ? `No ramp here: ${ramp.blocked}` : `Run ${ramp.run} of ${ramp.needed}`) : 'Press a cliff face, drag back'}</BarLabel>
           ) : (
             <>
               <StrokeControls {...props} />
@@ -144,8 +144,8 @@ export function TerrainBar(props: TerrainPanelProps) {
           />
           <BarDivider />
           {params.paintVerb === 'material'
-            ? props.doc.materials.map((material, index) => (
-                <Chip key={material.id} title={`${material.name} · ${material.role}`} swatch={cssColor(material.color)} active={index === params.material} onClick={() => set({ material: index })} />
+            ? props.doc.materials.map((material) => (
+                <Chip key={material.id} title={`${material.name} · ${material.role}`} swatch={cssColor(material.color)} active={material.id === params.material} onClick={() => set({ material: material.id })} />
               ))
             : null}
           <BarDivider />

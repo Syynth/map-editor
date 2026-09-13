@@ -77,6 +77,8 @@ export interface RampDrag {
   readonly edge: RampEdge
   readonly run: number
   readonly needed: number
+  /** Why the ramp cannot be cut here, or null when it can. */
+  readonly blocked: string | null
 }
 
 /** The modifiers a stroke reads, on every terrain verb that has an inverse. */
@@ -169,7 +171,9 @@ function bandMaterial(voxel: ReadonlyVoxel, address: SurfaceAddress): number {
  * hands it to `deps.setParams`, which is an event at the tools actor.
  */
 export function eyedrop(voxel: ReadonlyVoxel, params: TerrainParams, address: SurfaceAddress): Partial<TerrainParams> {
-  if (params.terrainMode === 'paint' && params.paintVerb === 'tint') {
+  // Under Sculpt the pointer picks up a height, and pins it: what Flatten wants from another cell.
+  if (params.terrainMode === 'sculpt') return { height: topHeight(voxel, address.x, address.y), heightPinned: true }
+  if (params.paintVerb === 'tint') {
     const tint = tintPaint(voxel.paint, address.x, address.y)
     return tint === undefined ? {} : { tint }
   }
@@ -233,7 +237,8 @@ export function paintPatches(voxel: ReadonlyVoxel, params: TerrainParams, addres
   switch (params.paintVerb) {
     case 'material':
       if (address.kind === SURFACE_CLIFF) {
-        const faces = cells.filter(([x, y]) => x === address.x || y === address.y).map(([x, y]) => faceOf(address, x, y))
+        // Along the face only: an east or west face runs along z, a south or north one along x.
+        const faces = cells.filter(([x, y]) => (address.dir % 2 === 0 ? x === address.x : y === address.y)).map(([x, y]) => faceOf(address, x, y))
         return paintFace(voxel, faces, erase ? undefined : params.material)
       }
       if (address.kind === SURFACE_TOP) return erase ? [] : setMaterial(voxel, cells, params.material)

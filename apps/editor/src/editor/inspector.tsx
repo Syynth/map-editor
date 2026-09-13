@@ -11,7 +11,7 @@
 
 import { useMemo } from 'react'
 
-import type { Atmosphere, CameraRig, DeepReadonly, MapObject, Placement, ReadonlyMapDoc } from '@papercut/document'
+import { materialById, type Atmosphere, type CameraRig, type DeepReadonly, type MapObject, type Placement, type ReadonlyMapDoc } from '@papercut/document'
 import { useDocument, useHost, useToolsSelector, useViewSelector, type Selection } from '@papercut/editor-host'
 import { mergeParams, type EditorParams } from './params'
 import { chordFor, type Platform } from '@papercut/registry'
@@ -185,7 +185,7 @@ export function Inspector({
           here, and the generated fallback comes from the composition root
           (#47). The Materials section the spec describes (§4) replaces this. */}
       {isTerrain ? (
-        <Section title="Terrain set" summary={doc.materials[params.material]?.top.sheet ?? '—'} defaultOpen={false}>
+        <Section title="Terrain set" summary={materialById(doc.materials, params.material)?.top.sheet ?? '—'} defaultOpen={false}>
           <Note>Every material draws from a terrain set: a sheet and the sidecar that tags its tiles. Pick both files together.</Note>
           <FileButton icon="open" title="Load sheet + sidecar" accept="image/png,image/*,.json,application/json" multiple onFiles={onLoadTerrain} />
           {terrainWarning ? <Note tone="warn">{terrainWarning}</Note> : null}

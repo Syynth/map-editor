@@ -23,7 +23,7 @@
  * the command form of a verb cannot drift from each other either.
  */
 
-import { DIR_VECTORS, NO_RAMP, SURFACE_CLIFF, SURFACE_TOP, clearRampRun, inBounds, rampDirAt, rampRun, rampRunLength, topHeight, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@papercut/document'
+import { DIR_VECTORS, NO_RAMP, SURFACE_CLIFF, SURFACE_TOP, clearRampRun, frameOf, inBounds, rampDirAt, rampRun, rampRunBlocked, rampRunLength, toLocal, topHeight, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@papercut/document'
 import type { FeatureDeps, StrokeHandler, ToolContract } from './deps'
 import { eyedrop, paintPatches, sculptPatches, strokeCells, terrainLabel, type TerrainModifiers } from './verbs'
 
@@ -70,10 +70,13 @@ const topOf = (structure: string, [x, y]: Cell): SurfaceAddress => ({ structure,
 
 /**
  * The Ramp verb is a drag (spec §4): press on a cliff face and drag back onto
- * the high side; the run grows one cell per cell of drag and is previewed
- * through the tool parameters; on release the run is cut if it meets the
- * drop, and refused otherwise. A press on a ramp's own top removes its run;
- * so does a shift-press anywhere on one.
+ * the high side; the run grows one cell per cell of drag, up to what the
+ * drop needs, and is previewed through the tool parameters. The slope is
+ * fixed at 45°, so the drag decides nothing the drop has not: on release the
+ * run the drop needs is cut, whatever the drag reached, unless the ground
+ * behind the edge blocks it — in which case the reason is shown for the
+ * length of the press and nothing is cut. A press on a ramp's own top
+ * removes its run; so does a shift-press anywhere on one.
  */
 function rampHandler(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxel): TerrainStrokeHandler | undefined {
   const address = press.pick.surface
@@ -86,9 +89,11 @@ function rampHandler(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVox
   const edge = { x: address.x, z: address.y, dir: address.dir }
   const needed = rampRunLength(voxel, edge)
   if (needed === null) return undefined
+  const blocked = rampRunBlocked(voxel, edge)
+  const frame = frameOf(deps.doc(), voxel.id)
   const [dx, dz] = DIR_VECTORS[edge.dir]
   let run = 1
-  const show = (): void => deps.setParams({ rampRun: { edge, run, needed } })
+  const show = (): void => deps.setParams({ rampRun: { edge, run, needed, blocked } })
   return {
     label,
     begin: () => {
@@ -98,9 +103,10 @@ function rampHandler(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVox
     move: (sample) => {
       const plane = sample.pick.plane
       if (!plane) return []
-      // How far back onto the high side the pointer has come, in cells, from the edge cell's centre.
-      const back = -((plane.x - (edge.x + 0.5)) * dx + (plane.z - (edge.z + 0.5)) * dz)
-      const next = Math.max(1, Math.floor(back + 0.5) + 1)
+      // How far back onto the high side the pointer has come, in cells, from the edge cell's centre — in the volume's own frame.
+      const [lx, lz] = toLocal(frame, plane.x, plane.z)
+      const back = -((lx - (edge.x + 0.5)) * dx + (lz - (edge.z + 0.5)) * dz)
+      const next = Math.min(needed, Math.max(1, Math.floor(back + 0.5) + 1))
       if (next !== run) {
         run = next
         show()
@@ -109,7 +115,7 @@ function rampHandler(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVox
     },
     end: () => {
       deps.setParams({ rampRun: null })
-      return rampRun(deps.doc(), voxel, edge, run)
+      return blocked ? [] : rampRun(deps.doc(), voxel, edge, needed)
     },
   }
 }
@@ -122,6 +128,8 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
   const anchorHeight = address && inBounds(voxel.size, address.x, address.y) ? topHeight(voxel, address.x, address.y) : 0
   /** Cell last edited, so a drag does not re-apply to the same cell. */
   let lastCell: string | null = null
+  /** The pressed volume's frame: the press plane is in world space, the cells it steers by are the volume's own. */
+  const frame = frameOf(deps.doc(), voxel.id)
   /** The cell a sculpt stroke is on, steered by the press plane; `null` until a tick lands one. */
   let steered: Cell | null = null
 
@@ -143,9 +151,10 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
       if (surface) steered = [surface.x, surface.y]
       return surface ? topOf(voxel.id, [surface.x, surface.y]) : null
     }
-    if (steered === null) steered = [Math.floor(plane.x), Math.floor(plane.z)]
+    const [lx, lz] = toLocal(frame, plane.x, plane.z)
+    if (steered === null) steered = [Math.floor(lx), Math.floor(lz)]
     else {
-      const next = cellPast(steered, plane, params.sculptDeadZone)
+      const next = cellPast(steered, { x: lx, z: lz }, params.sculptDeadZone)
       if (next !== null && inBounds(voxel.size, next[0], next[1])) steered = next
     }
     return topOf(voxel.id, steered)
@@ -153,7 +162,8 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
 
   function tick(sample: TerrainSample, phase: 'start' | 'move' | 'end'): Patch[] {
     const address = steer(sample)
-    if (!address) return []
+    // A stroke edits the volume it was pressed on: a pick that wandered onto another structure is not its business.
+    if (!address || address.structure !== voxel.id) return []
 
     if (sample.modifiers.alt) {
       // The eyedropper changes a tool parameter, not the document, so it

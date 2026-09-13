@@ -11,11 +11,13 @@
  * can draw from several sheets. An exact tile can only come from one set,
  * where every terrain at the corner lives; a composite may mix sets.
  *
- * The atlas grows as strokes create combinations it has not seen. Growth
- * replaces `image` with a taller one and bumps `version`, which is what the
- * runtime keys its texture upload on. Nothing is ever moved: a tile id is
- * stable for the atlas's life, which is what lets a meshed chunk keep its
- * UVs while a neighbour grows the atlas.
+ * The atlas fills as strokes create combinations it has not seen, and it is
+ * a FIXED SIZE from the start: `ATLAS_ROWS` of `ATLAS_COLUMNS` tiles. A UV
+ * is a fraction of the whole image, so an image that grew taller would move
+ * every UV already meshed against it (the first cut of this did exactly that,
+ * and the first chunks of a map sampled the wrong rows). Filling bumps
+ * `version`, which is what the runtime keys its texture upload on; nothing
+ * is ever moved, so a tile id and its UVs are stable for the atlas's life.
  *
  * Pure RGBA over plain buffers: no canvas, so the meshing worker and a
  * headless export can build one.
@@ -45,6 +47,8 @@ export interface AtlasTile {
   tile: number
   /** Baked from edge sets because no tile is tagged for the combination. */
   composite: boolean
+  /** The composited combination's name (`CompositeReport.combo`), for the mesher to report per chunk. */
+  combo?: string
 }
 
 export interface CompositeReport {
@@ -55,12 +59,13 @@ export interface CompositeReport {
 }
 
 const ATLAS_COLUMNS = 32
+/** 64 rows of 32: 2048 tiles, more than a level's worth of transitions; 2 MB of RGBA at 16 px. */
+const ATLAS_ROWS = 64
 
 export class TerrainAtlas {
   readonly tile: number
-  private rows = 0
   private next = 0
-  private buffer: Uint8ClampedArray<ArrayBuffer>
+  private readonly buffer: Uint8ClampedArray<ArrayBuffer>
   /** Corners answered so far, keyed by the four interned terrain ids packed into one number. */
   private byCorner = new Map<number, AtlasTile>()
   /** Terrain keys interned to small ids; 0 is nothing. */
@@ -86,13 +91,19 @@ export class TerrainAtlas {
       this.sets.set(loaded.set.sheet, loaded)
     }
     this.tile = tile
-    this.buffer = new Uint8ClampedArray(0)
+    this.buffer = new Uint8ClampedArray(ATLAS_COLUMNS * tile * ATLAS_ROWS * tile * 4)
     // Every tagged tile of every set is in the atlas from the start, so an exact answer never grows it.
     for (const loaded of sets) for (const index of loaded.set.tiles.keys()) this.sheetTile(loaded, index)
   }
 
+  /** The whole atlas; the same buffer every time, so a consumer keys its upload on `version`, not on identity. */
   get image(): RgbaImage {
-    return { width: ATLAS_COLUMNS * this.tile, height: Math.max(1, this.rows) * this.tile, data: this.buffer }
+    return { width: ATLAS_COLUMNS * this.tile, height: ATLAS_ROWS * this.tile, data: this.buffer }
+  }
+
+  /** How many of the atlas's tiles are taken. */
+  get used(): number {
+    return this.next
   }
 
   /** The tile for a corner: exact when a set has it, else a composite baked on first sight. */
@@ -121,7 +132,7 @@ export class TerrainAtlas {
   uv(tile: number, quadrant: number): [number, number, number, number] {
     const column = tile % ATLAS_COLUMNS
     const row = Math.floor(tile / ATLAS_COLUMNS)
-    const rows = Math.max(1, this.rows)
+    const rows = ATLAS_ROWS
     const half = quadrant < 0 ? 1 : 0.5
     const qx = quadrant < 0 ? 0 : quadrant % 2 ? 0.5 : 0
     const qy = quadrant < 0 ? 0 : quadrant > 1 ? 0.5 : 0
@@ -154,7 +165,8 @@ export class TerrainAtlas {
         if (index !== null) return { tile: this.sheetTile(loaded, index), composite: false }
       }
     }
-    return { tile: this.composite(keys, terrains), composite: true }
+    const tile = this.composite(keys, terrains)
+    return { tile, composite: true, combo: this.composites[this.composites.length - 1].combo }
   }
 
   /** The atlas tile holding a sheet's tile, copied in on first use. */
@@ -206,18 +218,10 @@ export class TerrainAtlas {
     return tile
   }
 
-  /** A fresh, transparent tile; grows the image by a row when the current one is full. */
+  /** A fresh, transparent tile. The atlas does not grow: a level that composes two thousand distinct corners has a different problem. */
   private allocate(): number {
-    const tile = this.next++
-    const rowsNeeded = Math.floor(tile / ATLAS_COLUMNS) + 1
-    if (rowsNeeded > this.rows) {
-      const grown = new Uint8ClampedArray(ATLAS_COLUMNS * this.tile * rowsNeeded * this.tile * 4)
-      grown.set(this.buffer)
-      this.buffer = grown
-      this.rows = rowsNeeded
-    }
-    this.version += 1
-    return tile
+    if (this.next >= ATLAS_COLUMNS * ATLAS_ROWS) throw new Error(`The terrain atlas is full: ${ATLAS_COLUMNS * ATLAS_ROWS} tiles. Author transitions instead of compositing them.`)
+    return this.next++
   }
 
   /** Copy one tile of `source` at (`sx`, `sy`) onto atlas tile `tile`: the quadrants in `mask` only (all when null), source-over when `over`. */

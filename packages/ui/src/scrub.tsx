@@ -66,6 +66,11 @@ function useScrub({ value, min, max, step = 1, onChange }: Pick<ScrubProps, 'val
     // A press that never moved is a click: open the field to type into.
     if (d && !d.moved) setEditing(String(value))
   }
+  /** A cancelled or lost pointer ends the drag where it is, without opening the field. */
+  const onPointerCancel = (): void => {
+    drag.current = null
+    setDragging(false)
+  }
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (editing !== null) return
     const by = step * (event.shiftKey ? COARSE : 1)
@@ -83,7 +88,7 @@ function useScrub({ value, min, max, step = 1, onChange }: Pick<ScrubProps, 'val
     setEditing(null)
   }
 
-  return { editing, setEditing, dragging, commit, handlers: { onPointerDown, onPointerMove, onPointerUp, onKeyDown } }
+  return { editing, setEditing, dragging, commit, handlers: { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onLostPointerCapture: onPointerCancel, onKeyDown } }
 }
 
 function ScrubBody({ label, value, unit, format, wide, ...props }: ScrubProps & { wide: boolean }) {

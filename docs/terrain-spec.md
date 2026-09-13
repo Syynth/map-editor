@@ -223,12 +223,13 @@ arrow keys to nudge, shift for coarse steps.
 | Raise (shift lowers) | Strength, half-tiles per pass | Each column's top moves by the strength; voxels are added with the top voxel's material or removed from the top |
 | Flatten | Height, half-tiles, sampled at the press and editable | Each column's top is set to the height |
 | Smooth | Strength | Each column's top moves toward the mean of its four neighbours by at most the strength |
-| Ramp | none | Press a cliff face and drag back onto the high side; the run grows one cell per cell of drag and the preview shows the cut; a run that does not meet the drop is refused. Click any cell of a ramp to remove the whole run; shift-click removes |
+| Ramp | none | Press a cliff face and drag back onto the high side; the run grows one cell per cell of drag, up to what the drop needs, and the preview shows its cells. The slope is fixed, so on release the run the drop needs is cut whatever the drag reached. Where the ground behind the edge is not level with it, is already sloped, or the run would leave the volume, the bar says why and nothing is cut. Click any cell of a ramp to remove the whole run; shift-click removes |
 
 Strokes keep the boundary-crossing rule with its dead zone. Rectangle and
 flood-fill stroke shapes and the square and round brushes stay. Water is
-not a sculpt verb; the interim pooling verb is removed and the Water tool
-(2026-09-12 ruling) replaces it.
+not a sculpt verb: the interim pooling verb stays in the bar, marked
+interim, only until the Water tool (2026-09-12 ruling, §7 step 5) replaces
+it.
 
 ### Paint
 
@@ -266,8 +267,9 @@ All under the `terrain` owner, plain data, no ambient state:
 | `terrain.tint` | `structure, cells, tint \| null` |
 | `terrain.params`, `terrain.brush.resize` | as today |
 
-`terrain.water`, `terrain.paint.top`, `terrain.paint.cliff`, `terrain.paint.tint`
-are retired; `terrain.face` and `terrain.tint` take their place.
+`terrain.paint.top`, `terrain.paint.cliff` and `terrain.paint.tint` are
+retired; `terrain.face` and `terrain.tint` take their place. `terrain.water`
+stays until the Water tool replaces it (§7, step 5).
 
 ## 6. Format
 
@@ -275,12 +277,13 @@ are retired; `terrain.face` and `terrain.tint` take their place.
 a version-2 file is refused. The sample map is regenerated in the new shape
 and the baked fixtures with it.
 
-The placeholder sheet generator produces `ground.png` and
-`ground.terrain.json` for the sample map's materials: an edge set per
-material and transition blocks for the pairs the sample uses, drawn the
-way the prototype draws them (a raster pass that rounds and fillets the
-over-terrain's region, then rims it). Grass keeps its 3 px bleed in the
-placeholder so the mechanism stays visible.
+The placeholder generator produces the sheet `ground.png` and its terrain
+set in memory, for the map's texel density — nothing is written to disk;
+the editor, the export CLI and the tests each draw their own: an edge set
+per material and transition blocks for every pair of the sample map's
+materials that meet, drawn the way the prototype draws them (a raster pass
+that rounds and fillets the over-terrain's region, then rims it). Grass
+keeps its 3 px bleed in the placeholder so the mechanism stays visible.
 
 ## 7. Order of work
 

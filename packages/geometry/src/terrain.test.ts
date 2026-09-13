@@ -404,3 +404,34 @@ describe('walls are watertight', () => {
     for (const seed of [7, 42]) expect(gaps(rampy(seed)).slice(0, 5)).toEqual([])
   })
 })
+
+describe('walls beside slopes', () => {
+  it('textures the wall between a level cell and a ramp of the same top, rather than sampling nothing', () => {
+    // (0,0) and (0,1) both top out at 4; (0,1) is a ramp descending east, so its edge toward (0,0) slopes from 4 to 2.
+    // The wall the mesher emits under that slope belongs to (0,0)'s south side, and it must find its own bands there.
+    const doc = createMap(4, 4)
+    setHeight(doc, 0, 0, 4)
+    setHeight(doc, 0, 1, 4)
+    setRamp(doc, 0, 1, 0)
+    const look = createTerrainLook(doc.materials, [placeholderSet()])
+    const { solid } = meshTerrainChunk(ground(doc), '0,0', look)
+    const { width, height, data } = look.atlas.image
+    let walls = 0
+    for (let t = 0; t < solid.triangleCount; t++) {
+      if (solid.faceAddr[t * 4] !== SURFACE_CLIFF || solid.faceAddr[t * 4 + 1] !== 0 || solid.faceAddr[t * 4 + 2] !== 0) continue
+      walls += 1
+      // Every triangle of the wall samples an opaque texel at its centroid: no piece fell on the blank tile.
+      let u = 0
+      let v = 0
+      for (let k = 0; k < 3; k++) {
+        const vertex = solid.indices[t * 3 + k]
+        u += solid.uvs[vertex * 2] / 3
+        v += solid.uvs[vertex * 2 + 1] / 3
+      }
+      const px = Math.floor(u * width)
+      const py = Math.floor((1 - v) * height)
+      expect(data[(py * width + px) * 4 + 3]).toBe(255)
+    }
+    expect(walls).toBeGreaterThan(0)
+  })
+})

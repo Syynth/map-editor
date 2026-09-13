@@ -224,7 +224,13 @@ export interface TerrainRef {
  * for a pair, and the layering of a composited corner.
  */
 export interface MaterialDef {
-  id: string
+  /**
+   * What a voxel stores. Assigned when the material is made and never reused
+   * or renumbered, so the list can be reordered — its order is the
+   * materials' priority — or a material deleted without a voxel changing
+   * what it is made of.
+   */
+  id: number
   name: string
   /** Fallback colour when no sheet is loaded, and the swatch. */
   color: number
@@ -308,12 +314,22 @@ export const PLACEHOLDER_SHEET = 'ground.png'
 const placeholder = (terrain: string): TerrainRef => ({ sheet: PLACEHOLDER_SHEET, terrain })
 
 export const DEFAULT_MATERIALS: MaterialDef[] = [
-  { id: 'grass', name: 'Grass', color: 0x6aa84f, role: 'top', top: placeholder('grass'), side: placeholder('dirt') },
-  { id: 'dirt', name: 'Dirt', color: 0x8b6b45, role: 'any', top: placeholder('dirt') },
-  { id: 'stone', name: 'Stone', color: 0x8e8e8e, role: 'wall', top: placeholder('stone') },
-  { id: 'sand', name: 'Sand', color: 0xd9c27e, role: 'top', top: placeholder('sand'), side: placeholder('dirt') },
-  { id: 'path', name: 'Path', color: 0xb08f5e, role: 'top', top: placeholder('path'), side: placeholder('dirt') },
+  { id: 0, name: 'Grass', color: 0x6aa84f, role: 'top', top: placeholder('grass'), side: placeholder('dirt') },
+  { id: 1, name: 'Dirt', color: 0x8b6b45, role: 'any', top: placeholder('dirt') },
+  { id: 2, name: 'Stone', color: 0x8e8e8e, role: 'wall', top: placeholder('stone') },
+  { id: 3, name: 'Sand', color: 0xd9c27e, role: 'top', top: placeholder('sand'), side: placeholder('dirt') },
+  { id: 4, name: 'Path', color: 0xb08f5e, role: 'top', top: placeholder('path'), side: placeholder('dirt') },
 ]
+
+/** The material a voxel names, by id; `undefined` for an id the map no longer has. */
+export function materialById(materials: readonly MaterialDef[], id: number): MaterialDef | undefined {
+  return materials.find((m) => m.id === id)
+}
+
+/** An id no material of the map has: the next number after the highest. */
+export function nextMaterialId(materials: readonly MaterialDef[]): number {
+  return materials.reduce((max, m) => Math.max(max, m.id + 1), 0)
+}
 
 export const ATMOSPHERE_PRESETS: Record<string, Omit<Atmosphere, 'preset' | 'backdrop'>> = {
   'Clear noon': {

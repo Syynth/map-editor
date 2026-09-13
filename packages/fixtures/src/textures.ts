@@ -4,14 +4,10 @@
  * The brief is strict about assets: RPG Maker's RTP must not be used, and
  * anything shipped should be CC0 or similar. Rather than vendor a third-party
  * pack into the repository to get started, the prototype draws its own
- * placeholder sheet and sprites at runtime. They are ugly on purpose — the
- * point is to exercise the template layout, not to look good — and they carry
- * no licence at all.
- *
- * The terrain sheet doubles as its own guide layer: each autotile variant
- * draws a rim on exactly the sides where it is NOT connected to a neighbour,
- * so an artist can read the layout straight off the generated sheet before
- * replacing it with real art through the sheet loader.
+ * placeholder sprites and sketch textures at runtime. They are ugly on purpose
+ * — the point is to exercise the pipeline, not to look good — and they carry
+ * no licence at all. The placeholder terrain set is drawn without a canvas in
+ * `terrainset.ts`, so a headless consumer can make its own.
  *
  * This is the one place in the repo that draws with a 2D canvas to make an
  * asset, and it lives in `fixtures` rather than `runtime` for that reason

@@ -135,12 +135,18 @@ describe('the runtime atlas', () => {
     expect([at(0, T - 1)[0], at(0, T - 1)[3]]).toEqual([60, 255])
   })
 
-  it('names a corner that meets nothing with "edge", and keeps tile ids stable while it grows', () => {
+  it('names a corner that meets nothing with "edge", and keeps every UV where it was as it fills', () => {
     const atlas = new TerrainAtlas([{ set: groundSet(), image: image() }], priority)
     const authored = atlas.tileFor([grass, grass, path, path]).tile
-    const rowsBefore = atlas.image.height
+    const uvBefore = atlas.uv(authored, 0)
+    const { height, data } = atlas.image
+    const used = atlas.used
     for (let i = 0; i < 40; i++) atlas.tileFor([grass, i % 2 ? path : dirt, dirt, null])
-    expect(atlas.image.height).toBeGreaterThan(rowsBefore)
+    // Two combinations composited: the image is the same buffer at the same size, so nothing meshed before moved.
+    expect(atlas.used).toBe(used + 2)
+    expect(atlas.image.height).toBe(height)
+    expect(atlas.image.data).toBe(data)
+    expect(atlas.uv(authored, 0)).toEqual(uvBefore)
     expect(atlas.tileFor([grass, grass, path, path]).tile).toBe(authored)
     expect(atlas.compositeReport().map((c) => c.combo)).toContain('grass · dirt · edge')
     expect(atlas.compositeReport().map((c) => c.combo)).toContain('grass · dirt · path · edge')

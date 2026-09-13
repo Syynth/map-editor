@@ -96,13 +96,17 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
 /** A material names its terrains or it is not a material; the rest defaults. */
 function normaliseMaterials(raw: unknown): MapDoc['materials'] {
   if (!Array.isArray(raw)) return DEFAULT_MATERIALS.map((m) => ({ ...m }))
+  const ids = new Set<number>()
   return raw.map((value, index) => {
     const m = value as Partial<MaterialDef>
     const top = m.top as Partial<TerrainRef> | undefined
     if (!top || typeof top.sheet !== 'string' || typeof top.terrain !== 'string') throw new LoadError(`Material ${index} names no terrain.`)
     const side = m.side as Partial<TerrainRef> | undefined
+    const id = typeof m.id === 'number' && Number.isInteger(m.id) && m.id >= 0 ? m.id : index
+    if (ids.has(id)) throw new LoadError(`Two materials share the id ${id}.`)
+    ids.add(id)
     return {
-      id: typeof m.id === 'string' ? m.id : `material_${index}`,
+      id,
       name: typeof m.name === 'string' ? m.name : `Material ${index + 1}`,
       color: typeof m.color === 'number' ? m.color : 0x808080,
       role: m.role === 'top' || m.role === 'wall' ? m.role : 'any',

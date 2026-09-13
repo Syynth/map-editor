@@ -78,7 +78,7 @@ const terrainParams = z
     height: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT).exactOptional(),
     heightPinned: z.boolean().exactOptional(),
     rampRun: z
-      .object({ edge: z.object({ x: z.int().min(0), z: z.int().min(0), dir: z.int().min(0).max(3) }).strict(), run: z.int().min(1), needed: z.int().min(1) })
+      .object({ edge: z.object({ x: z.int().min(0), z: z.int().min(0), dir: z.int().min(0).max(3) }).strict(), run: z.int().min(1), needed: z.int().min(1), blocked: z.string().nullable() })
       .strict()
       .nullable()
       .exactOptional(),

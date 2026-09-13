@@ -14,7 +14,7 @@
 
 import { useMemo } from 'react'
 
-import { AIR, type MaterialDef, type ReadonlyMapDoc, type RgbaImage, type TerrainRef } from '@papercut/document'
+import { AIR, PLACEHOLDER_SHEET, materialById, nextMaterialId, type MaterialDef, type ReadonlyMapDoc, type RgbaImage, type TerrainRef } from '@papercut/document'
 import { useDocumentSelector, useHost } from '@papercut/editor-host'
 import { exactTile, pairAuthored, terrainKey, type LoadedSet } from '@papercut/geometry'
 import { Action, Actions, ColorInput, Field, Item, List, Note, Row, Segmented, Select, Section, TextInput } from '@papercut/ui'
@@ -56,53 +56,59 @@ const cssColor = (color: number): string => `#${color.toString(16).padStart(6, '
 const refKey = (ref: TerrainRef): string => terrainKey(ref.sheet, ref.terrain)
 const parseRef = (key: string): TerrainRef => ({ sheet: key.slice(0, key.lastIndexOf('/')), terrain: key.slice(key.lastIndexOf('/') + 1) })
 
-/** How many voxels and face overrides use each material, by index. Walks every voxel, so it is selected settled. */
-function usage(doc: ReadonlyMapDoc): number[] {
-  const counts = new Array<number>(doc.materials.length).fill(0)
+/** How many voxels and face overrides use each material, by id. Walks every voxel, so it is selected settled. */
+function usage(doc: ReadonlyMapDoc): Record<number, number> {
+  const counts: Record<number, number> = {}
+  for (const m of doc.materials) counts[m.id] = 0
   for (const id of doc.structureOrder) {
     const s = doc.structures[id]
     if (!s || s.kind !== 'voxel') continue
-    for (const m of s.voxels.material) if (m !== AIR && m < counts.length) counts[m] += 1
-    for (const m of Object.values(s.paint.faces)) if (m < counts.length) counts[m] += 1
+    for (const m of s.voxels.material) if (m !== AIR) counts[m] = (counts[m] ?? 0) + 1
+    for (const m of Object.values(s.paint.faces)) counts[m] = (counts[m] ?? 0) + 1
   }
   return counts
 }
 
-const sameCounts = (a: number[], b: number[]): boolean => a.length === b.length && a.every((v, i) => v === b[i])
+const sameCounts = (a: Record<number, number>, b: Record<number, number>): boolean => {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every((k) => a[Number(k)] === b[Number(k)])
+}
 
+/** `active` is the active material's ID, what the brush paints and what a voxel stores — never a position in the list. */
 export function MaterialsSection({ doc, active, sets }: { doc: ReadonlyMapDoc; active: number; sets: readonly LoadedSet[] }) {
   const host = useHost()
   const counts = useDocumentSelector(usage, { equal: sameCounts, settled: true })
   const materials = doc.materials
-  const material = materials[active]
+  const material = materialById(materials, active)
+  const position = materials.findIndex((m) => m.id === active)
   const terrains = useMemo(() => sets.flatMap((s) => s.set.terrains.map((t) => ({ value: terrainKey(s.set.sheet, t.id), label: `${t.name} · ${s.set.sheet}` }))), [sets])
 
+  // The list whole, every time: its order is the priority. Ids never move, so no voxel changes what it is made of.
   const commit = (next: readonly MaterialDef[]): void => void run(host, 'materials.set', { materials: next.map((m) => ({ ...m })) })
-  const select = (index: number): void => void run(host, 'terrain.params', { material: index })
+  const select = (id: number): void => void run(host, 'terrain.params', { material: id })
   const change = (changes: Partial<MaterialDef>): void => {
     if (!material) return
     const next = { ...material, ...changes }
     if (next.side === undefined) delete next.side
-    commit(materials.map((m, i) => (i === active ? next : m)))
+    commit(materials.map((m) => (m.id === active ? next : m)))
   }
-  const move = (from: number, to: number): void => {
-    if (to < 0 || to >= materials.length) return
+  const move = (to: number): void => {
+    if (position < 0 || to < 0 || to >= materials.length) return
     const next = [...materials]
-    const [moved] = next.splice(from, 1)
+    const [moved] = next.splice(position, 1)
     next.splice(to, 0, moved)
     commit(next)
-    select(to)
   }
   const add = (from: MaterialDef | undefined): void => {
-    const id = `material_${Date.now().toString(36)}`
-    const fresh: MaterialDef = from ? { ...from, id, name: `${from.name} copy` } : { id, name: `Material ${materials.length + 1}`, color: 0x808080, role: 'any', top: materials[0]?.top ?? { sheet: 'ground.png', terrain: 'grass' } }
+    const id = nextMaterialId(materials)
+    const fresh: MaterialDef = from ? { ...from, id, name: `${from.name} copy` } : { id, name: `Material ${materials.length + 1}`, color: 0x808080, role: 'any', top: materials[0]?.top ?? { sheet: PLACEHOLDER_SHEET, terrain: 'grass' } }
     commit([...materials, fresh])
-    select(materials.length)
+    select(id)
   }
   const remove = (): void => {
-    if (!material || materials.length <= 1 || counts[active] > 0) return
-    commit(materials.filter((_, i) => i !== active))
-    select(Math.max(0, active - 1))
+    if (!material || materials.length <= 1 || (counts[active] ?? 0) > 0) return
+    commit(materials.filter((m) => m.id !== active))
+    select(materials[position === 0 ? 1 : position - 1].id)
   }
 
   // Which of the other materials' top terrains this one has an authored transition to, in its own set.
@@ -122,26 +128,16 @@ export function MaterialsSection({ doc, active, sets }: { doc: ReadonlyMapDoc; a
   return (
     <Section title="Materials" summary={material ? `${materials.length} · ${material.name}` : materials.length}>
       <List>
-        {materials
-          .map((m, index) => ({ m, index }))
-          .reverse()
-          .map(({ m, index }) => (
-            <Item
-              key={m.id}
-              name={m.name}
-              meta={`${m.role} · ${counts[index] ?? 0}`}
-              swatch={swatchFor(sets, m.top) ?? cssColor(m.color)}
-              active={index === active}
-              onClick={() => select(index)}
-            />
-          ))}
+        {[...materials].reverse().map((m) => (
+          <Item key={m.id} name={m.name} meta={`${m.role} · ${counts[m.id] ?? 0}`} swatch={swatchFor(sets, m.top) ?? cssColor(m.color)} active={m.id === active} onClick={() => select(m.id)} />
+        ))}
       </List>
       <Note>Top of the list draws over what is below it where two meet in a corner the artist has not drawn.</Note>
       {material ? (
         <>
           <Actions>
-            <Action title="Move up" disabled={active >= materials.length - 1} onClick={() => move(active, active + 1)} />
-            <Action title="Move down" disabled={active <= 0} onClick={() => move(active, active - 1)} />
+            <Action title="Move up" disabled={position >= materials.length - 1} onClick={() => move(position + 1)} />
+            <Action title="Move down" disabled={position <= 0} onClick={() => move(position - 1)} />
             <Action title="New material" onClick={() => add(undefined)} />
             <Action title="Duplicate" onClick={() => add(material)} />
             <Action title="Delete" tone="danger" disabled={materials.length <= 1 || (counts[active] ?? 0) > 0} onClick={remove} />

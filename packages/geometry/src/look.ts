@@ -15,7 +15,7 @@ import { TerrainAtlas, terrainKey, type LoadedSet, type TerrainKey } from './atl
 
 export interface TerrainLook {
   readonly atlas: TerrainAtlas
-  /** The terrain drawing one face of a material: its side terrain on a side, its top terrain otherwise; `null` for a material the map does not have. */
+  /** The terrain drawing one face of a material, by the material's id: its side terrain on a side, its top terrain otherwise; `null` for an id the map does not have. */
   keyOf(material: number, side: boolean): TerrainKey | null
 }
 
@@ -33,8 +33,12 @@ export function createTerrainLook(materials: readonly MaterialDef[], sets: reado
     if (!sideOf.has(side[index])) sideOf.set(side[index], index)
   })
   const priority = (key: TerrainKey): number => topOf.get(key) ?? sideOf.get(key) ?? -1
+  const byId = new Map(materials.map((m, index) => [m.id, index]))
   return {
     atlas: new TerrainAtlas(sets, priority),
-    keyOf: (material, isSide) => (material >= 0 && material < materials.length ? (isSide ? side[material] : top[material]) : null),
+    keyOf: (material, isSide) => {
+      const index = byId.get(material)
+      return index === undefined ? null : isSide ? side[index] : top[index]
+    },
   }
 }

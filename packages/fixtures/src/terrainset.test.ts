@@ -16,7 +16,8 @@ describe('the placeholder terrain set', () => {
     expect(set.tiles.size).toBe(blocks * 16)
     for (const t of PLACEHOLDER_TERRAINS) expect(edgeCoverage(set, t.id)).toBe(16)
     for (const [a, b] of PLACEHOLDER_PAIRS) expect(pairAuthored(set, a, b)).toBe(true)
-    expect(pairAuthored(set, 'stone', 'grass')).toBe(false)
+    // Every pair of the sample's five terrains is authored; what is left to compose is a corner of three or more.
+    expect(exactTile(set, ['stone', 'grass', 'sand', 'grass'])).toBeNull()
   })
 
   it('leaves an edge set transparent where it meets nothing, and fills a pair tile completely', () => {
@@ -52,7 +53,7 @@ describe('the placeholder terrain set', () => {
     expect(back.tiles.size).toBe(set.tiles.size)
     const atlas = new TerrainAtlas([{ set: back, image }], (key) => PLACEHOLDER_TERRAINS.findIndex((t) => key === terrainKey('ground.png', t.id)))
     expect(atlas.tileFor([terrainKey('ground.png', 'grass'), terrainKey('ground.png', 'grass'), terrainKey('ground.png', 'path'), terrainKey('ground.png', 'path')]).composite).toBe(false)
-    expect(atlas.tileFor([terrainKey('ground.png', 'stone'), terrainKey('ground.png', 'grass'), terrainKey('ground.png', 'grass'), terrainKey('ground.png', 'grass')]).composite).toBe(true)
-    expect(atlas.compositeReport().map((c) => c.combo)).toEqual(['stone · grass'])
+    expect(atlas.tileFor([terrainKey('ground.png', 'stone'), terrainKey('ground.png', 'grass'), terrainKey('ground.png', 'sand'), terrainKey('ground.png', 'grass')]).composite).toBe(true)
+    expect(atlas.compositeReport().map((c) => c.combo)).toEqual(['stone · sand · grass'])
   })
 })
