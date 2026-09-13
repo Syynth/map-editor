@@ -114,18 +114,40 @@ export function frameOf(doc: ReadonlyMapDoc, id: string): Frame {
 export function groundHeight(doc: ReadonlyMapDoc, worldX: number, worldZ: number): number {
   let best = 0
   for (const id of doc.structureOrder) {
-    const s = doc.structures[id]
-    if (!s) continue
-    const frame = frameOf(doc, id)
-    const [lx, lz] = toLocal(frame, worldX, worldZ)
-    if (s.kind === 'voxel') {
-      const top = voxelTop(s, lx, lz)
-      if (top !== null) best = Math.max(best, frame.y + top)
-    } else if (s.closed && s.points.length >= 3 && pointInOutline(outlineOf(s.points), lx, lz)) {
-      best = Math.max(best, frame.y + s.layers * HALF)
-    }
+    const top = topOfAt(doc, id, worldX, worldZ)
+    if (top !== null) best = Math.max(best, top)
   }
   return best
+}
+
+/** The world height of a structure's top under a world point, or `null` when the point is outside its footprint. */
+function topOfAt(doc: ReadonlyMapDoc, id: string, worldX: number, worldZ: number): number | null {
+  const s = doc.structures[id]
+  if (!s) return null
+  const frame = frameOf(doc, id)
+  const [lx, lz] = toLocal(frame, worldX, worldZ)
+  if (s.kind === 'voxel') {
+    const top = voxelTop(s, lx, lz)
+    return top === null ? null : frame.y + top
+  }
+  return s.closed && s.points.length >= 3 && pointInOutline(outlineOf(s.points), lx, lz) ? frame.y + s.layers * HALF : null
+}
+
+/**
+ * The structure whose top is under a world point — the highest of those
+ * whose footprint contains it, a later one winning a tie so a child beats
+ * the parent it stands on. `exclude` leaves out ids that must not answer:
+ * the structure being dragged and its descendants, which would otherwise
+ * find themselves. `null` when nothing is there (off every volume).
+ */
+export function structureAt(doc: ReadonlyMapDoc, worldX: number, worldZ: number, exclude: ReadonlySet<string> = new Set()): string | null {
+  let best: { id: string; top: number } | null = null
+  for (const id of doc.structureOrder) {
+    if (exclude.has(id)) continue
+    const top = topOfAt(doc, id, worldX, worldZ)
+    if (top !== null && (best === null || top >= best.top)) best = { id, top }
+  }
+  return best?.id ?? null
 }
 
 /** The world position of the centre of one of a voxel volume's cells, on its top. */

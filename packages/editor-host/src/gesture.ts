@@ -100,6 +100,8 @@ export interface GestureContext {
   readonly press: (PointerPress & { readonly editing: boolean }) | null
   /** The most recent stroke — stopped or not. Retained so a late send dead-letters. */
   readonly stroke: StrokeRef | undefined
+  /** The open stroke's handler, for what it says it is carrying; `null` outside a stroke. */
+  readonly handler: EditorStrokeHandler | null
   /** The last sample the open stroke saw, so `end` can carry where the pointer was. */
   readonly lastSample: StrokeSample | null
 }
@@ -123,7 +125,7 @@ export function gestureLogic(deps: GestureDeps) {
     },
   }).createMachine({
     id: 'gesture',
-    context: { held: new Set<string>(), press: null, stroke: undefined, lastSample: null },
+    context: { held: new Set<string>(), press: null, stroke: undefined, handler: null, lastSample: null },
     initial: 'none',
     on: {
       'key.down': ({ context, event }) => (context.held.has(event.key) ? undefined : { context: { held: new Set([...context.held, event.key]) } }),
@@ -153,7 +155,7 @@ export function gestureLogic(deps: GestureDeps) {
             if (!handler) return undefined
             const stroke = enq.spawn(strokeLogic(handler, deps.reader, deps.document))
             enq.sendTo(stroke, { type: 'begin', sample })
-            return { target: 'stroke', context: { stroke, lastSample: sample } }
+            return { target: 'stroke', context: { stroke, handler, lastSample: sample } }
           },
         },
       },
@@ -190,7 +192,7 @@ export function gestureLogic(deps: GestureDeps) {
           },
           'pointer.up': ({ context }, enq) => {
             enq.sendTo(context.stroke, { type: 'end', sample: context.lastSample ?? { pick: NO_PICK, modifiers: { shift: false, alt: false, ctrl: false } } })
-            return { target: 'none' }
+            return { target: 'none', context: { handler: null } }
           },
         },
       },

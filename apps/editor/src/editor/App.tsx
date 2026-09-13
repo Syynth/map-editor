@@ -332,6 +332,7 @@ export default function App() {
       onPointerMove: (motion) => host.input.pointerMove(motion),
       onPointerUp: (release) => host.input.pointerUp(release),
       onStrokeMove: (pick, modifiers) => host.input.strokeMove(pick, modifiers),
+      carrying: () => host.input.carrying(),
       heldKeys: () => host.input.heldKeys(),
       onHover: (pick) => {
         setHover(pick.surface)
