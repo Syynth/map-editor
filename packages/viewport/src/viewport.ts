@@ -149,7 +149,7 @@ export interface PlaySession {
 
 export interface ViewportOptions {
   /** Cells the brush would affect, previewed under the cursor. */
-  brushPreview: Array<[number, number]>
+  brushPreview: ReadonlyArray<readonly [number, number]>
   showGrid: boolean
   /** Clamp the editor camera to what the game rig allows. */
   gameCamera: boolean

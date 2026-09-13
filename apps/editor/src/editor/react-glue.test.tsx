@@ -37,7 +37,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { features } from '../features'
 
-import { HostProvider, createHost, useDocument, useHost, useToolsSelector, type Host } from '@papercut/editor-host'
+import { HostProvider, createHost, useDocument, useDocumentSelector, useHost, useToolsSelector, useViewportSelector, type Host } from '@papercut/editor-host'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
 const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
@@ -153,6 +153,90 @@ describe('the React glue', () => {
 
     act(() => void host.dispatch('undo'))
     expect(window.document.querySelector('[data-testid="live"]')?.textContent).toBe(String(before))
+  })
+
+  it('useDocumentSelector with an equality re-renders only when what it selected changed, not on every revision', () => {
+    let renders = 0
+
+    function Height() {
+      renders += 1
+      return <span data-testid="selected">{useDocumentSelector(heightAtOrigin, { equal: Object.is })}</span>
+    }
+
+    const host = mount(() => <Height />)
+    const before = renders
+    const wasHigh = ground(host.reader.doc).terrain.height[0]
+
+    // A revision that leaves the selected cell alone: no render.
+    act(() => {
+      host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, ground(host.reader.doc), [[3, 3]], 1) })
+    })
+    expect(renders).toBe(before)
+
+    act(() => {
+      host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, ground(host.reader.doc), [[0, 0]], 2) })
+    })
+    expect(renders).toBe(before + 1)
+    expect(window.document.querySelector('[data-testid="selected"]')?.textContent).toBe(String(wasHigh + 2))
+  })
+
+  it('a settled read holds while a stroke is open and catches up when it closes', () => {
+    let renders = 0
+
+    function Height() {
+      renders += 1
+      return <span data-testid="settled">{useDocument(heightAtOrigin, { settled: true })}</span>
+    }
+
+    const host = mount(() => <Height />)
+    const wasHigh = ground(host.reader.doc).terrain.height[0]
+    const modifiers = { shift: false, alt: false, ctrl: false }
+    const top = { structure: 'ground', kind: 0 as const, x: 5, y: 5, dir: -1, level: 0 }
+
+    // A terrain stroke open at the far corner; an edit to the cell this component reads lands mid-stroke.
+    act(() => void host.dispatch('tools.set', { tool: 'terrain' }))
+    act(() => void host.input.pointerDown({ x: 50, y: 50, button: 0, modifiers, pick: { surface: top, point: { x: 5.5, z: 5.5 }, objectId: null } }))
+    expect(host.input.gesture()).toBe('stroke')
+    const during = renders
+    act(() => {
+      host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, ground(host.reader.doc), [[0, 0]], 3) })
+    })
+    expect(renders).toBe(during)
+    expect(window.document.querySelector('[data-testid="settled"]')?.textContent).toBe(String(wasHigh))
+
+    act(() => host.input.pointerUp({ x: 50, y: 50 }))
+    expect(window.document.querySelector('[data-testid="settled"]')?.textContent).toBe(String(wasHigh + 3))
+  })
+
+  it('a viewport readout re-renders only the component that selected the field that moved', () => {
+    const renders = { hover: 0, camera: 0 }
+
+    function Hover() {
+      renders.hover += 1
+      return <span>{useViewportSelector((snapshot) => snapshot.context.hover?.x ?? -1)}</span>
+    }
+
+    function Camera() {
+      renders.camera += 1
+      return <span>{useViewportSelector((snapshot) => Math.round(snapshot.context.camera.yaw))}</span>
+    }
+
+    const host = mount(() => (
+      <>
+        <Hover />
+        <Camera />
+      </>
+    ))
+    const before = { ...renders }
+    const at = (x: number) => ({ structure: 'ground', kind: 0 as const, x, y: 1, dir: -1, level: 0 })
+
+    act(() => host.children.viewport.send({ type: 'hover', surface: at(2), cells: [] }))
+    expect(renders).toEqual({ hover: before.hover + 1, camera: before.camera })
+    // The same cell again: the actor keeps its snapshot, so nothing re-renders.
+    act(() => host.children.viewport.send({ type: 'hover', surface: at(2), cells: [] }))
+    expect(renders.hover).toBe(before.hover + 1)
+    act(() => host.children.viewport.send({ type: 'camera', camera: { yaw: 90, pitch: 35, distance: 26, inBounds: true } }))
+    expect(renders).toEqual({ hover: before.hover + 1, camera: before.camera + 1 })
   })
 
   it('throws outside a provider rather than returning nothing', () => {

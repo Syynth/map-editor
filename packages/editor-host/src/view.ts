@@ -31,6 +31,10 @@ const viewSettings = z
     gameCamera: z.boolean().exactOptional(),
     inspector: z.enum(['properties', 'coverage', 'atmosphere', 'outliner']).exactOptional(),
     layers: layerRange.nullable().exactOptional(),
+    /** The level's own sections — camera rig, atmosphere, coverage — opened and closed together from the rail's gear. */
+    levelOpen: z.boolean().exactOptional(),
+    /** What the last file action said (saved, loaded, exported, or why not), shown until the next one. */
+    notice: z.string().min(1).nullable().exactOptional(),
   })
   .strict()
 
@@ -93,7 +97,7 @@ export const viewLogic = setup({
   },
 }).createMachine({
   id: 'view',
-  context: { showGrid: true, gameCamera: false, inspector: 'properties', layers: null, selection: null, selectedObjectId: null },
+  context: { showGrid: true, gameCamera: false, inspector: 'properties', layers: null, levelOpen: false, notice: null, selection: null, selectedObjectId: null },
   initial: 'ready',
   states: {
     ready: {

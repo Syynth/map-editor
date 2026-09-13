@@ -10,14 +10,35 @@
  */
 
 import type { Selection } from '@papercut/editor-host'
-import type { EditorParams } from './params'
-import { useHost } from '@papercut/editor-host'
+import { mergeParams, type EditorParams } from './params'
+import { useDocument, useHost, useToolsSelector, useViewSelector } from '@papercut/editor-host'
 import type { ReadonlyMapDoc, SnapMode } from '@papercut/document'
 import { SPRITE_NAMES } from '@papercut/fixtures/textures'
 import type { TerrainPanelProps } from '@papercut/feature-terrain'
 import { always, chordFor, evaluate, panels, tools, type PanelSlot, type Platform } from '@papercut/registry'
 import { BarDivider, BarGroup, BarLabel, BarValue, Chip, IconSegmented, Verb, type IconName } from '@papercut/ui'
-import type { ComponentType } from 'react'
+import { useMemo, type ComponentType } from 'react'
+
+import { run, setParams } from './commands'
+
+const wholeDocument = (doc: ReadonlyMapDoc): ReadonlyMapDoc => doc
+
+/**
+ * The context bar as a region: the active tool's bar, re-rendered when the tool, its parameters or the selection change,
+ * and when the document does once a stroke has closed (`settled`) — not on every tick of a drag.
+ */
+export function ContextBar({ platform }: { platform: Platform }) {
+  const host = useHost()
+  const tools = useToolsSelector((snapshot) => snapshot.context)
+  const params = useMemo(() => mergeParams(tools), [tools])
+  const selection = useViewSelector((snapshot) => snapshot.context.selection)
+  const doc = useDocument(wholeDocument, { settled: true })
+  const set = (changes: Partial<EditorParams>): void => setParams(host, changes)
+  if (params.tool === 'select')
+    return <SelectBar doc={doc} selection={selection} params={params} set={set} platform={platform} onDelete={() => run(host, 'selection.delete')} onClear={() => run(host, 'selection.set', { id: null })} />
+  if (params.tool === 'object') return <ObjectBar params={params} set={set} />
+  return <FeaturePanels slot="bar" tool={params.tool} doc={doc} params={params} platform={platform} selection={selection} />
+}
 
 /**
  * The panels the active tool's owner declared for `slot`, in declaration

@@ -48,6 +48,9 @@ export { TOOLS_OWNER, toolKeys } from './tools'
 export type { FeatureParams, ToolId, ToolSettings, ToolsContext } from './tools'
 
 export { VIEW_OWNER, selectionSubject, viewKeys } from './view'
+export { VIEWPORT_OWNER, sameSurface } from './viewport'
+export type { BrushCells, CameraReadout, FrameStats, ViewportState } from './viewport'
 export type { Selection, ViewContext, ViewSettings } from './view'
 
-export { HostProvider, useDocument, useHost, useHostRef, useHostSelector, useToolsSelector, useViewSelector } from './react'
+export { HostProvider, useDocument, useDocumentSelector, useHost, useHostRef, useHostSelector, useToolsSelector, useViewSelector, useViewportSelector } from './react'
+export type { DocumentSelectOptions } from './react'

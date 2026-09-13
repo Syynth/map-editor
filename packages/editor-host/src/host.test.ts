@@ -331,11 +331,15 @@ describe('tools: the active tool and the sprite are the host\'s; every other par
 describe('view and selection', () => {
   it('sets the toggles', () => {
     const { host, dispatch } = makeHost()
-    expect(dispatch('view.set', { gameCamera: true, inspector: 'outliner' })).toEqual({ ok: true })
+    expect(dispatch('view.set', { gameCamera: true, inspector: 'outliner', levelOpen: true, notice: 'Saved sample.map.json' })).toEqual({ ok: true })
     const { context } = host.children.view.getSnapshot()
     expect(context.gameCamera).toBe(true)
     expect(context.inspector).toBe('outliner')
     expect(context.showGrid).toBe(true)
+    expect(context.levelOpen).toBe(true)
+    expect(context.notice).toBe('Saved sample.map.json')
+    expect(dispatch('view.set', { notice: null })).toEqual({ ok: true })
+    expect(host.children.view.getSnapshot().context.notice).toBeNull()
   })
 
   it('holds the layer view range, validated against the document bounds, cleared with null', () => {
@@ -905,11 +909,68 @@ describe('the host as a whole', () => {
     expect(host.children.document.getSnapshot().status).toBe('active')
   })
 
+  it('holds the viewport actor as a child, keyed under its reserved owner', () => {
+    const { host } = makeHost()
+    expect(host.child('editor-host.viewport')).toBe(host.children.viewport)
+    expect(() => host.dispose('editor-host.viewport')).toThrow(/reserved/)
+  })
+
   it('holds the gesture actor as a child, keyed under its reserved owner', () => {
     const { host } = makeHost()
     expect(host.child('editor-host.gesture')).toBe(host.children.gesture)
     expect(host.input.gesture()).toBe('none')
     expect(() => host.dispose('editor-host.gesture')).toThrow(/reserved/)
+  })
+})
+
+describe('the viewport actor: what the viewport observed', () => {
+  it('writes a reading only when it differs from the last, so a pointer within a cell or a camera nudge notifies nobody', () => {
+    const { host } = makeHost()
+    const viewport = host.children.viewport
+    const top = topAt(2, 3)
+    viewport.send({ type: 'hover', surface: top, cells: [[2, 3]] })
+    const after = viewport.getSnapshot()
+    expect(after.context.hover).toEqual(top)
+    expect(after.context.brushCells).toEqual([[2, 3]])
+
+    // The same cell again, as new objects: nothing changes, the snapshot is the same one.
+    viewport.send({ type: 'hover', surface: { ...top }, cells: [[2, 3]] })
+    expect(viewport.getSnapshot()).toBe(after)
+    viewport.send({ type: 'hover', surface: topAt(4, 3), cells: [[2, 3]] })
+    expect(viewport.getSnapshot()).not.toBe(after)
+    expect(viewport.getSnapshot().context.brushCells).toBe(after.context.brushCells)
+
+    const camera = viewport.getSnapshot().context.camera
+    const settled = viewport.getSnapshot()
+    viewport.send({ type: 'camera', camera: { ...camera, yaw: camera.yaw + 0.2 } })
+    expect(viewport.getSnapshot()).toBe(settled)
+    viewport.send({ type: 'camera', camera: { ...camera, inBounds: false } })
+    expect(viewport.getSnapshot().context.camera.inBounds).toBe(false)
+
+    viewport.send({ type: 'stats', stats: { fps: 60, triangles: 5000, meshMs: 1.5 } })
+    viewport.send({ type: 'renderer', software: true })
+    expect(viewport.getSnapshot().context).toMatchObject({ stats: { fps: 60 }, softwareRenderer: true })
+  })
+
+  it('holds a loaded sheet and what loading it said, until told to go back to the generated one', () => {
+    const { host } = makeHost()
+    const image = { width: 16, height: 16, data: new Uint8ClampedArray(16 * 16 * 4) }
+    host.children.viewport.send({ type: 'sheet', image, warning: 'expected 16 × 5 tiles' })
+    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedSheet: image, sheetWarning: 'expected 16 × 5 tiles' })
+    host.children.viewport.send({ type: 'sheet', image: null, warning: null })
+    expect(host.children.viewport.getSnapshot().context.loadedSheet).toBeNull()
+  })
+
+  it('answers frame and sweep with an event for whoever holds the viewport', () => {
+    const { host, dispatch } = makeHost()
+    const heard: string[] = []
+    const frame = host.children.viewport.on('frame', (event) => heard.push(event.type))
+    const sweep = host.children.viewport.on('sweep', (event) => heard.push(event.type))
+    expect(dispatch('viewport.frame')).toEqual({ ok: true })
+    expect(dispatch('viewport.sweep')).toEqual({ ok: true })
+    expect(heard).toEqual(['frame', 'sweep'])
+    frame.unsubscribe()
+    sweep.unsubscribe()
   })
 })
 
