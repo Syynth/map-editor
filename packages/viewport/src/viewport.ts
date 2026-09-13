@@ -31,6 +31,7 @@ import {
   frameOf,
   levelCentre,
   toWorld,
+  type DocumentTarget,
 } from '@map-editor/document'
 import {
   Character,
@@ -195,7 +196,8 @@ export interface ViewportOptions {
   play: PlaySession | null
   /** Hovered surface, highlighted. */
   hover: SurfaceAddress | null
-  selectedObjectId: string | null
+  /** What is selected, as the scene knows it: framed with a box, whatever its kind. */
+  selection: DocumentTarget | null
   /** The height range drawn, in half-tiles, or `null` for all of it — the layer view. */
   layers: LayerRange | null
   /** The sketch being drawn or edited: its points in world space, whether its outline closes, and which point is selected. */
@@ -215,7 +217,7 @@ const DEFAULT_OPTIONS: ViewportOptions = {
   gameCamera: false,
   play: null,
   hover: null,
-  selectedObjectId: null,
+  selection: null,
   layers: null,
   sketch: null,
 }
@@ -688,18 +690,9 @@ export class Viewport {
   }
 
   private updateSelection(): void {
-    const id = this.options.selectedObjectId
-    if (!id || this.playing) {
-      this.selectionBox.visible = false
-      return
-    }
-    const view = this.scene.objectViews().find((entry) => entry.object.id === id)
-    if (!view) {
-      this.selectionBox.visible = false
-      return
-    }
-    const box = new THREE.Box3().setFromObject(view.group)
-    if (box.isEmpty()) {
+    const target = this.options.selection
+    const box = target && !this.playing ? this.scene.boundsOf(target) : null
+    if (!box) {
       this.selectionBox.visible = false
       return
     }

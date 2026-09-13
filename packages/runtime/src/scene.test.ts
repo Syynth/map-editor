@@ -128,3 +128,34 @@ describe('the layer view slices a sketch', () => {
     expect(firstColour(part('wallBody') as THREE.Mesh)).toBe(GHOST_TINT)
   })
 })
+
+describe('bounds of a target', () => {
+  it('frames an object or a structure of any kind, and answers null for what is not in the scene', () => {
+    const doc = createMap(6, 6)
+    const island = createSketch('ground', 'Island', { x: 1, z: 1, yaw: 0 })
+    island.points = [
+      { x: 0, z: 0, smooth: false },
+      { x: 2, z: 0, smooth: false },
+      { x: 2, z: 2, smooth: false },
+      { x: 0, z: 2, smooth: false },
+    ]
+    island.closed = true
+    island.layers = 2
+    doc.structures[island.id] = island
+    doc.structureOrder.push(island.id)
+    const runtime = new RuntimeScene(doc, { sheet: solid(16, 5, [0, 255, 0, 255]), sprites, textures: {} })
+    runtime.rebuildAll()
+
+    const ground = runtime.boundsOf({ kind: 'structure', id: 'ground' })
+    expect(ground?.min.x).toBeCloseTo(0)
+    expect(ground?.max.x).toBeCloseTo(6)
+    // The default wall flares out at its base, so the box is a little wider than the outline, centred on it.
+    const sketch = runtime.boundsOf({ kind: 'structure', id: island.id })
+    expect(((sketch?.min.x ?? 0) + (sketch?.max.x ?? 0)) / 2).toBeCloseTo(2)
+    expect(sketch?.min.x).toBeLessThan(1)
+    expect(sketch?.max.x).toBeGreaterThan(3)
+    expect((sketch?.max.y ?? 0) - (sketch?.min.y ?? 0)).toBeCloseTo(2 * HALF, 1)
+    expect(runtime.boundsOf({ kind: 'structure', id: 'nope' })).toBeNull()
+    expect(runtime.boundsOf({ kind: 'object', id: 'nope' })).toBeNull()
+  })
+})

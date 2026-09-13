@@ -31,6 +31,7 @@ import {
   type ReadonlyVoxel,
   type RgbaImage,
   type SpriteAsset,
+  type DocumentTarget,
 } from '@map-editor/document'
 import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@map-editor/geometry'
 import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
@@ -553,6 +554,20 @@ export class RuntimeScene {
 
   objectViews(): ObjectView[] {
     return [...this.views.values()]
+  }
+
+  /** The scene node a target is drawn as: an object's group, or a structure's. `null` when it is not in the scene. */
+  nodeOf(target: DocumentTarget): THREE.Object3D | null {
+    if (target.kind === 'object') return this.views.get(target.id)?.group ?? null
+    return this.structures.get(target.id)?.group ?? null
+  }
+
+  /** The world bounds of a target, for a highlight to frame; `null` when it is not in the scene or draws nothing. */
+  boundsOf(target: DocumentTarget): THREE.Box3 | null {
+    const node = this.nodeOf(target)
+    if (!node) return null
+    const box = new THREE.Box3().setFromObject(node)
+    return box.isEmpty() ? null : box
   }
 
   objectGroups(): THREE.Object3D[] {

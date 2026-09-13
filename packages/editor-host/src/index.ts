@@ -47,7 +47,7 @@ export type { PickSample, PointerModifiers, StrokeSample, ToolsSnapshot } from '
 export { TOOLS_OWNER, toolKeys } from './tools'
 export type { FeatureParams, ToolId, ToolSettings, ToolsContext } from './tools'
 
-export { VIEW_OWNER, viewKeys } from './view'
+export { VIEW_OWNER, selectionSubject, viewKeys } from './view'
 export type { Selection, ViewContext, ViewSettings } from './view'
 
 export { HostProvider, useDocument, useHost, useHostRef, useHostSelector, useToolsSelector, useViewSelector } from './react'

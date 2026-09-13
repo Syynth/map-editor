@@ -153,3 +153,4 @@ export { MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST, autotileMask } from './au
 export { CHUNK_SIZE, allChunkKeys, chunkBounds, chunkKey, parseChunkKey, parseStructureChunkKey, structureChunkKey } from './chunks'
 export type { ChunkBounds } from './chunks'
 export { snapTo, type SnapAnchor, type SnapMode } from './snap'
+export type { DocumentTarget } from './target'
