@@ -75,13 +75,6 @@ export interface SketchMeshOptions {
   readonly profile?: WallProfile
   /** Chaikin rounds per smooth point; 3 is visually round at island scale. */
   readonly rounds?: number
-  /**
-   * Draw only what lies below this height: the wall is sliced there and
-   * capped, and the lip is gone with everything above. The full profile still
-   * shapes the wall, so the slice reads as the island cut through, not as a
-   * shorter island (the layer view — `docs/design/select-first.html`).
-   */
-  readonly cut?: number
 }
 
 export interface SketchMesh {
@@ -498,20 +491,6 @@ export function meshSketch(profile: Profile, options: SketchMeshOptions): Sketch
   const wallProfile = wallProfilePolyline(options.profile ?? PLUMB)
   if (outline.points.length < 3) {
     return { outline, cap: EMPTY, rim: EMPTY, wallBody: EMPTY, wallTop: EMPTY, wallBottom: EMPTY }
-  }
-
-  const cut = options.cut
-  if (cut !== undefined && cut < h) {
-    if (cut <= 0) return { outline, cap: EMPTY, rim: EMPTY, wallBody: EMPTY, wallTop: EMPTY, wallBottom: EMPTY }
-    // The cut face is the wall's own ring at that height; no rim dresses it, and the top band went with the lip.
-    return {
-      outline,
-      cap: buildCap(outline, cut, ring(outline, wallProfile, cut / h), cap.fillScale),
-      rim: EMPTY,
-      wallBody: buildWallBody(outline, h, wallProfile, cut, wall.bodyScale),
-      wallTop: EMPTY,
-      wallBottom: buildWallBand(outline, h, wallProfile, 0, Math.min(wall.bottom.width, cut), wall.bottom, 0, Math.min(1, cut / wall.bottom.width)),
-    }
   }
 
   switch (lip) {

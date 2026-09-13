@@ -19,9 +19,16 @@ import {
   HALF,
   SURFACE_SKETCH_CAP,
   SURFACE_SKETCH_WALL,
+  SURFACE_TOP,
   allChunkKeys,
+  decodeExtra,
   frameOf,
   levelCentre,
+  outlineOf,
+  pointInOutline,
+  toLocal,
+  voxelTop,
+  type SurfaceAddress,
   parseStructureChunkKey,
   structureChunkKey,
   type EdgeBand,
@@ -35,7 +42,8 @@ import {
 } from '@papercut/document'
 import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@papercut/geometry'
 import { ObjectView, releaseReplaced, releaseTexture, rgbaTexture, spriteImages, type ObjectViewContext } from './billboard'
-import { CUT_TINT, GHOST_TINT, layerView, withinLayers, type LayerRange } from './layers'
+import { withinLayers, type LayerRange } from './layers'
+import { SectionCut, VoxelCap, type SketchCap } from './section'
 import { Sky, sunDirection } from './sky'
 
 function buildGeometry(buffers: MeshBuffers): THREE.BufferGeometry {
@@ -62,6 +70,8 @@ interface StructureView {
   chunks: Map<string, ChunkView>
   /** A sketch's parts, each with the face addresses a pick reads. */
   parts: Map<THREE.Mesh, Int32Array>
+  /** What the layer view draws where its ceiling cuts this structure (`section.ts`). */
+  cap: VoxelCap | SketchCap | null
   triangleCount: number
 }
 
@@ -92,35 +102,20 @@ function bandSpec(band: EdgeBand | undefined): EdgeSpec {
   return band ? { width: band.width, segment: band.segment, repeat: band.repeat } : { width: 0.01, segment: 1, repeat: 'tile' }
 }
 
-/** What the mesher needs from a sketch and the two materials it names; `cut` slices it at that height above its base. */
-export function sketchMeshOf(doc: ReadonlyMapDoc, sketch: ReadonlySketch, cut?: number): SketchMesh {
+/** What the mesher needs from a sketch and the two materials it names. */
+export function sketchMeshOf(doc: ReadonlyMapDoc, sketch: ReadonlySketch): SketchMesh {
   const cap = doc.surfaceMaterials[sketch.capMaterial] as FillEdgeMaterial | undefined
   const wall = doc.surfaceMaterials[sketch.wallMaterial] as FillEdgeMaterial | undefined
   return meshSketch(
     { points: sketch.points.map((p) => ({ ...p })) },
     {
       height: sketch.layers * HALF,
-      cut,
       cap: { fillScale: cap?.fill.scale ?? 0.5, rim: bandSpec(cap?.rim) },
       wall: { bodyScale: wall?.fill.scale ?? 0.5, top: bandSpec(wall?.top), bottom: bandSpec(wall?.bottom) },
       lip: sketch.lip,
       profile: { points: sketch.wall.points.map((p) => ({ ...p })), smooth: sketch.wall.smooth },
     },
   )
-}
-
-/** The buffers with every vertex coloured `tint`, the way the layer view marks a cut cap or a ghosted column. */
-function tinted(buffers: MeshBuffers, tint: number): MeshBuffers {
-  const colors = new Float32Array(buffers.colors.length)
-  const r = ((tint >> 16) & 0xff) / 255
-  const g = ((tint >> 8) & 0xff) / 255
-  const b = (tint & 0xff) / 255
-  for (let i = 0; i < colors.length; i += 3) {
-    colors[i] = r
-    colors[i + 1] = g
-    colors[i + 2] = b
-  }
-  return { ...buffers, colors }
 }
 
 /** Which of a sketch's parts a material band dresses, and with what texture; `null` when the material has no such band. */
@@ -162,6 +157,8 @@ export class RuntimeScene {
   private pointLights = new Map<string, THREE.PointLight>()
   private doc: ReadonlyMapDoc
   private layers: LayerRange | null = null
+  /** The layer view, cut on the GPU: every solid material clips at its ceiling and caps what it cut (`section.ts`). */
+  readonly section = new SectionCut()
 
   constructor(doc: ReadonlyMapDoc, assets: SceneAssets) {
     this.doc = doc
@@ -186,6 +183,8 @@ export class RuntimeScene {
       // draws last instead (`WATER_RENDER_ORDER`) and tints what is below.
       depthWrite: false,
     })
+    this.section.solid(this.terrainMaterial)
+    this.section.clip(this.waterMaterial)
 
     this.sun.castShadow = true
     this.sun.shadow.mapSize.set(2048, 2048)
@@ -275,9 +274,42 @@ export class RuntimeScene {
 
   // --- structures -------------------------------------------------------------
 
-  /** Narrow (or widen) the height range drawn. The caller rebuilds; this only records it. */
+  /**
+   * Narrow (or widen) the height range drawn: the section cut's plane and uniforms, and which objects show. Nothing
+   * is rebuilt — see `section.ts`.
+   */
   setLayerRange(range: LayerRange | null): void {
     this.layers = range
+    this.section.set(range)
+  }
+
+  /**
+   * Under the layer view, what the cut shows at a world point: the top of the structure the ceiling passes through
+   * there — the one standing highest, if several do — as the surface a pick lands on. `null` with no range set, or
+   * where nothing there reaches the ceiling. Picking asks this because the cap on screen is drawn from inner faces
+   * below the ceiling, not from geometry at it.
+   */
+  capAt(worldX: number, worldZ: number): SurfaceAddress | null {
+    const ceiling = this.section.ceiling
+    if (ceiling === null) return null
+    let best: { address: SurfaceAddress; base: number } | null = null
+    const extra = decodeExtra(0)
+    for (const id of this.doc.structureOrder) {
+      const structure = this.doc.structures[id]
+      if (!structure) continue
+      const frame = frameOf(this.doc, id)
+      if (frame.y >= ceiling) continue
+      const [lx, lz] = toLocal(frame, worldX, worldZ)
+      let address: SurfaceAddress | null = null
+      if (structure.kind === 'voxel') {
+        const top = voxelTop(structure, lx, lz)
+        if (top !== null && frame.y + top > ceiling) address = { structure: id, kind: SURFACE_TOP, x: Math.floor(lx), y: Math.floor(lz), ...extra }
+      } else if (structure.closed && structure.points.length >= 3 && frame.y + structure.layers * HALF > ceiling && pointInOutline(outlineOf(structure.points), lx, lz)) {
+        address = { structure: id, kind: SURFACE_SKETCH_CAP, x: -1, y: 0, ...extra }
+      }
+      if (address && (best === null || frame.y >= best.base)) best = { address, base: frame.y }
+    }
+    return best?.address ?? null
   }
 
   private dropStructure(id: string): void {
@@ -288,13 +320,37 @@ export class RuntimeScene {
       chunk.water?.geometry.dispose()
     }
     for (const mesh of view.parts.keys()) mesh.geometry.dispose()
+    this.dropCap(view)
     this.terrainGroup.remove(view.group)
     this.structures.delete(id)
+  }
+
+  private dropCap(view: StructureView): void {
+    if (!view.cap) return
+    view.group.remove(view.cap.mesh)
+    this.section.forget(view.cap.mesh)
+    view.cap.dispose()
+    view.cap = null
+  }
+
+  /** A voxel volume's cap, made at its footprint or made again when the footprint changed, holding its current heights. */
+  private refreshVoxelCap(view: StructureView, voxel: ReadonlyVoxel): void {
+    const current = view.cap
+    let cap = current instanceof VoxelCap && current.width === voxel.size.width && current.height === voxel.size.height ? current : null
+    if (!cap) {
+      this.dropCap(view)
+      cap = this.section.voxelCap(voxel.size.width, voxel.size.height)
+      cap.mesh.userData.structureId = voxel.id
+      view.group.add(cap.mesh)
+      view.cap = cap
+    }
+    cap.update(voxel.terrain.height, view.group.position.y)
   }
 
   private placeGroup(group: THREE.Group, id: string): void {
     const frame = frameOf(this.doc, id)
     group.position.set(frame.x, frame.y, frame.z)
+    this.structures.get(id)?.cap?.setBase(frame.y)
     // A quarter turn maps local (x, z) to (−z, x) in the document; three's Y rotation of −90° does the same.
     group.rotation.y = (-frame.yaw * Math.PI) / 2
   }
@@ -302,7 +358,7 @@ export class RuntimeScene {
   private ensureStructure(id: string): StructureView {
     let view = this.structures.get(id)
     if (!view) {
-      view = { group: new THREE.Group(), chunks: new Map(), parts: new Map(), triangleCount: 0 }
+      view = { group: new THREE.Group(), chunks: new Map(), parts: new Map(), cap: null, triangleCount: 0 }
       view.group.userData.structureId = id
       this.terrainGroup.add(view.group)
       this.structures.set(id, view)
@@ -311,14 +367,7 @@ export class RuntimeScene {
     return view
   }
 
-  /** The voxel volume as the mesher should read it under the layer view: the range shifted into the volume's own heights. */
-  private voxelSource(voxel: ReadonlyVoxel, base: number): ReadonlyVoxel {
-    if (this.layers === null) return voxel
-    const shift = Math.round(base / HALF)
-    return layerView(voxel, { lo: this.layers.lo - shift, hi: this.layers.hi - shift })
-  }
-
-  private buildChunk(view: StructureView, voxel: ReadonlyVoxel, source: ReadonlyVoxel, key: string): void {
+  private buildChunk(view: StructureView, voxel: ReadonlyVoxel, key: string): void {
     const existing = view.chunks.get(key)
     if (existing) {
       view.group.remove(existing.solid)
@@ -330,7 +379,7 @@ export class RuntimeScene {
       view.chunks.delete(key)
     }
     const { cx, cy } = parseStructureChunkKey(key)
-    const mesh = meshTerrainChunk(this.doc, source, `${cx},${cy}`)
+    const mesh = meshTerrainChunk(this.doc, voxel, `${cx},${cy}`)
     if (mesh.solid.triangleCount === 0 && !mesh.water) return
 
     const solid = new THREE.Mesh(buildGeometry(mesh.solid), this.terrainMaterial)
@@ -375,12 +424,16 @@ export class RuntimeScene {
         map.wrapS = THREE.RepeatWrapping
         map.wrapT = band ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping
       }
+      // Every solid surface is cut by the layer view, bands included: a band is a skin on the part it dresses.
+      this.section.solid(material)
       this.surfaceMaterials.set(key, material)
     }
     return material
   }
 
-  private buildSketch(view: StructureView, sketch: ReadonlySketch, base: number): void {
+  private buildSketch(view: StructureView, sketch: ReadonlySketch): void {
+    // The cap draws the cap part's geometry, so it goes before that geometry does.
+    this.dropCap(view)
     for (const mesh of view.parts.keys()) {
       view.group.remove(mesh)
       mesh.geometry.dispose()
@@ -388,25 +441,10 @@ export class RuntimeScene {
     view.parts.clear()
     if (!sketch.closed || sketch.points.length < 3) return
 
-    // Under the layer view a sketch above the ceiling is not drawn; one the ceiling passes through is
-    // sliced there, its cut face tinted like a cut column's; one wholly under the floor is ghosted.
-    const height = sketch.layers * HALF
-    let cut: number | undefined
-    let tint: number | null = null
-    if (this.layers !== null) {
-      const ceiling = this.layers.hi * HALF
-      if (base >= ceiling) return
-      if (ceiling - base < height) {
-        cut = ceiling - base
-        tint = CUT_TINT
-      } else if (base + height < this.layers.lo * HALF) tint = GHOST_TINT
-    }
-
-    const mesh = sketchMeshOf(this.doc, sketch, cut)
+    const mesh = sketchMeshOf(this.doc, sketch)
     for (const part of SKETCH_PARTS) {
-      const raw = mesh[part]
-      if (raw.triangleCount === 0) continue
-      const buffers = tint !== null && (tint === GHOST_TINT || part === 'cap') ? tinted(raw, tint) : raw
+      const buffers = mesh[part]
+      if (buffers.triangleCount === 0) continue
       const texture = textureForPart(this.doc, sketch, part)
       const band = part !== 'cap' && part !== 'wallBody'
       // A band the material does not have is not a part of this sketch.
@@ -423,6 +461,12 @@ export class RuntimeScene {
       node.userData.part = part
       view.group.add(node)
       view.parts.set(node, faceAddr)
+      if (part === 'cap') {
+        const cap = this.section.sketchCap(node.geometry, view.group.position.y, sketch.layers * HALF)
+        cap.mesh.userData.structureId = sketch.id
+        view.group.add(cap.mesh)
+        view.cap = cap
+      }
     }
   }
 
@@ -434,14 +478,13 @@ export class RuntimeScene {
     }
     this.dropStructure(id)
     const view = this.ensureStructure(id)
-    const base = view.group.position.y
     if (structure.kind === 'voxel') {
-      const source = this.voxelSource(structure, base)
       for (const key of allChunkKeys(structure.size.width, structure.size.height)) {
-        this.buildChunk(view, structure, source, structureChunkKey(id, ...(key.split(',').map(Number) as [number, number])))
+        this.buildChunk(view, structure, structureChunkKey(id, ...(key.split(',').map(Number) as [number, number])))
       }
+      this.refreshVoxelCap(view, structure)
     } else {
-      this.buildSketch(view, structure, base)
+      this.buildSketch(view, structure)
     }
     view.triangleCount = [...view.chunks.values()].reduce((sum, c) => sum + c.triangleCount, 0) + [...view.parts.values()].reduce((sum, a) => sum + a.length / 4, 0)
   }
@@ -461,16 +504,20 @@ export class RuntimeScene {
     const whole = new Set(dirty.structures)
     for (const id of whole) this.buildStructure(id)
     let built = whole.size
+    const touched = new Map<string, { view: StructureView; voxel: ReadonlyVoxel }>()
     for (const key of dirty.chunks) {
       const { structure } = parseStructureChunkKey(key)
       if (whole.has(structure)) continue
       const voxel = this.doc.structures[structure]
       if (!voxel || voxel.kind !== 'voxel') continue
       const view = this.ensureStructure(structure)
-      this.buildChunk(view, voxel, this.voxelSource(voxel, view.group.position.y), key)
+      this.buildChunk(view, voxel, key)
       view.triangleCount = [...view.chunks.values()].reduce((sum, c) => sum + c.triangleCount, 0)
+      touched.set(structure, { view, voxel })
       built += 1
     }
+    // Once per volume, not per chunk: the cap's height texture is the whole volume's.
+    for (const { view, voxel } of touched.values()) this.refreshVoxelCap(view, voxel)
     this.finishStats(start, built)
   }
 
@@ -498,7 +545,9 @@ export class RuntimeScene {
   /** Every structure mesh, solid and water, across every structure. */
   terrainMeshes(): THREE.Mesh[] {
     const out: THREE.Mesh[] = []
-    for (const view of this.structures.values()) for (const child of view.group.children) if ((child as THREE.Mesh).isMesh) out.push(child as THREE.Mesh)
+    // The layer view's caps are drawn over the terrain, not part of it: nothing picks, counts or exports them.
+    for (const view of this.structures.values())
+      for (const child of view.group.children) if ((child as THREE.Mesh).isMesh && child.userData.surface !== 'section') out.push(child as THREE.Mesh)
     return out
   }
 
