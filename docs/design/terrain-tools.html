@@ -188,6 +188,7 @@
     <dt>Materials, not tiles</dt><dd>The Paint bar's first verb is Material. What you paint is a material per cell; the tile drawn at every cell corner is looked up from the four cells around that corner. A tile on the sheet is authored as the transition itself, half grass and half path, and carries a tag per corner saying which terrain is there. The renderer asks for the tile tagged exactly like the corner and places it whole.</dd>
     <dt>Any corner is allowed</dt><dd>Two, three or four terrains can meet at a corner. An authored tile for that exact combination is used when there is one; the sheet below authors eight pairs. Otherwise the corner is composited with no extra art: the lowest terrain in the list from its edge set, then each higher terrain's edge-set tile over it. A composited corner is marked magenta while <em>Show missing</em> is on, and the status bar counts the distinct combinations on screen and names them on hover. That is the artist's to-do list: draw the transition, place the template, and the composite stops being used, because an exact tile always wins.</dd>
     <dt>Edge sets</dt><dd>Each terrain also has a set of sixteen where the other corners are nothing: the tile at the top of a cliff, or the edge of the volume. Those are the only tiles with transparent quadrants, and the quadrant that belongs to the lower cell is never drawn from them, because that cell draws its own corner from its own point of view. Two terrains meeting right at a cliff edge is its own combination, listed with "edge", and composites until someone draws it.</dd>
+    <dt>Grass bleeds</dt><dd>To make the mechanism visible, grass overshoots the quadrant seam by 3 px into whatever shares a tile with it, in every one of its transition tiles. That only looks right because both cells at a corner read the same authored tile. Raise a grass cell beside dirt and watch the overshoot stop at the cliff edge, where the two cells no longer agree on the tile.</dd>
     <dt>Quarters</dt><dd>Each cell is drawn as four quarters, each the quadrant of the offset tile at its own corner. On flat ground that is pixel-identical to drawing the offset tiles whole, which is what the mesher does wherever the four cells are coplanar. At a cliff the split lands on the height change. The cliff-top cell sees the lower cell as nothing and draws its rim; the cell at the foot sees a taller neighbour of the same material as continuing and draws none, and a taller neighbour of another material as that material, so a sand floor meets a grass cliff with the sand-to-grass tile.</dd>
     <dt>Priority is order</dt><dd>Where a tile is authored, the tile decides who draws over whom. The list order decides it only for composited corners, and which terrain is the shape when a template is placed for a pair.</dd>
     <dt>Walls paint the same way</dt><dd>Face view shows one row's south-facing cliff as the grid it is: run along the face, whole-tile levels up. The Material brush on a band sets that band's voxel material; <span class="kbd">⇧</span> clears it back to the column's voxels. Above the top band and below the bottom is nothing, so a wall material takes its lip and its base from its edge set, and stone meets cobble with the stone-to-cobble tile.</dd>
@@ -230,7 +231,7 @@
     { id: 'cobble', name: 'Cobble', color: '#8f7f70', dark: '#5f5248', light: '#a8988a', role: 'wall' },
     { id: 'dirt', name: 'Dirt', color: '#8a6a45', dark: '#5f4830', light: '#a58358', role: 'any' },
     { id: 'sand', name: 'Sand', color: '#c9b27f', dark: '#9a8659', light: '#e0cd9c', role: 'top' },
-    { id: 'grass', name: 'Grass', color: '#4f8a46', dark: '#33612d', light: '#6aa65c', role: 'top' },
+    { id: 'grass', name: 'Grass', color: '#4f8a46', dark: '#33612d', light: '#6aa65c', role: 'top', bleed: 3 },
     { id: 'path', name: 'Path', color: '#b08f5e', dark: '#7f6540', light: '#c9a973', role: 'top' },
   ]
   const matOf = (id) => MATS.find((m) => m.id === id)
@@ -240,46 +241,27 @@
   function rng(seed) { let s = (seed * 2654435761) >>> 0 || 1; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32 }
   const QUADS = [[1, 0, 0], [2, 1, 0], [4, 0, 1], [8, 1, 1]] // bit, qx, qy for NW NE SW SE
 
-  /** Which quadrant lies across each axis, and diagonally, from a given quadrant bit. */
-  const NB = { h: { 8: 4, 4: 8, 2: 1, 1: 2 }, v: { 8: 2, 2: 8, 4: 1, 1: 4 }, d: { 8: 1, 1: 8, 4: 2, 2: 4 } }
+  /** Rounding radius of every terrain's corners, in tile pixels. */
+  const RR = 3
   /**
-   * One quadrant of a transition tile, for the terrain that holds it: its
-   * fill, rounded when the quadrant stands alone, and a rim along every edge
-   * where it ends. Where it holds the other three quadrants too, the inside
-   * corner is a fillet drawn in the fourth quadrant (paintFillet), and the
-   * rims toward that quadrant stop short of the tile centre to meet it.
+   * Binary morphology on a tile: `grow` dilates the set by a disc, otherwise
+   * it erodes it. Beyond the tile, erosion sees the nearest edge pixel (the
+   * pattern continues into the next tile, so a boundary that reaches the
+   * edge stays straight) and dilation sees nothing.
    */
-  function paintQuadrant(g, px, py, s, myBit, bits, m, fillets) {
-    const r = s * 0.5, inset = Math.max(0.6, s * 0.06)
-    const hasH = bits & NB.h[myBit], hasV = bits & NB.v[myBit], hasD = bits & NB.d[myBit]
-    const tcx = (myBit & 5) ? px + s : px, tcy = (myBit & 3) ? py + s : py
-    const farX = tcx === px ? px + s : px, farY = tcy === py ? py + s : py
-    const ex = tcx === px ? px + inset : px + s - inset, ey = tcy === py ? py + inset : py + s - inset
-    g.fillStyle = m.color; g.beginPath()
-    if (!hasH && !hasV) { g.moveTo(farX, farY); g.lineTo(ex, farY); g.arcTo(ex, ey, farX, ey, r); g.lineTo(farX, ey); g.closePath() } else g.rect(px, py, s, s)
-    g.fill()
-    g.strokeStyle = m.dark; g.lineWidth = Math.max(1.4, s * 0.16); g.beginPath()
-    if (!hasH && !hasV) { g.moveTo(ex, farY); g.arcTo(ex, ey, farX, ey, r - inset); g.lineTo(farX, ey) }
-    else {
-      if (!hasH) { const stop = fillets && hasV && hasD ? (tcy === py ? py + r : py + s - r) : tcy; g.moveTo(ex, farY); g.lineTo(ex, stop) }
-      if (!hasV) { const stop = fillets && hasH && hasD ? (tcx === px ? px + r : px + s - r) : tcx; g.moveTo(farX, ey); g.lineTo(stop, ey) }
+  function morph(m, rad, grow) {
+    const out = new Uint8Array(TPX * TPX), r2 = rad * rad
+    for (let y = 0; y < TPX; y++) for (let x = 0; x < TPX; x++) {
+      let hit = grow ? 0 : 1
+      scan: for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+        if (dx * dx + dy * dy > r2) continue
+        const ox = x + dx, oy = y + dy, outside = ox < 0 || oy < 0 || ox >= TPX || oy >= TPX
+        const v = grow && outside ? 0 : m[Math.min(TPX - 1, Math.max(0, oy)) * TPX + Math.min(TPX - 1, Math.max(0, ox))]
+        if (grow ? v : !v) { hit = grow ? 1 : 0; break scan }
+      }
+      out[y * TPX + x] = hit
     }
-    g.stroke()
-  }
-  /**
-   * The inside corner: this quadrant belongs to terrain `ma`, and terrain
-   * `mb` holds the other three. `ma`'s corner at the tile centre is rounded
-   * off and `mb` fills in behind it with a concave curve and its own rim.
-   */
-  function paintFillet(g, px, py, s, myBit, mb, ma) {
-    const r = s * 0.5, lw = Math.max(1.4, s * 0.16)
-    const tcx = (myBit & 5) ? px + s : px, tcy = (myBit & 3) ? py + s : py
-    const farX = tcx === px ? px + s : px, farY = tcy === py ? py + s : py
-    g.fillStyle = mb.color; g.fillRect(px, py, s, s)
-    g.fillStyle = ma.color; g.beginPath(); g.moveTo(farX, farY); g.lineTo(tcx, farY); g.arcTo(tcx, tcy, farX, tcy, r); g.lineTo(farX, tcy); g.closePath(); g.fill()
-    const acx = tcx === px ? px + r : px + s - r, acy = tcy === py ? py + r : py + s - r
-    const a0 = tcx < acx ? (tcy < acy ? Math.PI : Math.PI / 2) : (tcy < acy ? Math.PI * 1.5 : 0)
-    g.strokeStyle = mb.dark; g.lineWidth = lw; g.beginPath(); g.arc(acx, acy, r + lw / 2, a0, a0 + Math.PI / 2); g.stroke()
+    return out
   }
   function speckle(g, x, y, m, seed, inside) {
     const r = rng(seed)
@@ -295,19 +277,20 @@
   function stampPair(a, b, c0, r0) {
     BLOCKS.push({ c: c0, r: r0, a, b })
     const mb = matOf(b), ma = a === VOID ? null : matOf(a)
+    // a terrain that bleeds overshoots the quadrant seam into whatever shares the tile with it
+    const bleed = mb.bleed ? mb.bleed : ma && ma.bleed ? -ma.bleed : 0
     for (let mask = 0; mask < 16; mask++) {
       const c = c0 + (mask & 3), r = r0 + (mask >> 2), x = c * TPX, y = r * TPX
+      const S0 = new Uint8Array(TPX * TPX)
+      for (let py = 0; py < TPX; py++) for (let px = 0; px < TPX; px++) S0[py * TPX + px] = mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0] ? 1 : 0
+      let S = morph(morph(S0, RR, false), RR, true) // open: round the convex corners
+      S = morph(morph(S, RR, true), RR, false)      // close: fillet the concave ones
+      if (bleed > 0) S = morph(S, bleed, true); else if (bleed < 0) S = morph(S, -bleed, false)
+      const core = morph(S, 1, false)               // inside the rim
       sg.clearRect(x, y, TPX, TPX)
-      if (ma) { sg.fillStyle = ma.color; sg.fillRect(x, y, TPX, TPX); speckle(sg, x, y, ma, tIndex(c, r) + 3, (px, py) => !(mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0])) }
-      for (const [bit, qx, qy] of QUADS) {
-        const inside = ma && !(mask & bit) && (mask & NB.h[bit]) && (mask & NB.v[bit]) && (mask & NB.d[bit])
-        if (!(mask & bit) && !inside) continue
-        sg.save(); sg.beginPath(); sg.rect(x + qx * 8, y + qy * 8, 8, 8); sg.clip()
-        if (inside) paintFillet(sg, x + qx * 8, y + qy * 8, 8, bit, mb, ma)
-        else paintQuadrant(sg, x + qx * 8, y + qy * 8, 8, bit, mask, mb, !!ma)
-        sg.restore()
-      }
-      speckle(sg, x, y, mb, tIndex(c, r) + 7, (px, py) => mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0])
+      if (ma) { sg.fillStyle = ma.color; sg.fillRect(x, y, TPX, TPX); speckle(sg, x, y, ma, tIndex(c, r) + 3, (px, py) => !S[py * TPX + px]) }
+      for (let py = 0; py < TPX; py++) for (let px = 0; px < TPX; px++) { const i = py * TPX + px; if (!S[i]) continue; sg.fillStyle = core[i] ? mb.color : mb.dark; sg.fillRect(x + px, y + py, 1, 1) }
+      speckle(sg, x, y, mb, tIndex(c, r) + 7, (px, py) => core[py * TPX + px])
       cornerTags[tIndex(c, r)] = QUADS.map(([bit]) => (mask & bit ? b : a))
     }
   }
@@ -458,7 +441,7 @@
     const rows = S.order.slice().reverse().map((id) => { const m = matOf(id); return `<button class="mat ${S.terrain.material === id ? 'on' : ''}" draggable="true" data-mat="${id}" data-set="terrain.material" data-val="${id}"><span class="grip">⋮⋮</span><i class="sw" style="background-image:url(${tileUrl(id)})"></i><span>${m.name}</span><span class="role">${m.role}</span><span class="n">${counts[id]}</span></button>` }).join('')
     const m = matOf(S.terrain.material), partners = partnersOf(m.id)
     const detail = `<div class="hint" style="margin-top:6px">Drag to reorder: a later material is the shape when a template is placed, and wins a three-way corner.</div>`
-      + `<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;margin-top:4px"><div class="set16" id="set16"></div><div style="display:grid;gap:4px">${row('Sheet', 'ground.png', true)}${row('Edge set', '16 / 16')}${row('Role', m.role)}<div class="row"><span>Transitions</span></div><div class="acts" style="padding:0">${partners.map((p) => `<button class="chip" data-tip="${m.name} · ${matOf(p).name}: 16 / 16" data-key="" data-set="terrain.material" data-val="${p}"><i class="sw" style="background-image:url(${tileUrl(p)})"></i></button>`).join('')}${MATS.filter((o) => o.id !== m.id && !partners.includes(o.id)).map((o) => `<button class="chip" style="opacity:.35;border-style:dashed" data-tip="${m.name} · ${o.name}: not authored" data-key="" data-set="terrain.material" data-val="${o.id}"><i class="sw" style="background-image:url(${tileUrl(o.id)})"></i></button>`).join('')}</div></div></div>`
+      + `<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;margin-top:4px"><div class="set16" id="set16"></div><div style="display:grid;gap:4px">${row('Sheet', 'ground.png', true)}${row('Edge set', '16 / 16')}${row('Role', m.role)}${row('Bleed', m.bleed ? m.bleed + ' px' : '—', !m.bleed)}<div class="row"><span>Transitions</span></div><div class="acts" style="padding:0">${partners.map((p) => `<button class="chip" data-tip="${m.name} · ${matOf(p).name}: 16 / 16" data-key="" data-set="terrain.material" data-val="${p}"><i class="sw" style="background-image:url(${tileUrl(p)})"></i></button>`).join('')}${MATS.filter((o) => o.id !== m.id && !partners.includes(o.id)).map((o) => `<button class="chip" style="opacity:.35;border-style:dashed" data-tip="${m.name} · ${o.name}: not authored" data-key="" data-set="terrain.material" data-val="${o.id}"><i class="sw" style="background-image:url(${tileUrl(o.id)})"></i></button>`).join('')}</div></div></div>`
       + `<div class="hint">Solid chips are authored pairs; dashed ones are not. Showing the edge set on the left; click a partner to see its pair.</div>`
       + acts([['Rename'], ['Duplicate'], ['Edit terrain set…'], ['Delete', '', 'danger']])
     return section('Materials', `<div class="list">${rows}<button class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></button></div>` + detail, { sum: `${MATS.length} · ${m.name}` })
