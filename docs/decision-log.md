@@ -289,3 +289,11 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** One snap setting (grid / half / free) serves every drag. Holding Ctrl (Cmd on a Mac) frees one drag or press from snapping; holding Shift constrains a drag to the axis it has travelled further along. This replaces the sketch tool's earlier Shift-for-free. The arrows nudge the selection one cell along the world axes. Select is one tool over everything: a press on an object selects and drags it; a press on any structure's surface — the ground included — selects that structure and drags it by its placement in its parent (voxel volumes to whole cells; the root never moves); a press on nothing clears.
 - **WHY:** Photoshop, Figma and Blender all put snap-off on Ctrl/Cmd and axis constraint on Shift, so those hands already know it; the ground being selectable is what a scene graph of structures means — the level has no special-cased terrain to click past.
+
+## Public demo on GitHub Pages, deployed from main via Actions
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** ci / deploy
+- **SCOPE:** moderate
+- **WHAT:** The editor is published as a static GitHub Pages site so people can try it. A workflow builds apps/editor on every push to main and uploads it with actions/deploy-pages. There is no gh-pages branch.
+- **WHY:** The demo should always match main, and main is already protected by the gate, so anything that ships has passed it. The artifact flow keeps build output out of git history and avoids a second branch to manage.

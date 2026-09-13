@@ -1,0 +1,79 @@
+name: Pages
+
+# Publishes the editor as a static GitHub Pages site so people can try it
+# without cloning anything. Ruled 2026-09-12 (docs/decision-log.md): every
+# push to `main` deploys, and the build goes up as a Pages artifact rather
+# than onto a `gh-pages` branch. `main` only moves through PRs that passed the
+# gate, so this workflow does not re-run tests, typecheck or lint.
+on:
+  push:
+    branches: [main]
+
+# One deploy at a time, and never cancel one mid-flight: a half-finished
+# Pages deployment is worse than a briefly stale one. Unlike gate.yml's
+# per-SHA grouping, superseding a pending run IS what we want here — only the
+# newest `main` needs to be live.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+          package-manager-cache: false
+
+      # Same corepack install as gate.yml, for the same reasons (see there).
+      - name: Enable corepack
+        run: |
+          npm install -g corepack@0.36.0
+          corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Two halves, not `turbo run build --filter=@map-editor/editor`: the
+      # editor's own bundle has to be built with a different `base`, and a
+      # flag cannot ride through turbo into `vite build`. The workspace
+      # packages build through turbo as usual (the bundle is assembled from
+      # their `dist/`, see apps/editor/vite.config.ts), then Vite runs
+      # directly.
+      #
+      # `--base=./` because a project site is served from `/map-editor/`,
+      # not `/`, and the default absolute base would request `/assets/...`
+      # from the domain root. Relative rather than `/map-editor/` so the same
+      # output works on a fork, a custom domain, or any other subpath. It is
+      # a flag here rather than in vite.config.ts so the dev server, the tour
+      # and the gate's build are untouched.
+      - name: Build
+        run: |
+          pnpm turbo run build --filter='@map-editor/editor^...'
+          pnpm --filter @map-editor/editor exec vite build --base=./
+
+      - uses: actions/configure-pages@v6.0.0
+
+      - uses: actions/upload-pages-artifact@v5.0.0
+        with:
+          path: apps/editor/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # The only job that needs write access, so the only one that gets it.
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5.0.1
