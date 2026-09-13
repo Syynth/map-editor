@@ -105,6 +105,44 @@ describe('mesher', () => {
     }
   })
 
+  it('a flat cell beside a ramp walls off the triangle under the ramp’s sloped edge', () => {
+    // Cell (1, 1) at 4 ramps down to the east, so its north edge runs from 4 at the
+    // west corner to 2 at the east. Its north neighbour (1, 0) is flat at 4: along the
+    // shared edge it stands above the ramp by a triangle, which it must wall — before,
+    // both cells compared flat heights, saw 4 against 4, and drew nothing there.
+    const doc = createMap(4, 4)
+    setHeight(doc, 1, 1, 4)
+    setHeight(doc, 1, 0, 4)
+    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 1, 1)] = 0
+    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
+    const south = new Set<number>()
+    let rampNorth = 0
+    for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
+      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
+      if (address.kind !== SURFACE_CLIFF) continue
+      if (address.x === 1 && address.y === 0 && address.dir === 1) south.add(address.level)
+      if (address.x === 1 && address.y === 1 && address.dir === 3) rampNorth++
+    }
+    // The flat cell walls the bands the sloped edge crosses, 2 up to 4; the ramp, lower, walls nothing back.
+    expect([...south].sort((a, b) => a - b)).toEqual([2, 3])
+    expect(rampNorth).toBe(0)
+  })
+
+  it('a ramp descending over a drop walls the drop below its low edge', () => {
+    const doc = createMap(4, 4)
+    setHeight(doc, 1, 1, 4)
+    setHeight(doc, 2, 1, 0)
+    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 1, 1)] = 0
+    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
+    const east = new Set<number>()
+    for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
+      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
+      if (address.kind === SURFACE_CLIFF && address.x === 1 && address.y === 1 && address.dir === 0) east.add(address.level)
+    }
+    // The low edge is at 2; the neighbour at 0: bands 0 and 1, and nothing above the edge.
+    expect([...east].sort((a, b) => a - b)).toEqual([0, 1])
+  })
+
   it('gives every quad a non-degenerate UV rectangle', () => {
     // Regression: top quads and side faces walk their corners along different
     // axes, and a shared rectangle-to-corner mapping collapsed the top quad's
