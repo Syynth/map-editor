@@ -54,13 +54,13 @@ export function SketchBar({ doc, params, set, platform, dispatch, selection }: S
       />
       <BarDivider />
       <BarLabel>Snap</BarLabel>
-      <Segmented
+      <IconSegmented
         value={params.sketchSnap}
         onChange={(sketchSnap) => set({ sketchSnap })}
         options={[
-          { value: 'grid', label: 'Grid', title: 'Whole cells' },
-          { value: 'half', label: '½', title: 'Half cells' },
-          { value: 'free', label: 'Free', title: 'No snapping — holding ctrl (⌘ on a Mac) does this too' },
+          { value: 'grid', icon: 'snapGrid', title: 'Snap to whole cells' },
+          { value: 'half', icon: 'snapHalf', title: 'Snap to half cells' },
+          { value: 'free', icon: 'snapFree', title: 'No snapping — holding ctrl (⌘ on a Mac) does this too' },
         ]}
       />
       {drawing ? (
