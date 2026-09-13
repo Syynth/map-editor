@@ -173,7 +173,7 @@
     <div class="ov tl"><span class="pill" id="under">—</span></div>
     <div class="ov br">
       <span class="pill tog" id="faceview">Face view · row <b class="num" id="facerow">6</b> <button id="rowdn" title="Previous row">◂</button><button id="rowup" title="Next row">▸</button></span>
-      <span class="pill tog on" id="showq">Quarters</span>
+      <span class="pill tog on" id="showmissing">Show missing</span><span class="pill tog on" id="showq">Quarters</span>
     </div>
   </div>
   <aside class="insp" id="insp"></aside>
@@ -183,13 +183,13 @@
 
 <section class="notes">
   <h2>What changed, and why it looks like this</h2>
-  <p class="lede">Five decisions logged on 2026-09-13, plus the Water ruling from the day before, worked into the frame from <code>select-first.html</code>. Every tile in the viewport is one authored tile from the 16 px sheet drawn below, chosen by the terrains at all four corners and placed whole. Paint with the six materials; switch to the face view and paint the cliff; paint cobble onto grass to see what an unauthored pair looks like.</p>
+  <p class="lede">Five decisions logged on 2026-09-13, plus the Water ruling from the day before, worked into the frame from <code>select-first.html</code>. Every tile in the viewport is one authored tile from the 16 px sheet drawn below, chosen by the terrains at all four corners and placed whole. Paint with the six materials; switch to the face view and paint the cliff; paint cobble onto grass, or three terrains into one corner, to see a composited corner and the count of transitions left to author.</p>
   <dl>
     <dt>Materials, not tiles</dt><dd>The Paint bar's first verb is Material. What you paint is a material per cell; the tile drawn at every cell corner is looked up from the four cells around that corner. A tile on the sheet is authored as the transition itself, half grass and half path, and carries a tag per corner saying which terrain is there. The renderer asks for the tile tagged exactly like the corner and places it whole.</dd>
-    <dt>Pairs are the cost</dt><dd>Every pair of terrains that can touch needs its own set of sixteen. The sheet below authors eight pairs. Paint a pair that is not authored and the demo falls back to each terrain's own edge set, so both sides get a rim, and marks the corner magenta; the status bar counts the missing pairs. That count is the artist's to-do list, and the setup screen is where it gets worked off.</dd>
-    <dt>Edge sets</dt><dd>Each terrain also has a set of sixteen where the other corners are nothing: the tile at the top of a cliff, or the edge of the volume. Those are the only tiles with transparent quadrants, and the quadrant that belongs to the lower cell is never drawn from them, because that cell draws its own corner from its own point of view.</dd>
+    <dt>Any corner is allowed</dt><dd>Two, three or four terrains can meet at a corner. An authored tile for that exact combination is used when there is one; the sheet below authors eight pairs. Otherwise the corner is composited with no extra art: the lowest terrain in the list from its edge set, then each higher terrain's edge-set tile over it. A composited corner is marked magenta while <em>Show missing</em> is on, and the status bar counts the distinct combinations on screen and names them on hover. That is the artist's to-do list: draw the transition, place the template, and the composite stops being used, because an exact tile always wins.</dd>
+    <dt>Edge sets</dt><dd>Each terrain also has a set of sixteen where the other corners are nothing: the tile at the top of a cliff, or the edge of the volume. Those are the only tiles with transparent quadrants, and the quadrant that belongs to the lower cell is never drawn from them, because that cell draws its own corner from its own point of view. Two terrains meeting right at a cliff edge is its own combination, listed with "edge", and composites until someone draws it.</dd>
     <dt>Quarters</dt><dd>Each cell is drawn as four quarters, each the quadrant of the offset tile at its own corner. On flat ground that is pixel-identical to drawing the offset tiles whole, which is what the mesher does wherever the four cells are coplanar. At a cliff the split lands on the height change. The cliff-top cell sees the lower cell as nothing and draws its rim; the cell at the foot sees a taller neighbour of the same material as continuing and draws none, and a taller neighbour of another material as that material, so a sand floor meets a grass cliff with the sand-to-grass tile.</dd>
-    <dt>Priority is order</dt><dd>With authored pairs the list order no longer decides who draws over whom at a corner; the tile does. It still decides two things: which terrain is treated as the shape when a pair is authored from a template, and which terrain wins when three meet at one corner and the demo has to pick two.</dd>
+    <dt>Priority is order</dt><dd>Where a tile is authored, the tile decides who draws over whom. The list order decides it only for composited corners, and which terrain is the shape when a template is placed for a pair.</dd>
     <dt>Walls paint the same way</dt><dd>Face view shows one row's south-facing cliff as the grid it is: run along the face, whole-tile levels up. The Material brush on a band sets that band's voxel material; <span class="kbd">⇧</span> clears it back to the column's voxels. Above the top band and below the bottom is nothing, so a wall material takes its lip and its base from its edge set, and stone meets cobble with the stone-to-cobble tile.</dd>
     <dt>Built on voxels</dt><dd>The document becomes cubes, with a half slab, the 45° ramp and the half ramp as voxel shapes, and one material per voxel. Heights in the demo are whole cubes and Strength here rounds up to whole layers; the bar keeps half-tiles as logged.</dd>
     <dt>Ramp by drag</dt><dd>With Ramp up, press on a cliff face and drag back onto the high side; the run grows one cell per cell of drag and the preview shows the 45° cut. A run that does not meet the drop is refused. Click any cell of a ramp to remove the whole run. Not in the demo.</dd>
@@ -307,21 +307,20 @@
   }
   const prio = (id) => (id === VOID ? -1 : S.order.indexOf(id))
   /**
-   * The tile for corner `tids` seen from quadrant `myK`: the exact tile when
-   * the pair is authored; with three terrains at one corner the two highest
-   * in the list stand in for the rest; with a pair nobody drew, my terrain's
-   * own edge set — both sides get a rim — and the corner is flagged.
+   * The tiles for corner `tids`, bottom to top: the one authored tile when
+   * there is one, for any number of terrains. Otherwise a composite nobody
+   * had to draw: the lowest terrain in the list from its edge set (so it
+   * still rims against nothing), then each higher terrain's edge-set tile
+   * over it. An authored tile for the exact combination always wins, so
+   * a transition is added on demand and the composite stops being used.
    */
-  function quarterTile(tids, myK) {
-    let tile = exactTile(tids)
-    if (tile !== null) return { tile, status: 'exact' }
-    const distinct = [...new Set(tids.filter((t) => t !== VOID))].sort((a, b) => prio(b) - prio(a))
-    const B = distinct[0], A = distinct[1] ?? VOID
-    const mapped = tids.map((t) => (t === B ? B : A))
-    tile = exactTile(mapped)
-    if (tile !== null) return { tile, status: 'approx' }
-    const mine = tids[myK]
-    return { tile: exactTile(tids.map((t) => (t === mine ? mine : VOID))), status: 'missing', pair: [A === VOID ? distinct[1] : A, B].filter(Boolean).sort().join('·') }
+  function quarterTile(tids) {
+    const exact = exactTile(tids)
+    if (exact !== null) return { layers: [exact], status: 'exact' }
+    const distinct = [...new Set(tids.filter((t) => t !== VOID))].sort((a, b) => prio(a) - prio(b))
+    const layers = [exactTile(tids.map((t) => (t === VOID ? VOID : distinct[0])))]
+    for (const t of distinct.slice(1)) layers.push(exactTile(tids.map((u) => (u === t ? t : VOID))))
+    return { layers, status: 'composite', combo: distinct.map((id) => matOf(id).name).concat(tids.includes(VOID) ? ['edge'] : []).join(' · ') }
   }
   const tileXY = (i) => [(i % SC) * TPX, Math.floor(i / SC) * TPX]
   const tileUrlCache = new Map()
@@ -337,7 +336,7 @@
   // State
   // =====================================================================
   const S = {
-    tool: 'terrain', labels: false, quarters: true, face: false, faceRow: 6,
+    tool: 'terrain', labels: false, quarters: true, showMissing: true, face: false, faceRow: 6,
     terrain: { mode: 'paint', verb: 'raise', paintVerb: 'material', stroke: 'brush', shape: 'square', size: 1, strength: 2, height: 2, deadZone: 0.2, material: 'path', stamp: 21 },
     water: { mode: 'fill', level: 1, stroke: 'brush', size: 3 },
     order: ['stone', 'cobble', 'dirt', 'sand', 'grass', 'path'], // library order: later is the "over" terrain when a template is placed, and wins a three-way corner
@@ -467,6 +466,7 @@
     document.getElementById('insp').innerHTML = `<div class="head">${TOOLS.find((t) => t.id === S.tool).title}</div>` + INSP[S.tool]()
     document.getElementById('hints').innerHTML = HINTS[S.tool]().map(([k, v]) => `<span>${kbd(k)} ${v}</span>`).join('')
     document.getElementById('showq').classList.toggle('on', S.quarters)
+    document.getElementById('showmissing').classList.toggle('on', S.showMissing)
     document.getElementById('faceview').classList.toggle('on', S.face)
     document.getElementById('facerow').textContent = S.faceRow
     drawSet16(); draw()
@@ -478,6 +478,7 @@
     const s = e.target.closest('[data-set]'); if (s) { set(s.dataset.set, s.dataset.val); if (s.dataset.set === 'terrain.material') S.terrain.paintVerb = 'material'; render(); return }
     if (e.target.closest('#pick')) { togglePop(); return }
     if (e.target.id === 'showq') { S.quarters = !S.quarters; render(); return }
+    if (e.target.id === 'showmissing') { S.showMissing = !S.showMissing; render(); return }
     if (e.target.id === 'rowdn' || e.target.id === 'rowup') { S.faceRow = Math.max(0, Math.min(H - 1, S.faceRow + (e.target.id === 'rowup' ? 1 : -1))); S.face = true; render(); return }
     if (e.target.closest('#faceview')) { S.face = !S.face; render(); return }
     if (e.target.id === 'labels') { S.labels = !S.labels; e.target.textContent = S.labels ? 'Icons + labels ▾' : 'Icons only ▾'; render(); return }
@@ -531,13 +532,13 @@
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d')
   let cell = 40, ox = 0, oy = 0, hover = null, painting = false, anchorH = 0
   const QK = [3, 2, 1, 0] // quarter q (NW NE SW SE of the cell) is corner index k (SE SW NE NW) of the offset tile at that corner
-  let missingPairs = new Set()
+  let missingCombos = new Set()
   function drawCorner(g, dx, dy, ds, q, tids) {
-    const myK = QK[q], { tile, status, pair } = quarterTile(tids, myK)
-    const [x, y] = tileXY(tile), [, qx, qy] = QUADS[myK]
-    g.drawImage(sheet, x + qx * 8, y + qy * 8, 8, 8, dx, dy, ds, ds)
-    if (status === 'missing') { missingPairs.add(pair); g.fillStyle = '#e04fc0'; const cx = qx ? dx : dx + ds - 4, cy = qy ? dy : dy + ds - 4; g.fillRect(cx, cy, 4, 4) }
-    else if (status === 'approx') { g.fillStyle = 'rgba(233,162,59,.7)'; const cx = qx ? dx : dx + ds - 3, cy = qy ? dy : dy + ds - 3; g.fillRect(cx, cy, 3, 3) }
+    const myK = QK[q], { layers, status, combo } = quarterTile(tids)
+    const [, qx, qy] = QUADS[myK]
+    for (const tile of layers) { const [x, y] = tileXY(tile); g.drawImage(sheet, x + qx * 8, y + qy * 8, 8, 8, dx, dy, ds, ds) }
+    if (status === 'composite' && S.showMissing) { missingCombos.add(combo); g.fillStyle = '#e04fc0'; const cx = qx ? dx : dx + ds - 4, cy = qy ? dy : dy + ds - 4; g.fillRect(cx, cy, 4, 4) }
+    else if (status === 'composite') missingCombos.add(combo)
   }
   // TOP VIEW. From THIS cell's point of view: a lower neighbour is nothing (the cliff top draws its rim from
   // its edge set); a taller one is its own material, or "continuing" when it is the same material; off the
@@ -614,12 +615,12 @@
     const r = cv.parentElement.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio
     ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); ctx.imageSmoothingEnabled = false
     ctx.fillStyle = '#0f1115'; ctx.fillRect(0, 0, r.width, r.height)
-    missingPairs = new Set()
+    missingCombos = new Set()
     if (S.face) drawFace(r); else drawTop(r)
     const mp = document.getElementById('missing')
-    mp.textContent = missingPairs.size ? `${missingPairs.size} unauthored pair${missingPairs.size > 1 ? 's' : ''}` : 'every pair authored'
-    mp.style.color = missingPairs.size ? 'var(--warn)' : 'var(--ok)'
-    mp.title = [...missingPairs].map((p) => p.split('·').map((id) => matOf(id)?.name ?? id).join(' · ')).join(', ')
+    mp.textContent = missingCombos.size ? `${missingCombos.size} transition${missingCombos.size > 1 ? 's' : ''} to author` : 'every transition authored'
+    mp.style.color = missingCombos.size ? 'var(--warn)' : 'var(--ok)'
+    mp.title = [...missingCombos].join(', ')
   }
 
   // ---------- painting and sculpting in the demo ----------
@@ -703,7 +704,7 @@
     const allPairs = []; for (let i = 0; i < MATS.length; i++) for (let j = i + 1; j < MATS.length; j++) allPairs.push([MATS[i].id, MATS[j].id].sort().join('·'))
     const unauthored = allPairs.filter((p) => !pairs.includes(p))
     document.getElementById('setuplist').innerHTML = section('Materials', `<div class="list">${S.order.slice().reverse().map((m) => matOf(m)).map((m) => `<div class="mat ${m.id === 'grass' ? 'on' : ''}"><span class="grip">⋮⋮</span><i class="sw" style="background-image:url(${tileUrl(m.id)})"></i><span>${m.name}</span><span class="role">${m.role}</span><span class="n">${partnersOf(m.id).length}/${MATS.length - 1}</span></div>`).join('')}<div class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></div></div><div class="hint">The count is how many of a material's possible transitions are authored.</div>`, { sum: `${MATS.length}` })
-      + section('Transitions', `<div class="row"><span>Authored</span><span class="v">${pairs.length}</span></div><div class="acts" style="padding:0">${pairs.map((p) => `<span class="chip" style="width:auto;padding:0 8px;gap:4px;font-size:11.5px">${p.split('·').map((id) => `<i class="sw" style="background-image:url(${tileUrl(id)})"></i>`).join('')}</span>`).join('')}</div><div class="row"><span>Not authored</span><span class="v" style="color:var(--warn)">${unauthored.length}</span></div><div class="acts" style="padding:0">${unauthored.map((p) => `<span class="chip" style="width:auto;padding:0 8px;gap:4px;opacity:.5;border-style:dashed">${p.split('·').map((id) => `<i class="sw" style="background-image:url(${tileUrl(id)})"></i>`).join('')}</span>`).join('')}</div><div class="hint">Place template asks for the two terrains and fills a 4×4 block's corner tags from position; the second terrain is the shape. Tag corner fixes a sheet that was not drawn to the template, one corner at a time. A pair that is not authored still paints: both sides fall back to their edge sets and the viewport marks the corner.</div>`)
+      + section('Transitions', `<div class="row"><span>Authored</span><span class="v">${pairs.length}</span></div><div class="acts" style="padding:0">${pairs.map((p) => `<span class="chip" style="width:auto;padding:0 8px;gap:4px;font-size:11.5px">${p.split('·').map((id) => `<i class="sw" style="background-image:url(${tileUrl(id)})"></i>`).join('')}</span>`).join('')}</div><div class="row"><span>Not authored</span><span class="v" style="color:var(--warn)">${unauthored.length}</span></div><div class="acts" style="padding:0">${unauthored.map((p) => `<span class="chip" style="width:auto;padding:0 8px;gap:4px;opacity:.5;border-style:dashed">${p.split('·').map((id) => `<i class="sw" style="background-image:url(${tileUrl(id)})"></i>`).join('')}</span>`).join('')}</div><div class="hint">Place template asks for the two terrains and fills a 4×4 block's corner tags from position; the second terrain is the shape. Tag corner fixes a sheet that was not drawn to the template, one corner at a time. Any corner paints, with any number of terrains: an authored tile wins, and otherwise the corner is composited from the terrains' edge sets and marked in the viewport. Three- and four-way combinations are authored the same way, on demand, when one looks wrong.</div>`)
       + section('Preview', `<canvas id="setpreview" style="width:100%;image-rendering:pixelated;border-radius:3px"></canvas><div class="hint">A fixed patch of the selected pair, redrawn as tags change.</div>`)
     const p = document.getElementById('setpreview'), pw = 8, ph = 3; p.width = pw * TPX; p.height = ph * TPX
     const pg = p.getContext('2d'); pg.imageSmoothingEnabled = false
