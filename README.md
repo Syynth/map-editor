@@ -10,6 +10,9 @@ kept. See [`FINDINGS.md`](FINDINGS.md) for what it measured, [`CONTEXT.md`](CONT
 for the vocabulary, and [`docs/decision-log.md`](docs/decision-log.md) for the
 decisions and their reasoning.
 
+**Try it in the browser:** <https://syynth.github.io/map-editor/> — rebuilt
+from `main` on every push by `.github/workflows/pages.yml`.
+
 ```bash
 pnpm install
 pnpm browsers      # once, fetch the Chromium build these scripts drive
