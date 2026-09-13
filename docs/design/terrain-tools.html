@@ -22,7 +22,6 @@
   kbd, .kbd { font: 500 10.5px/1 var(--mono); color: var(--ink3); background: var(--bg2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 2px 4px 1px; white-space: nowrap; }
   .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
-  /* ---------- frame ---------- */
   .app { display: grid; height: 100vh; min-height: 620px; min-width: 960px;
     grid-template-columns: var(--rail) 1fr var(--insp);
     grid-template-rows: var(--top) var(--ctx) 1fr var(--status);
@@ -41,7 +40,6 @@
   .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border-radius: var(--r-md); color: var(--ink2); }
   .btn:hover { background: var(--panel); color: var(--ink); }
 
-  /* ---------- rail ---------- */
   .tool { position: relative; width: 40px; height: 40px; border-radius: var(--r-md); display: grid; place-items: center; color: var(--ink2); }
   .tool:hover { background: var(--panel); color: var(--ink); }
   .tool.on { background: var(--panel2); color: var(--accent); }
@@ -51,10 +49,9 @@
   .rail .gap { flex: 1; }
   .rail hr { width: 24px; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
 
-  /* ---------- context bar ---------- */
   .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); margin-right: -2px; }
   .seg { display: inline-flex; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 2px; gap: 2px; flex: none; }
-  .seg button { height: 22px; width: 28px; border-radius: 4px; color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+  .seg button { height: 22px; width: 28px; border-radius: 4px; color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; }
   .seg button:hover { color: var(--ink); }
   .seg button.on { background: var(--panel2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
   .verb { height: 28px; width: 30px; border-radius: var(--r-md); display: inline-flex; align-items: center; justify-content: center; color: var(--ink2); flex: none; }
@@ -64,14 +61,13 @@
   .chip { height: 26px; width: 30px; border-radius: var(--r-md); border: 1px solid var(--line2); color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; flex: none; }
   .chip:hover { color: var(--ink); border-color: var(--ink3); }
   .chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
-  .chip .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); }
+  .chip .sw { width: 16px; height: 16px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); image-rendering: pixelated; background-size: cover; }
   .chip.active { width: auto; padding: 0 9px 0 6px; gap: 7px; border-color: var(--accent); color: var(--ink); }
   .chip.active .nm { font-weight: 500; }
   .chip.active .car { width: 0; height: 0; border: 4px solid transparent; border-top: 5px solid var(--ink3); margin-top: 4px; }
   .hint { color: var(--ink3); font-size: 11.5px; line-height: 1.45; }
   .ctx .hint { white-space: nowrap; }
 
-  /* the scrub field: a number you drag, click into, or nudge */
   .scrub { display: inline-flex; align-items: center; height: 26px; border: 1px solid var(--line2); border-radius: var(--r-sm); background: var(--bg2); cursor: ew-resize; user-select: none; flex: none; }
   .scrub .sl { padding: 0 7px 0 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); border-right: 1px solid var(--line); height: 100%; display: inline-flex; align-items: center; }
   .scrub .sv { min-width: 4.2ch; padding: 0 8px; text-align: right; font: 500 12px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -80,31 +76,29 @@
   .scrub.drag { border-color: var(--accent); }
   .scrub.drag .sv { color: var(--accent); }
   .scrub input { width: 5ch; height: 20px; margin: 0 4px; border: 0; border-radius: 3px; background: var(--panel2); color: var(--ink); font: 500 12px var(--mono); text-align: right; padding: 0 4px; }
-  .scrub.insp { cursor: ew-resize; }
 
-  /* picker popover */
-  .pop { position: absolute; z-index: 6; top: calc(var(--top) + var(--ctx) + 6px); left: 0; background: var(--bg2); border: 1px solid var(--line2); border-radius: var(--r-md); box-shadow: 0 8px 24px rgba(0,0,0,.45); padding: 10px; display: none; width: 236px; }
+  .pop { position: absolute; z-index: 6; top: 6px; left: 0; background: var(--bg2); border: 1px solid var(--line2); border-radius: var(--r-md); box-shadow: 0 8px 24px rgba(0,0,0,.45); padding: 10px; display: none; width: 236px; }
   .pop.show { display: block; }
   .pop .ph { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); margin: 0 0 8px; display: flex; justify-content: space-between; }
   .pop .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-  .pop .cell { aspect-ratio: 1; border-radius: 5px; border: 1px solid rgba(0,0,0,.4); position: relative; }
+  .pop .cell { aspect-ratio: 1; border-radius: 5px; border: 1px solid rgba(0,0,0,.4); position: relative; background-size: cover; image-rendering: pixelated; }
   .pop .cell.on { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .pop .cell i { position: absolute; right: 3px; bottom: 2px; font: 600 8.5px var(--mono); color: rgba(255,255,255,.75); }
+  .pop .cell i { position: absolute; right: 3px; bottom: 2px; font: 600 8.5px var(--mono); color: rgba(255,255,255,.8); text-shadow: 0 1px 0 rgba(0,0,0,.7); }
 
   .tip { position: fixed; z-index: 9; pointer-events: none; background: #0f1115; border: 1px solid var(--line2); border-radius: 4px; padding: 4px 7px; font-size: 12px; color: var(--ink); display: flex; gap: 8px; align-items: center; opacity: 0; transition: opacity .1s; box-shadow: 0 4px 12px rgba(0,0,0,.4); }
   .tip.show { opacity: 1; }
 
-  /* ---------- viewport ---------- */
-  #cv { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; image-rendering: pixelated; }
   .ov { position: absolute; pointer-events: none; font-size: 11.5px; color: var(--ink3); }
   .ov.tl { left: 10px; top: 8px; display: flex; gap: 6px; align-items: center; }
-  .ov.br { right: 10px; bottom: 8px; display: flex; gap: 10px; }
-  .ov .pill { pointer-events: auto; background: rgba(27,30,37,.85); border: 1px solid var(--line); border-radius: 12px; padding: 3px 9px; color: var(--ink2); backdrop-filter: blur(4px); display: inline-flex; gap: 8px; align-items: center; }
+  .ov.br { right: 10px; bottom: 8px; display: flex; gap: 8px; }
+  .ov .pill { pointer-events: auto; background: rgba(27,30,37,.88); border: 1px solid var(--line); border-radius: 12px; padding: 3px 9px; color: var(--ink2); backdrop-filter: blur(4px); display: inline-flex; gap: 8px; align-items: center; }
   .ov .pill .kbd { font-size: 9.5px; }
   .ov .pill.tog { cursor: pointer; }
   .ov .pill.tog.on { border-color: var(--accent); color: var(--accent); }
+  .ov .pill button { color: var(--ink2); padding: 0 3px; }
+  .ov .pill button:hover { color: var(--ink); }
 
-  /* ---------- inspector ---------- */
   .insp .head { height: 36px; display: flex; align-items: center; padding: 0 12px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); border-bottom: 1px solid var(--line); }
   .sec { border-bottom: 1px solid var(--line); }
   .sec summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; font-weight: 600; color: var(--ink); }
@@ -112,7 +106,6 @@
   .sec summary::before { content: ""; width: 0; height: 0; border: 4px solid transparent; border-left: 5px solid var(--ink3); margin-right: 2px; transition: transform .12s; }
   .sec[open] summary::before { transform: rotate(90deg) translateX(1px); }
   .sec summary .sum { margin-left: auto; font-weight: 400; color: var(--ink3); font-size: 11.5px; }
-  .sec summary .sum.acc { color: var(--accent); }
   .sec .body { padding: 2px 12px 12px 22px; display: grid; gap: 7px; }
   .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; min-height: 24px; color: var(--ink2); }
   .row .v { color: var(--ink); font: 500 12px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
@@ -126,30 +119,40 @@
   .mat:hover { background: var(--panel); color: var(--ink); }
   .mat.on { background: var(--accent-dim); color: var(--accent); }
   .mat .grip { color: var(--ink3); font-size: 12px; letter-spacing: -2px; cursor: grab; opacity: .7; }
-  .mat .sw { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,.4); }
+  .mat .sw { width: 18px; height: 18px; border-radius: 4px; border: 1px solid rgba(0,0,0,.4); background-size: cover; image-rendering: pixelated; }
   .mat .role { font: 500 9.5px/1 var(--mono); letter-spacing: .06em; color: var(--ink3); border: 1px solid var(--line); border-radius: 3px; padding: 2px 4px; text-transform: uppercase; }
   .mat.on .role { color: var(--accent); border-color: var(--accent); opacity: .8; }
   .mat .n { font: 500 11.5px var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
   .mat.add { grid-template-columns: 14px 18px 1fr auto; color: var(--ink3); }
   .mat.add:hover { color: var(--ink); }
-  .dual { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; width: 128px; }
-  .dual canvas { position: static; width: 100%; aspect-ratio: 1; border-radius: 3px; cursor: default; }
-  .rampstrip { display: flex; gap: 3px; }
-  .rampstrip canvas { position: static; width: 28px; height: 40px; border-radius: 3px; cursor: default; }
+  .set16 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; width: 116px; }
+  .set16 canvas { width: 100%; aspect-ratio: 1; border-radius: 2px; image-rendering: pixelated; background: repeating-conic-gradient(#1f232c 0 25%, #262b36 0 50%) 0 0 / 8px 8px; }
   .sheet { border: 1px solid var(--line); border-radius: 4px; background: repeating-conic-gradient(#1f232c 0 25%, #262b36 0 50%) 0 0 / 14px 14px; height: 96px; display: grid; place-items: center; color: var(--ink3); font-size: 11.5px; }
 
   .status .hints { display: flex; gap: 14px; overflow: hidden; white-space: nowrap; }
   .status .hints span { display: inline-flex; gap: 5px; align-items: center; }
   .status .right { display: flex; gap: 14px; align-items: center; flex: none; }
 
-  /* ---------- notes ---------- */
-  .notes { max-width: 70ch; padding: 40px 32px 64px; color: var(--ink2); }
+  /* ---------- notes and the static setup mockup ---------- */
+  .notes { max-width: 96ch; padding: 40px 32px 64px; color: var(--ink2); }
   .notes h2 { font-size: 15px; margin: 0 0 4px; color: var(--ink); text-wrap: balance; }
-  .notes p.lede { margin: 0 0 20px; color: var(--ink3); }
-  .notes dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 12px 18px; }
+  .notes h3 { font-size: 13px; margin: 28px 0 6px; color: var(--ink); }
+  .notes p.lede { margin: 0 0 20px; color: var(--ink3); max-width: 70ch; }
+  .notes dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 12px 18px; max-width: 78ch; }
   .notes dt { color: var(--ink); font-weight: 600; }
   .notes dd { margin: 0; }
   .notes .kbd { font-size: 10px; }
+  .setup { display: grid; grid-template-columns: 1fr 292px; gap: 0; border: 1px solid var(--line2); border-radius: var(--r-md); background: var(--bg2); overflow: hidden; margin-top: 10px; }
+  .setup .sh { padding: 12px; background: #0f1115; display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .setup .sh canvas { width: 100%; max-width: 100%; height: auto; image-rendering: pixelated; border: 1px solid var(--line); border-radius: 3px; }
+  .setup .pn { min-width: 0; }
+  .setup .sh .bar { display: flex; gap: 8px; align-items: center; }
+  .setup .pn { border-left: 1px solid var(--line); display: grid; align-content: start; }
+  .setup .pn .head { height: 36px; display: flex; align-items: center; padding: 0 12px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); border-bottom: 1px solid var(--line); }
+  .setup .sec .body { padding-left: 12px; }
+  .setup .foot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); justify-content: flex-end; }
+  .tag { display: inline-flex; align-items: center; gap: 6px; }
+  .tag i { width: 10px; height: 10px; border-radius: 2px; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 
@@ -158,7 +161,7 @@
     <span class="brand">papercut</span>
     <span class="crumb">/ <b>Meadow Crossing</b></span>
     <span class="grow"></span>
-    <span class="hint">Terrain tools, 2026-09-13. The viewport is a top-down dual-grid demo; everything else is literal.</span>
+    <span class="hint">Terrain tools, 2026-09-13. The viewport is a live paint demo on a generated 16 px sheet; the setup screen below the frame is a static mockup.</span>
     <span class="grow"></span>
     <button class="btn" id="labels">Icons only ▾</button>
   </header>
@@ -168,58 +171,195 @@
     <canvas id="cv"></canvas>
     <div class="pop" id="pop"></div>
     <div class="ov tl"><span class="pill" id="under">—</span></div>
-    <div class="ov br"><span class="pill tog on" id="showq">Show quarters</span><span class="pill cam">orbit <span class="kbd">⌥ drag</span> pan <span class="kbd">space</span></span></div>
+    <div class="ov br">
+      <span class="pill tog" id="faceview">Face view · row <b class="num" id="facerow">6</b> <button id="rowdn" title="Previous row">◂</button><button id="rowup" title="Next row">▸</button></span>
+      <span class="pill tog on" id="showq">Quarters</span>
+    </div>
   </div>
   <aside class="insp" id="insp"></aside>
-  <footer class="status"><div class="hints" id="hints"></div><div class="right"><span class="num" id="dormant">0 dormant</span><span>Layer 0–8</span></div></footer>
+  <footer class="status"><div class="hints" id="hints"></div><div class="right"><span class="num" id="dormant">3 dormant</span><span>Layer 0–5</span></div></footer>
 </div>
 <div class="tip" id="tip"></div>
 
 <section class="notes">
   <h2>What changed, and why it looks like this</h2>
-  <p class="lede">Four decisions logged on 2026-09-13, plus the Water ruling from the day before, worked into the frame from <code>select-first.html</code>. Paint in the demo to see the dual grid resolve; sculpt to see the rim rule at a cliff.</p>
+  <p class="lede">Five decisions logged on 2026-09-13, plus the Water ruling from the day before, worked into the frame from <code>select-first.html</code>. Every tile in the viewport is sampled from the 16 px sheet drawn below, through the same corner-tag lookup the editor would use. Paint with the five fills and the path; switch to the face view and paint the cliff.</p>
   <dl>
-    <dt>Materials, not tiles</dt><dd>The Paint bar's first verb is Material. What you paint is a library entry; the tile at every cell corner is derived from which of the four cells around that corner hold the material. Each material is sixteen whole tiles the artist draws, shown in the inspector as the 4×4 dual set. Corners come out of that with no corner art tagged by hand.</dd>
-    <dt>Quarters</dt><dd>The demo draws each cell as four quarters, each sampling the offset tile at its own corner. Toggle <em>Show quarters</em> to see the seams; on flat ground they are invisible, and at a cliff they land exactly on the height change, so nothing stretches. The cliff-top cell draws its rim; the cell at the foot treats a taller neighbour of the same material as connected and draws none.</dd>
-    <dt>Priority is order</dt><dd>Drag a material up or down the Materials list and it draws over or under its neighbours at a shared corner. There is no separate priority field. The count on each row is how many cells and bands use it, so an unused material is safe to delete.</dd>
-    <dt>Walls paint the same way</dt><dd>A cliff face is a grid too: run along the face, half-tile levels up. The Material brush on a band sets that band's wall material; the rest of the column keeps the cell's wall default, shown as the second swatch on each material row when it is used as a wall. <span class="kbd">⇧</span> on a band clears the override back to the column default; <span class="kbd">⌥</span> eyedrops from a top or a band.</dd>
-    <dt>Ramp by drag</dt><dd>With Ramp up, press on a cliff face and drag back onto the high side; the run grows one cell per cell of drag and the preview shows the 45° cut. Release when the run meets the drop; a run that does not meet it is refused and the status bar says by how much. Click any cell of a ramp to remove the whole run. No direction dropdown, no ramp panel.</dd>
-    <dt>Strength and height</dt><dd>Raise and Smooth carry a Strength in half-tiles per pass. Flatten shows the Height it will set, sampled at the press and editable in place. Every one of these is a scrub field: drag sideways to change, click to type, arrow keys to nudge, <span class="kbd">⇧</span> for coarse steps. The size keys <span class="kbd">[</span> <span class="kbd">]</span> stay.</dd>
-    <dt>Water is a rail item</dt><dd>Fill and Drain, a Level scrub defaulting to the layer view's top handle, and the same stroke shapes as Terrain. Picking looks through water everywhere, so the ground under a pool is still what every other tool edits.</dd>
-    <dt>Built on voxels</dt><dd>Scheduled the same day: the document becomes cubes, with a half slab, the 45° ramp and the half ramp as voxel shapes, and one material per voxel. The sculpt verbs above are written against that, not against columns. Nothing in this frame changes; the demo stays top-down because the paint model is the same picture either way, offset tiles over a flat area and quarters where a height edge crosses a corner.</dd>
-    <dt>Stamp stays, for now</dt><dd>The raw tile brush is the third Paint verb, kept as an escape hatch. It stamps one tile from an authored sheet over a top or a band. Its picker is the old sheet palette and is marked for redesign; nothing else in the paint model depends on it.</dd>
+    <dt>Materials, not tiles</dt><dd>The Paint bar's first verb is Material. What you paint is a library entry; the tile at every cell corner is derived from which of the four cells around that corner hold it. Fills are dual-grid sets of sixteen whole tiles; the path is an edge set of sixteen, chosen by which of the four sides continue it. Both kinds sit in one list.</dd>
+    <dt>Quarters</dt><dd>Each cell is drawn as four quarters, each sampling the offset tile at its own corner. On flat ground that is pixel-identical to drawing the offset tiles whole, which is the cheap path the mesher takes wherever the four cells are coplanar. At a cliff the split lands on the height change. The cliff-top cell draws its rim; the cell at the foot treats a taller neighbour of the same material as connected and draws none.</dd>
+    <dt>Priority is order</dt><dd>Drag a fill up or down the Materials list and it draws over or under its neighbours at a shared corner. At a corner holding two fills, the lower one's full tile goes under the higher one's masked tile. The path is an overlay and always draws over the fills.</dd>
+    <dt>Walls paint the same way</dt><dd>Face view shows one row's south-facing cliff as the grid it is: run along the face, whole-tile levels up. The Material brush on a band sets that band's voxel material; <span class="kbd">⇧</span> clears it back to the column's voxels. The top of the face and the ground are edges, so a wall material gets its lip and its base trim from the same sixteen tiles.</dd>
+    <dt>Built on voxels</dt><dd>The document becomes cubes, with a half slab, the 45° ramp and the half ramp as voxel shapes, and one material per voxel. Heights in the demo are whole cubes and Strength here rounds up to whole layers; the bar keeps half-tiles as logged.</dd>
+    <dt>Ramp by drag</dt><dd>With Ramp up, press on a cliff face and drag back onto the high side; the run grows one cell per cell of drag and the preview shows the 45° cut. A run that does not meet the drop is refused. Click any cell of a ramp to remove the whole run. Not in the demo.</dd>
+    <dt>Strength and height</dt><dd>Raise and Smooth carry a Strength. Flatten shows the Height it will set, sampled at the press and editable in place. Every one of these is a scrub field: drag sideways, click to type, arrow keys to nudge, <span class="kbd">⇧</span> for coarse steps.</dd>
+    <dt>Water is a rail item</dt><dd>Fill and Drain, a Level scrub, the same stroke shapes as Terrain. Picking looks through water everywhere.</dd>
+    <dt>Stamp stays, for now</dt><dd>The raw tile brush is the third Paint verb, kept as an escape hatch. Its picker is the old sheet palette and is marked for redesign.</dd>
   </dl>
+
+  <h3>Terrain set setup, between RPG Maker and Tiled</h3>
+  <p class="lede">Static mockup. Underneath is Tiled's model: every tile on a sheet carries a tag per corner (fills) or per side (paths), and a material's sixteen variants are looked up from those tags, so any tileset can be wired by tagging. On top is RPG Maker's: a template stamp that fills the tags from position, so art drawn to the template block is wired in one click and never tagged by hand. Below, the sheet the demo paints from, with its tags shown.</p>
+  <div class="setup">
+    <div class="sh">
+      <div class="bar"><span class="lbl">Sheet</span><span class="num" style="color:var(--ink)">ground.png</span><span class="hint">12 × 8 tiles · 16 px</span><span class="grow"></span><span class="seg"><button class="on" style="width:auto;padding:0 8px" title="Fill one 4×4 block's corner tags from position">Place template</button><button style="width:auto;padding:0 8px" title="Toggle the selected material on one corner of one tile">Tag corners</button><button style="width:auto;padding:0 8px" title="Toggle the selected path on one side of one tile">Tag sides</button><button style="width:auto;padding:0 8px">Erase</button></span></div>
+      <canvas id="sheetview"></canvas>
+      <div class="hint" id="sheetlegend"></div>
+    </div>
+    <div class="pn">
+      <div class="head">Terrain set</div>
+      <div id="setuplist"></div>
+      <div class="foot"><button class="act">Import sheet…</button><span class="grow"></span><button class="act" style="background:var(--accent);color:var(--accent-ink);border-color:transparent;font-weight:600">Done</button></div>
+    </div>
+  </div>
 </section>
 
 <script>
-  // ---------- state ----------
+  // =====================================================================
+  // The sheet: 16 px tiles, generated once. Position means nothing to the
+  // renderer; the TAGS do. The template stamp is what fills tags from
+  // position, which is the RPG Maker half of the setup story.
+  // =====================================================================
+  const TPX = 16, SC = 12, SR = 8
+  const sheet = document.createElement('canvas'); sheet.width = SC * TPX; sheet.height = SR * TPX
+  const sg = sheet.getContext('2d')
+  const cornerTags = Array.from({ length: SC * SR }, () => [null, null, null, null]) // NW NE SW SE
+  const sideTags = Array.from({ length: SC * SR }, () => [null, null, null, null])   // N E S W
+  const tIndex = (c, r) => r * SC + c
   const MATS = [
-    { id: 'stone', name: 'Stone', color: '#7d8494', dark: '#5c6272', role: 'wall', sheet: 'ground.png', region: '0,4 · 4×4' },
-    { id: 'path', name: 'Path', color: '#b08f5e', dark: '#8a6f47', role: 'top', sheet: 'ground.png', region: '4,4 · 4×4' },
-    { id: 'dirt', name: 'Dirt', color: '#8a6a45', dark: '#6a5034', role: 'any', sheet: 'ground.png', region: '4,0 · 4×4' },
-    { id: 'grass', name: 'Grass', color: '#4f8a46', dark: '#3a6a34', role: 'top', sheet: 'ground.png', region: '0,0 · 4×4' },
-    { id: 'sand', name: 'Sand', color: '#c9b27f', dark: '#a48f62', role: 'top', sheet: 'ground.png', region: '8,0 · 4×4' },
+    { id: 'stone', name: 'Stone', kind: 'fill', color: '#7d8494', dark: '#555b6b', light: '#9aa1b1', block: [0, 4], role: 'wall' },
+    { id: 'cobble', name: 'Cobble', kind: 'fill', color: '#8f7f70', dark: '#5f5248', light: '#a8988a', block: [4, 4], role: 'wall' },
+    { id: 'dirt', name: 'Dirt', kind: 'fill', color: '#8a6a45', dark: '#5f4830', light: '#a58358', block: [4, 0], role: 'any' },
+    { id: 'grass', name: 'Grass', kind: 'fill', color: '#4f8a46', dark: '#33612d', light: '#6aa65c', block: [0, 0], role: 'top' },
+    { id: 'sand', name: 'Sand', kind: 'fill', color: '#c9b27f', dark: '#9a8659', light: '#e0cd9c', block: [8, 0], role: 'top' },
+    { id: 'path', name: 'Path', kind: 'path', color: '#b08f5e', dark: '#7f6540', light: '#c9a973', block: [8, 4], role: 'top' },
   ]
-  const S = {
-    tool: 'terrain', labels: false, quarters: true,
-    terrain: { mode: 'paint', verb: 'raise', paintVerb: 'material', stroke: 'brush', shape: 'square', size: 2, strength: 1, height: 4, deadZone: 0.2, material: 'dirt', stamp: 21 },
-    water: { mode: 'fill', level: 3, stroke: 'brush', size: 3 },
-    // library order IS draw priority: later draws over earlier
-    order: ['stone', 'path', 'dirt', 'grass', 'sand'],
-  }
   const matOf = (id) => MATS.find((m) => m.id === id)
+  function rng(seed) { let s = (seed * 2654435761) >>> 0 || 1; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32 }
+  const QUADS = [[1, 0, 0], [2, 1, 0], [4, 0, 1], [8, 1, 1]] // bit, qx, qy
+
+  /** One quadrant of an offset tile: fill, rounded when alone, a rim where the material ends, a notch at an inside corner. */
+  function paintQuadrant(g, px, py, s, myBit, bits, m, underColor) {
+    const r = s * 0.55, inset = Math.max(0.6, s * 0.06)
+    const horiz = { 8: 4, 4: 8, 2: 1, 1: 2 }[myBit], vert = { 8: 2, 2: 8, 4: 1, 1: 4 }[myBit], diag = { 8: 1, 1: 8, 4: 2, 2: 4 }[myBit]
+    const hasH = bits & horiz, hasV = bits & vert, hasD = bits & diag
+    const tcx = (myBit & 5) ? px + s : px, tcy = (myBit & 3) ? py + s : py
+    const farX = tcx === px ? px + s : px, farY = tcy === py ? py + s : py
+    const ex = tcx === px ? px + inset : px + s - inset, ey = tcy === py ? py + inset : py + s - inset
+    g.fillStyle = m.color; g.beginPath()
+    if (!hasH && !hasV) { g.moveTo(farX, farY); g.lineTo(ex, farY); g.arcTo(ex, ey, farX, ey, r); g.lineTo(farX, ey); g.closePath() } else g.rect(px, py, s, s)
+    g.fill()
+    g.strokeStyle = m.dark; g.lineWidth = Math.max(1.4, s * 0.16); g.beginPath()
+    if (!hasH && !hasV) { g.moveTo(ex, farY); g.arcTo(ex, ey, farX, ey, r - inset); g.lineTo(farX, ey) }
+    else { if (!hasH) { g.moveTo(ex, py); g.lineTo(ex, py + s) } if (!hasV) { g.moveTo(px, ey); g.lineTo(px + s, ey) } }
+    g.stroke()
+    if (hasH && hasV && !hasD) {
+      g.save(); if (underColor) g.fillStyle = underColor; else g.globalCompositeOperation = 'destination-out'
+      g.beginPath(); g.arc(tcx, tcy, r * 0.5, 0, Math.PI * 2); g.fill(); g.restore()
+      g.strokeStyle = m.dark; g.beginPath(); g.arc(tcx, tcy, r * 0.5 + 0.8, 0, Math.PI * 2); g.stroke()
+    }
+  }
+  function speckle(g, x, y, m, seed, inside) {
+    const r = rng(seed)
+    for (let n = 0; n < 14; n++) { const px = Math.floor(r() * TPX), py = Math.floor(r() * TPX); if (!inside(px, py)) continue; g.fillStyle = r() < 0.5 ? m.light : m.dark; g.globalAlpha = 0.55; g.fillRect(x + px, y + py, 1, 1); g.globalAlpha = 1 }
+    if (m.role === 'wall') { g.fillStyle = m.dark; g.globalAlpha = .45; for (let yy = 3; yy < TPX; yy += 5) { const off = ((yy / 5) | 0) % 2 ? 4 : 0; for (let xx = off; xx < TPX; xx += 8) if (inside(xx, yy)) g.fillRect(x + xx, y + yy, 5, 1) } g.globalAlpha = 1 }
+  }
+  /** A fill's 16 dual variants, drawn into a 4×4 block in mask order, and tagged. */
+  function stampFill(m) {
+    const [c0, r0] = m.block
+    for (let mask = 0; mask < 16; mask++) {
+      const c = c0 + (mask & 3), r = r0 + (mask >> 2), x = c * TPX, y = r * TPX
+      sg.clearRect(x, y, TPX, TPX)
+      for (const [bit, qx, qy] of QUADS) {
+        if (!(mask & bit)) continue
+        sg.save(); sg.beginPath(); sg.rect(x + qx * 8, y + qy * 8, 8, 8); sg.clip()
+        paintQuadrant(sg, x + qx * 8, y + qy * 8, 8, bit, mask, m, null)
+        sg.restore()
+      }
+      speckle(sg, x, y, m, tIndex(c, r) + 7, (px, py) => mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0])
+      cornerTags[tIndex(c, r)] = QUADS.map(([bit]) => (mask & bit ? m.id : null))
+    }
+  }
+  /** A path's 16 edge variants: N=1 E=2 S=4 W=8, a border on every side that does not continue. */
+  function stampPath(m) {
+    const [c0, r0] = m.block
+    for (let mask = 0; mask < 16; mask++) {
+      const c = c0 + (mask & 3), r = r0 + (mask >> 2), x = c * TPX, y = r * TPX
+      sg.clearRect(x, y, TPX, TPX)
+      const n = mask & 1, e = mask & 2, s = mask & 4, w = mask & 8
+      sg.fillStyle = m.color
+      const ix = w ? 0 : 2, iy = n ? 0 : 2, iw = TPX - ix - (e ? 0 : 2), ih = TPX - iy - (s ? 0 : 2)
+      sg.beginPath(); sg.roundRect(x + ix, y + iy, iw, ih, [n || w ? 0 : 4, n || e ? 0 : 4, s || e ? 0 : 4, s || w ? 0 : 4]); sg.fill()
+      sg.strokeStyle = m.dark; sg.lineWidth = 1.5; sg.stroke()
+      speckle(sg, x, y, m, tIndex(c, r) + 91, (px, py) => px >= ix + 2 && px < ix + iw - 2 && py >= iy + 2 && py < iy + ih - 2)
+      sideTags[tIndex(c, r)] = [n ? m.id : null, e ? m.id : null, s ? m.id : null, w ? m.id : null]
+    }
+  }
+  for (const m of MATS) (m.kind === 'path' ? stampPath : stampFill)(m)
+
+  /** Variant lookup, from tags — the renderer's only view of the sheet. */
+  const variantCache = new Map()
+  function variants(id) {
+    if (variantCache.has(id)) return variantCache.get(id)
+    const m = matOf(id), tags = m.kind === 'path' ? sideTags : cornerTags, table = new Array(16).fill(null)
+    for (let mask = 0; mask < 16; mask++) {
+      let best = null, bestScore = -1
+      for (let i = 0; i < tags.length; i++) {
+        let ok = true, score = 0
+        for (let k = 0; k < 4; k++) { const want = !!(mask & (1 << k)); const has = tags[i][k] === id; if (want !== has) { ok = false; break } if (!has && tags[i][k] === null) score++ }
+        if (ok && score > bestScore) { best = i; bestScore = score }
+      }
+      table[mask] = best
+    }
+    variantCache.set(id, table); return table
+  }
+  const tileXY = (i) => [(i % SC) * TPX, Math.floor(i / SC) * TPX]
+  const tileUrlCache = new Map()
+  function tileUrl(id) { // a material's full tile, for chips and swatches
+    if (tileUrlCache.has(id)) return tileUrlCache.get(id)
+    const c = document.createElement('canvas'); c.width = c.height = TPX; const [x, y] = tileXY(variants(id)[15]); c.getContext('2d').drawImage(sheet, x, y, TPX, TPX, 0, 0, TPX, TPX)
+    const u = c.toDataURL(); tileUrlCache.set(id, u); return u
+  }
+
+  // =====================================================================
+  // State
+  // =====================================================================
+  const S = {
+    tool: 'terrain', labels: false, quarters: true, face: false, faceRow: 6,
+    terrain: { mode: 'paint', verb: 'raise', paintVerb: 'material', stroke: 'brush', shape: 'square', size: 1, strength: 2, height: 2, deadZone: 0.2, material: 'dirt', stamp: 21 },
+    water: { mode: 'fill', level: 1, stroke: 'brush', size: 3 },
+    order: ['stone', 'cobble', 'dirt', 'grass', 'sand'], // fills; library order IS draw priority, later over earlier
+  }
   const prio = (id) => S.order.indexOf(id)
   const get = (path) => path.split('.').reduce((o, k) => o[k], S)
   const set = (path, v) => { const p = path.split('.'); const k = p.pop(); p.reduce((o, k) => o[k], S)[k] = v }
 
-  // ---------- icons ----------
+  // the level: heights in cubes, the top voxel's material, the material of the voxels below, the path overlay, band overrides, water
+  const W = 16, H = 10
+  const idx = (x, y) => y * W + x, inb = (x, y) => x >= 0 && y >= 0 && x < W && y < H
+  const hgt = new Array(W * H).fill(0), mat = new Array(W * H).fill('grass'), wall = new Array(W * H).fill('stone'), path = new Array(W * H).fill(false), wat = new Array(W * H).fill(-1)
+  const bandOv = new Map() // `${x},${y},${level}` -> fill id, for the south face
+  ;(function seed() {
+    for (let y = 2; y < 7; y++) for (let x = 3; x < 9; x++) hgt[idx(x, y)] = 2
+    for (let y = 3; y < 5; y++) for (let x = 5; x < 8; x++) hgt[idx(x, y)] = 3
+    for (let x = 3; x < 9; x++) wall[idx(x, 6)] = x < 6 ? 'stone' : 'cobble'
+    for (let y = 4; y < 8; y++) for (let x = 11; x < 15; x++) mat[idx(x, y)] = 'sand'
+    for (let y = 5; y < 7; y++) for (let x = 12; x < 14; x++) wat[idx(x, y)] = 1
+    mat[idx(6, 3)] = 'dirt'; mat[idx(1, 1)] = 'dirt'; mat[idx(2, 1)] = 'dirt'; mat[idx(1, 2)] = 'dirt'
+    for (let x = 0; x < 11; x++) path[idx(x, 8)] = true
+    for (let y = 5; y < 9; y++) path[idx(9, y)] = true
+    path[idx(10, 5)] = true; path[idx(11, 5)] = true
+    bandOv.set('4,6,1', 'cobble'); bandOv.set('5,6,1', 'cobble')
+  })()
+
+  // =====================================================================
+  // Icons and markup
+  // =====================================================================
   const I = {
     select: '<path d="M5 3l14 9-6 1.5L16 20l-2.5 1-3-6.5L6 18z"/>',
     terrain: '<path d="M3 18l5-8 4 5 3-3 6 6z"/><path d="M3 21h18"/>',
     water: '<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/>',
     objects: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
     buildings: '<path d="M4 20V9l8-5 8 5v11z"/><path d="M10 20v-6h4v6"/>',
-    fences: '<path d="M5 8v12M12 8v12M19 8v12M3 12h18M3 17h18"/><path d="M5 8l0-3M12 8l0-3M19 8l0-3"/>',
+    fences: '<path d="M5 8v12M12 8v12M19 8v12M3 12h18M3 17h18"/>',
     sculpt: '<path d="M4 19l4-1 10-10-3-3L5 15z"/><path d="M13 7l3 3"/>',
     paint: '<path d="M4 4h10v6H4z"/><path d="M14 7h3v4l-6 2v7h-2v-8l5-2z"/>',
     raise: '<path d="M12 19V6"/><path d="M6 12l6-6 6 6"/>',
@@ -240,184 +380,121 @@
   }
   const ic = (id, s = 17) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[id]}</svg>`
   const kbd = (k) => `<span class="kbd">${k}</span>`
-
-  // ---------- markup helpers ----------
-  const seg = (path, opts) => `<span class="seg">${opts.map(([v, label, k]) =>
-    `<button data-set="${path}" data-val="${v}" class="${get(path) === v ? 'on' : ''}" data-tip="${label}" data-key="${k ?? ''}">${ic(v === 'fill' && path === 'water.mode' ? 'fillw' : v, 16)}</button>`).join('')}</span>`
-  const verbs = (path, opts) => opts.map(([v, label, k]) =>
-    `<button class="verb ${get(path) === v ? 'on' : ''}" data-set="${path}" data-val="${v}" data-tip="${label}" data-key="${k ?? ''}">${ic(v)}</button>`).join('')
-  const scrub = (path, label, { min = 0, max = 99, step = 1, unit = '', fmt = (v) => v, cls = '' } = {}) =>
-    `<span class="scrub ${cls}" data-scrub="${path}" data-min="${min}" data-max="${max}" data-step="${step}" tabindex="0" data-tip="${label}: drag to change, click to type, ⇧ for coarse steps" data-key=""><span class="sl">${label}</span><span class="sv">${fmt(get(path))}</span>${unit ? `<span class="un">${unit}</span>` : ''}</span>`
+  const seg = (p, opts) => `<span class="seg">${opts.map(([v, label, k]) => `<button data-set="${p}" data-val="${v}" class="${get(p) === v ? 'on' : ''}" data-tip="${label}" data-key="${k ?? ''}">${ic(v === 'fill' && p === 'water.mode' ? 'fillw' : v, 16)}</button>`).join('')}</span>`
+  const verbs = (p, opts) => opts.map(([v, label, k]) => `<button class="verb ${get(p) === v ? 'on' : ''}" data-set="${p}" data-val="${v}" data-tip="${label}" data-key="${k ?? ''}">${ic(v)}</button>`).join('')
+  const scrub = (p, label, { min = 0, max = 99, step = 1, unit = '', fmt = (v) => v } = {}) =>
+    `<span class="scrub" data-scrub="${p}" data-min="${min}" data-max="${max}" data-step="${step}" tabindex="0" data-tip="${label}: drag to change, click to type, ⇧ for coarse steps" data-key=""><span class="sl">${label}</span><span class="sv">${fmt(get(p))}</span>${unit ? `<span class="un">${unit}</span>` : ''}</span>`
   const lbl = (t) => `<span class="lbl">${t}</span>`
-  const strokeBits = (base) => [
-    lbl('Stroke'), seg(base + '.stroke', [['brush', 'Brush stroke'], ['rect', 'Rectangle — press to release'], ['fill', 'Flood fill the plateau under the press']]),
-    seg(base + '.shape', [['square', 'Square brush'], ['circle', 'Round brush']]),
-    scrub(base + '.size', 'Size', { min: 1, max: 12 }),
-  ]
+  const strokeBits = (b) => [lbl('Stroke'), seg(b + '.stroke', [['brush', 'Brush stroke'], ['rect', 'Rectangle — press to release'], ['fill', 'Flood fill the area under the press']]), seg(b + '.shape', [['square', 'Square brush'], ['circle', 'Round brush']]), scrub(b + '.size', 'Size', { min: 1, max: 12 })]
+  const matChip = (id, on) => { const m = matOf(id); return `<button class="chip ${on ? 'on' : ''}" data-set="terrain.material" data-val="${id}" data-tip="${m.name} · ${m.kind}" data-key=""><i class="sw" style="background-image:url(${tileUrl(id)})"></i></button>` }
 
-  // ---------- context bar ----------
   const BAR = {
     terrain: () => {
-      const t = S.terrain
-      const out = [seg('terrain.mode', [['sculpt', 'Sculpt', '⇥'], ['paint', 'Paint', '⇥']]), '<span class="vsep"></span>']
+      const t = S.terrain, out = [seg('terrain.mode', [['sculpt', 'Sculpt', '⇥'], ['paint', 'Paint', '⇥']]), '<span class="vsep"></span>']
       if (t.mode === 'sculpt') {
-        out.push(verbs('terrain.verb', [['raise', 'Raise — ⇧ lowers', 'Q'], ['flatten', 'Flatten to a height', 'W'], ['smooth', 'Smooth toward the neighbours', 'E'], ['ramp', 'Ramp — press a cliff face, drag back to set the run', 'R']]))
-        out.push('<span class="vsep"></span>')
+        out.push(verbs('terrain.verb', [['raise', 'Raise — ⇧ lowers', 'Q'], ['flatten', 'Flatten to a height', 'W'], ['smooth', 'Smooth toward the neighbours', 'E'], ['ramp', 'Ramp — press a cliff face, drag back to set the run', 'R']]), '<span class="vsep"></span>')
         if (t.verb === 'ramp') out.push(`<span class="hint">Press a cliff face, drag back onto the high side. Click a ramp to remove it.</span>`)
-        else {
-          out.push(...strokeBits('terrain'))
-          if (t.verb === 'flatten') out.push(scrub('terrain.height', 'Height', { min: 0, max: 40, unit: '½' }))
-          else out.push(scrub('terrain.strength', 'Strength', { min: 1, max: 8, unit: '½' }))
-        }
+        else { out.push(...strokeBits('terrain')); out.push(t.verb === 'flatten' ? scrub('terrain.height', 'Height', { min: 0, max: 40, unit: '½' }) : scrub('terrain.strength', 'Strength', { min: 1, max: 8, unit: '½' })) }
       } else {
-        out.push(verbs('terrain.paintVerb', [['material', 'Material — autotiles tops and cliff bands', 'Q'], ['stamp', 'Stamp a single sheet tile (escape hatch)', 'W'], ['tint', 'Tint', 'E']]))
-        out.push('<span class="vsep"></span>')
+        out.push(verbs('terrain.paintVerb', [['material', 'Material — autotiles tops, cliff bands and paths', 'Q'], ['stamp', 'Stamp a single sheet tile (escape hatch)', 'W'], ['tint', 'Tint', 'E']]), '<span class="vsep"></span>')
         if (t.paintVerb === 'material') {
           const m = matOf(t.material)
-          out.push(`<button class="chip active" id="pick" data-tip="Active material — click to choose, ⌥ click a surface to eyedrop" data-key="⌥"><i class="sw" style="background:${m.color}"></i><span class="nm">${m.name}</span><span class="car"></span></button>`)
-          out.push(S.order.slice().reverse().filter((id) => id !== t.material).slice(0, 4).map((id) => { const mm = matOf(id); return `<button class="chip" data-set="terrain.material" data-val="${id}" data-tip="${mm.name}" data-key=""><i class="sw" style="background:${mm.color}"></i></button>` }).join(''))
-        } else if (t.paintVerb === 'stamp') {
-          out.push(`<button class="chip active" id="pick" data-tip="Stamp tile — picker is the old sheet palette, marked for redesign" data-key=""><i class="sw" style="background:repeating-linear-gradient(45deg,#6a5034 0 3px,#8a6a45 0 6px)"></i><span class="nm num">tile ${t.stamp}</span><span class="car"></span></button>`)
-        } else {
-          out.push(`<button class="chip active" data-tip="Tint colour" data-key=""><i class="sw" style="background:#c9884a"></i><span class="nm num">#C9884A</span><span class="car"></span></button>`)
-        }
+          out.push(`<button class="chip active" id="pick" data-tip="Active material — click to choose, ⌥ click a surface to eyedrop" data-key="⌥"><i class="sw" style="background-image:url(${tileUrl(m.id)})"></i><span class="nm">${m.name}</span><span class="car"></span></button>`)
+          out.push([...S.order.slice().reverse(), 'path'].filter((id) => id !== t.material).map((id) => matChip(id, false)).join(''))
+        } else if (t.paintVerb === 'stamp') out.push(`<button class="chip active" id="pick" data-tip="Stamp tile — picker is the old sheet palette, marked for redesign" data-key=""><i class="sw" style="background-image:url(${tileUrl('cobble')})"></i><span class="nm num">tile ${t.stamp}</span><span class="car"></span></button>`)
+        else out.push(`<button class="chip active" data-tip="Tint colour" data-key=""><i class="sw" style="background:#c9884a"></i><span class="nm num">#C9884A</span><span class="car"></span></button>`)
         out.push('<span class="vsep"></span>', ...strokeBits('terrain'))
       }
       return out
     },
-    water: () => [
-      seg('water.mode', [['fill', 'Fill up to the water line', '1'], ['drain', 'Drain', '2']]),
-      '<span class="vsep"></span>',
-      scrub('water.level', 'Level', { min: 0, max: 40, unit: '½' }),
-      `<span class="hint">Defaults to the layer view's top handle.</span>`,
-      '<span class="vsep"></span>',
-      lbl('Stroke'), seg('water.stroke', [['brush', 'Brush stroke'], ['rect', 'Rectangle'], ['fill', 'Flood fill the basin']]),
-      scrub('water.size', 'Size', { min: 1, max: 12 }),
-    ],
-    select: () => [`<span class="hint">Select bar as in select-first.html</span>`],
-    objects: () => [`<span class="hint">Objects bar as in select-first.html</span>`],
-    buildings: () => [`<span class="hint">Planned</span>`],
-    fences: () => [`<span class="hint">Planned</span>`],
+    water: () => [seg('water.mode', [['fill', 'Fill up to the water line', '1'], ['drain', 'Drain', '2']]), '<span class="vsep"></span>', scrub('water.level', 'Level', { min: 0, max: 40 }), `<span class="hint">Defaults to the layer view's top handle.</span>`, '<span class="vsep"></span>', lbl('Stroke'), seg('water.stroke', [['brush', 'Brush stroke'], ['rect', 'Rectangle'], ['fill', 'Flood fill the basin']]), scrub('water.size', 'Size', { min: 1, max: 12 })],
+    select: () => [`<span class="hint">Select bar as in select-first.html</span>`], objects: () => [`<span class="hint">Objects bar as in select-first.html</span>`], buildings: () => [`<span class="hint">Planned</span>`], fences: () => [`<span class="hint">Planned</span>`],
   }
 
-  // ---------- inspector ----------
-  const section = (title, body, { open = true, sum = '', acc = false } = {}) =>
-    `<details class="sec" ${open ? 'open' : ''}><summary>${title}<span class="sum ${acc ? 'acc' : ''}">${sum}</span></summary><div class="body">${body}</div></details>`
+  const section = (title, body, { open = true, sum = '' } = {}) => `<details class="sec" ${open ? 'open' : ''}><summary>${title}<span class="sum">${sum}</span></summary><div class="body">${body}</div></details>`
   const row = (k, v, mut) => `<div class="row"><span>${k}</span><span class="v ${mut ? 'mut' : ''}">${v}</span></div>`
   const acts = (list) => `<div class="acts">${list.map(([t, k, c]) => `<button class="act ${c ?? ''}">${t}${k ? kbd(k) : ''}</button>`).join('')}</div>`
-
   function useCounts() {
-    const c = {}
-    for (const id of S.order) c[id] = 0
-    for (let i = 0; i < W * H; i++) { c[mat[i]]++; c[wall[i]] += Math.max(0, hgt[i] - 0) }
+    const c = {}; for (const m of MATS) c[m.id] = 0
+    for (let i = 0; i < W * H; i++) { c[mat[i]]++; c[wall[i]] += hgt[i]; if (path[i]) c.path++ }
+    for (const v of bandOv.values()) c[v]++
     return c
   }
   function materialsSection() {
     const counts = useCounts()
-    const rows = S.order.slice().reverse().map((id) => {
-      const m = matOf(id)
-      return `<button class="mat ${S.terrain.material === id ? 'on' : ''}" draggable="true" data-mat="${id}" data-set="terrain.material" data-val="${id}"><span class="grip">⋮⋮</span><i class="sw" style="background:${m.color}"></i><span>${m.name}</span><span class="role">${m.role}</span><span class="n">${counts[id]}</span></button>`
-    }).join('')
+    const rowFor = (id) => { const m = matOf(id); return `<button class="mat ${S.terrain.material === id ? 'on' : ''}" draggable="${m.kind === 'fill'}" data-mat="${id}" data-set="terrain.material" data-val="${id}"><span class="grip">${m.kind === 'fill' ? '⋮⋮' : ''}</span><i class="sw" style="background-image:url(${tileUrl(id)})"></i><span>${m.name}</span><span class="role">${m.kind === 'path' ? 'path' : m.role}</span><span class="n">${counts[id]}</span></button>` }
+    const rows = S.order.slice().reverse().map(rowFor).join('') + `<div class="hint" style="padding:6px 8px 2px">Overlays</div>` + rowFor('path')
     const m = matOf(S.terrain.material)
-    const detail = `<div class="hint" style="margin-top:6px">Top of the list draws over what is below it at a shared corner. Drag to reorder.</div>`
-      + `<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;margin-top:4px"><div class="dual" id="dual"></div><div style="display:grid;gap:4px">${row('Sheet', m.sheet, true)}${row('Region', m.region)}${row('Format', 'dual 16')}${row('Role', m.role)}</div></div>`
-      + `<div class="row"><span>Ramp strip · √2 tall</span></div><div class="rampstrip" id="rampstrip"></div>`
-      + acts([['Rename'], ['Duplicate'], ['Replace art…'], ['Delete', '', 'danger']])
-    return section('Materials', `<div class="list">${rows}<button class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></button></div>` + detail, { sum: `${S.order.length} · ${m.name}` })
+    const detail = `<div class="hint" style="margin-top:6px">Fills: top of the list draws over what is below it at a shared corner; drag to reorder. Overlays always draw on top.</div>`
+      + `<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;margin-top:4px"><div class="set16" id="set16"></div><div style="display:grid;gap:4px">${row('Sheet', 'ground.png', true)}${row('Block', `${m.block[0]},${m.block[1]} · 4×4`)}${row('Kind', m.kind === 'path' ? 'path · sides' : 'fill · corners')}${row('Variants', '16 / 16')}${row('Role', m.role)}</div></div>`
+      + acts([['Rename'], ['Duplicate'], ['Edit terrain set…'], ['Delete', '', 'danger']])
+    return section('Materials', `<div class="list">${rows}<button class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></button></div>` + detail, { sum: `${MATS.length} · ${m.name}` })
   }
+  const levelSection = () => section('Level', row('Size', '24 × 18') + row('Texel density', '16 px') + row('Sheets', 'ground.png, water.png', true), { open: false, sum: 'Meadow Crossing' })
   const INSP = {
     terrain: () => {
       const t = S.terrain
-      if (t.mode === 'sculpt') {
-        return section('Brush', [
-          `<div style="display:grid;gap:6px">${scrub('terrain.size', 'Size', { min: 1, max: 12, cls: 'insp' })}${t.verb === 'flatten' ? scrub('terrain.height', 'Height', { min: 0, max: 40, unit: '½', cls: 'insp' }) : scrub('terrain.strength', 'Strength', { min: 1, max: 8, unit: '½', cls: 'insp' })}${scrub('terrain.deadZone', 'Dead zone', { min: 0, max: 0.5, step: 0.05, fmt: (v) => v.toFixed(2), cls: 'insp' })}</div>`,
-          `<div class="hint">${t.verb === 'ramp' ? 'A ramp is always 45°: one tile down per cell of run. A half-length piece finishes an odd half-tile drop.' : t.verb === 'flatten' ? 'Height is sampled at the press; edit it here or in the bar to flatten to a chosen level.' : 'Strength is half-tiles per pass. ⇧ inverts Raise; ⌥ click eyedrops a height into Flatten.'}</div>`,
-        ].join(''), { sum: t.verb[0].toUpperCase() + t.verb.slice(1) }) + levelSection()
-      }
+      if (t.mode === 'sculpt') return section('Brush', `<div style="display:grid;gap:6px">${scrub('terrain.size', 'Size', { min: 1, max: 12 })}${t.verb === 'flatten' ? scrub('terrain.height', 'Height', { min: 0, max: 40, unit: '½' }) : scrub('terrain.strength', 'Strength', { min: 1, max: 8, unit: '½' })}${scrub('terrain.deadZone', 'Dead zone', { min: 0, max: 0.5, step: 0.05, fmt: (v) => v.toFixed(2) })}</div><div class="hint">${t.verb === 'ramp' ? 'A ramp is always 45°: one tile down per cell of run. A half-length piece finishes an odd half-tile drop.' : t.verb === 'flatten' ? 'Height is sampled at the press; edit it here or in the bar to flatten to a chosen level.' : 'Strength is half-tiles per pass; the demo rounds up to whole cubes. ⇧ inverts Raise; ⌥ click eyedrops a height into Flatten.'}</div>`, { sum: t.verb[0].toUpperCase() + t.verb.slice(1) }) + levelSection()
       let s = materialsSection()
-      if (t.paintVerb === 'stamp') s += section('Stamp', `<div class="sheet">ground.png · 16 × 8 tiles</div>${row('Selected', 'tile ' + t.stamp)}<div class="hint">Escape hatch: stamps a raw tile over the derived one. The picker is the old sheet palette and is marked for redesign.</div>`, { sum: 'tile ' + t.stamp, acc: true })
+      if (t.paintVerb === 'stamp') s += section('Stamp', `<div class="sheet">ground.png · 12 × 8 tiles</div>${row('Selected', 'tile ' + t.stamp)}<div class="hint">Escape hatch: stamps a raw tile over the derived one. The picker is the old sheet palette and is marked for redesign.</div>`, { sum: 'tile ' + t.stamp })
       if (t.paintVerb === 'tint') s += section('Tint', row('Colour', '#C9884A') + `<div class="hint">Per cell, baked into vertex colour with the ambient occlusion. ⇧ clears.</div>`)
       return s + levelSection()
     },
-    water: () => section('Water', [scrub('water.level', 'Level', { min: 0, max: 40, unit: '½', cls: 'insp' }), row('Surface', 'water.png', true), row('Bound to', 'Meadow (voxel)', true), `<div class="hint">Water never sits at or below the ground under it; sculpting ground up to the line drains it. Flow and shore settings will live here.</div>`].join(''), { sum: 'fill' }) + levelSection(),
+    water: () => section('Water', [scrub('water.level', 'Level', { min: 0, max: 40 }), row('Surface', 'water.png', true), row('Bound to', 'Meadow (voxel)', true), `<div class="hint">Water never sits at or below the ground under it; sculpting ground up to the line drains it.</div>`].join(''), { sum: 'fill' }) + levelSection(),
     select: () => levelSection(), objects: () => levelSection(), buildings: () => levelSection(), fences: () => levelSection(),
   }
-  const levelSection = () => section('Level', row('Size', '24 × 18') + row('Texel density', '16 px') + row('Sheets', 'ground.png, water.png', true), { open: false, sum: 'Meadow Crossing' })
-
-  // ---------- render frame ----------
-  const TOOLS = [
-    { id: 'select', title: 'Select', key: 'V' }, { id: 'terrain', title: 'Terrain', key: 'T' }, { id: 'water', title: 'Water', key: 'A', tag: 'new' },
-    { id: 'objects', title: 'Objects', key: 'O' }, { id: 'buildings', title: 'Buildings', key: 'B', soon: true }, { id: 'fences', title: 'Fences', key: 'F', soon: true },
-  ]
+  const TOOLS = [{ id: 'select', title: 'Select', key: 'V' }, { id: 'terrain', title: 'Terrain', key: 'T' }, { id: 'water', title: 'Water', key: 'A', tag: 'new' }, { id: 'objects', title: 'Objects', key: 'O' }, { id: 'buildings', title: 'Buildings', key: 'B', soon: true }, { id: 'fences', title: 'Fences', key: 'F', soon: true }]
   const HINTS = {
-    terrain: () => {
-      const t = S.terrain
-      if (t.mode === 'sculpt') return t.verb === 'ramp' ? [['press + drag', 'set the run'], ['click ramp', 'remove'], ['⇧ click', 'remove']] : [['drag', t.verb], ['⇧ drag', 'lower'], ['⌥ click', 'eyedrop height'], ['[ ]', 'size']]
-      return [['drag', 'paint ' + (t.paintVerb === 'material' ? matOf(t.material).name : t.paintVerb)], ['⇧ drag', 'clear override'], ['⌥ click', 'eyedrop'], ['[ ]', 'size']]
-    },
-    water: () => [['drag', S.water.mode + ' to level ' + S.water.level], ['⌥ click', 'pick level'], ['[ ]', 'size']],
-    select: () => [], objects: () => [], buildings: () => [], fences: () => [],
+    terrain: () => { const t = S.terrain; if (t.mode === 'sculpt') return t.verb === 'ramp' ? [['press + drag', 'set the run'], ['click ramp', 'remove'], ['⇧ click', 'remove']] : [['drag', t.verb], ['⇧ drag', 'lower'], ['⌥ click', 'eyedrop height'], ['[ ]', 'size']]; return [['drag', 'paint ' + (t.paintVerb === 'material' ? matOf(t.material).name : t.paintVerb)], ['⇧ drag', S.face ? 'clear band override' : 'clear to grass / remove path'], ['⌥ click', 'eyedrop'], ['[ ]', 'size']] },
+    water: () => [['drag', S.water.mode + ' to level ' + S.water.level], ['⌥ click', 'pick level'], ['[ ]', 'size']], select: () => [], objects: () => [], buildings: () => [], fences: () => [],
   }
   function render() {
     document.body.classList.toggle('labels', S.labels)
-    document.getElementById('rail').innerHTML = TOOLS.map((t) => `<button class="tool ${S.tool === t.id ? 'on' : ''} ${t.soon ? 'soon' : ''} ${t.tag ? t.tag : ''}" data-tool="${t.id}" data-tip="${t.title}" data-key="${t.key}">${ic(t.id, 20)}</button>`).join('')
-      + `<span class="gap"></span><hr><button class="tool" data-tip="Level settings" data-key=",">${ic('gear', 19)}</button>`
+    document.getElementById('rail').innerHTML = TOOLS.map((t) => `<button class="tool ${S.tool === t.id ? 'on' : ''} ${t.soon ? 'soon' : ''} ${t.tag ?? ''}" data-tool="${t.id}" data-tip="${t.title}" data-key="${t.key}">${ic(t.id, 20)}</button>`).join('') + `<span class="gap"></span><hr><button class="tool" data-tip="Level settings" data-key=",">${ic('gear', 19)}</button>`
     document.getElementById('ctx').innerHTML = BAR[S.tool]().join('')
     document.getElementById('insp').innerHTML = `<div class="head">${TOOLS.find((t) => t.id === S.tool).title}</div>` + INSP[S.tool]()
     document.getElementById('hints').innerHTML = HINTS[S.tool]().map(([k, v]) => `<span>${kbd(k)} ${v}</span>`).join('')
     document.getElementById('showq').classList.toggle('on', S.quarters)
-    drawDual(); drawRamp(); draw()
+    document.getElementById('faceview').classList.toggle('on', S.face)
+    document.getElementById('facerow').textContent = S.faceRow
+    drawSet16(); draw()
   }
 
   // ---------- events ----------
   document.addEventListener('click', (e) => {
     const t = e.target.closest('[data-tool]'); if (t && t.dataset.tool) { S.tool = t.dataset.tool; render(); return }
-    const s = e.target.closest('[data-set]'); if (s) { let v = s.dataset.val; set(s.dataset.set, v); if (s.dataset.set === 'terrain.material') S.terrain.paintVerb = 'material'; render(); return }
+    const s = e.target.closest('[data-set]'); if (s) { set(s.dataset.set, s.dataset.val); if (s.dataset.set === 'terrain.material') S.terrain.paintVerb = 'material'; render(); return }
     if (e.target.closest('#pick')) { togglePop(); return }
     if (e.target.id === 'showq') { S.quarters = !S.quarters; render(); return }
-    if (e.target.id === 'labels') { S.labels = !S.labels; document.getElementById('labels').textContent = S.labels ? 'Icons + labels ▾' : 'Icons only ▾'; render(); return }
+    if (e.target.id === 'rowdn' || e.target.id === 'rowup') { S.faceRow = Math.max(0, Math.min(H - 1, S.faceRow + (e.target.id === 'rowup' ? 1 : -1))); S.face = true; render(); return }
+    if (e.target.closest('#faceview')) { S.face = !S.face; render(); return }
+    if (e.target.id === 'labels') { S.labels = !S.labels; e.target.textContent = S.labels ? 'Icons + labels ▾' : 'Icons only ▾'; render(); return }
     if (!e.target.closest('.pop')) document.getElementById('pop').classList.remove('show')
   })
   function togglePop() {
-    const pop = document.getElementById('pop'); const btn = document.getElementById('pick')
+    const pop = document.getElementById('pop'), btn = document.getElementById('pick')
     if (pop.classList.contains('show')) return pop.classList.remove('show')
     pop.style.left = (btn.getBoundingClientRect().left - document.getElementById('view').getBoundingClientRect().left) + 'px'
     const counts = useCounts()
-    pop.innerHTML = `<p class="ph"><span>Materials</span><span>drag to reorder</span></p><div class="grid">${S.order.slice().reverse().map((id) => { const m = matOf(id); return `<button class="cell ${S.terrain.material === id ? 'on' : ''}" style="background:${m.color}" data-set="terrain.material" data-val="${id}" data-tip="${m.name} · ${m.role}" data-key=""><i>${counts[id]}</i></button>` }).join('')}<button class="cell" style="background:var(--panel2);color:var(--ink3);font-size:18px" data-tip="New material…" data-key="⌘N">+</button></div>`
+    pop.innerHTML = `<p class="ph"><span>Materials</span><span>fills, then overlays</span></p><div class="grid">${[...S.order.slice().reverse(), 'path'].map((id) => { const m = matOf(id); return `<button class="cell ${S.terrain.material === id ? 'on' : ''}" style="background-image:url(${tileUrl(id)})" data-set="terrain.material" data-val="${id}" data-tip="${m.name} · ${m.kind}" data-key=""><i>${counts[id]}</i></button>` }).join('')}<button class="cell" style="background:var(--panel2);color:var(--ink3);font-size:18px" data-tip="New material…" data-key="⌘N">+</button></div>`
     pop.classList.add('show')
   }
-  // drag to reorder = draw priority
   let dragging = null
   document.addEventListener('dragstart', (e) => { const m = e.target.closest('[data-mat]'); if (m) dragging = m.dataset.mat })
   document.addEventListener('dragover', (e) => { if (e.target.closest('[data-mat]')) e.preventDefault() })
   document.addEventListener('drop', (e) => {
-    const m = e.target.closest('[data-mat]'); if (!m || !dragging || dragging === m.dataset.mat) return
-    e.preventDefault()
-    S.order.splice(S.order.indexOf(dragging), 1)
-    S.order.splice(S.order.indexOf(m.dataset.mat) + (e.offsetY > m.offsetHeight / 2 ? 0 : 1), 0, dragging)
-    dragging = null; render()
+    const m = e.target.closest('[data-mat]'); if (!m || !dragging || dragging === m.dataset.mat || !S.order.includes(m.dataset.mat)) return
+    e.preventDefault(); S.order.splice(S.order.indexOf(dragging), 1); S.order.splice(S.order.indexOf(m.dataset.mat) + (e.offsetY > m.offsetHeight / 2 ? 0 : 1), 0, dragging); dragging = null; render()
   })
-  // scrub fields
   let sc = null
-  document.addEventListener('pointerdown', (e) => {
-    const el = e.target.closest('[data-scrub]'); if (!el || e.target.tagName === 'INPUT') return
-    sc = { el, path: el.dataset.scrub, x0: e.clientX, v0: get(el.dataset.scrub), moved: false }
-    el.setPointerCapture(e.pointerId)
-  })
-  document.addEventListener('pointermove', (e) => {
-    if (!sc) return
-    const dx = e.clientX - sc.x0; if (Math.abs(dx) < 3 && !sc.moved) return
-    sc.moved = true; sc.el.classList.add('drag')
-    const step = +sc.el.dataset.step * (e.shiftKey ? 4 : 1)
-    setScrub(sc.el, sc.v0 + Math.round(dx / 8) * step)
-  })
-  document.addEventListener('pointerup', (e) => {
+  document.addEventListener('pointerdown', (e) => { const el = e.target.closest('[data-scrub]'); if (!el || e.target.tagName === 'INPUT') return; sc = { el, x0: e.clientX, v0: get(el.dataset.scrub), moved: false }; el.setPointerCapture(e.pointerId) })
+  document.addEventListener('pointermove', (e) => { if (!sc) return; const dx = e.clientX - sc.x0; if (Math.abs(dx) < 3 && !sc.moved) return; sc.moved = true; sc.el.classList.add('drag'); setScrub(sc.el, sc.v0 + Math.round(dx / 8) * +sc.el.dataset.step * (e.shiftKey ? 4 : 1)) })
+  document.addEventListener('pointerup', () => {
     if (!sc) return
     const { el, moved } = sc; sc = null; el.classList.remove('drag')
     if (moved) return render()
-    const sv = el.querySelector('.sv'); const inp = document.createElement('input'); inp.value = sv.textContent; sv.replaceWith(inp); inp.focus(); inp.select()
-    const commit = () => { setScrub(el, parseFloat(inp.value)); render() }
-    inp.addEventListener('blur', commit); inp.addEventListener('keydown', (k) => { if (k.key === 'Enter') inp.blur(); if (k.key === 'Escape') { inp.value = sv.textContent; inp.blur() } })
+    const sv = el.querySelector('.sv'), inp = document.createElement('input'); inp.value = sv.textContent; sv.replaceWith(inp); inp.focus(); inp.select()
+    inp.addEventListener('blur', () => { setScrub(el, parseFloat(inp.value)); render() }); inp.addEventListener('keydown', (k) => { if (k.key === 'Enter' || k.key === 'Escape') inp.blur() })
   })
   document.addEventListener('keydown', (e) => {
     const el = e.target.closest?.('[data-scrub]'); if (!el || e.target.tagName === 'INPUT') return
@@ -428,197 +505,210 @@
   function setScrub(el, v) {
     const min = +el.dataset.min, max = +el.dataset.max, step = +el.dataset.step
     if (Number.isNaN(v)) return
-    v = Math.min(max, Math.max(min, Math.round(v / step) * step)); v = +v.toFixed(2)
-    set(el.dataset.scrub, v)
+    v = +Math.min(max, Math.max(min, Math.round(v / step) * step)).toFixed(2); set(el.dataset.scrub, v)
     const sv = el.querySelector('.sv'); if (sv) sv.textContent = step < 1 ? v.toFixed(2) : v
-    if (el.dataset.scrub.endsWith('.size') || el.dataset.scrub === 'water.level') draw()
+    draw()
   }
-  // tooltips
   const tip = document.getElementById('tip')
-  document.addEventListener('mouseover', (e) => {
-    const el = e.target.closest('[data-tip]'); if (!el) return tip.classList.remove('show')
-    tip.innerHTML = el.dataset.tip + (el.dataset.key ? kbd(el.dataset.key) : '')
-    const r = el.getBoundingClientRect(); tip.style.left = Math.min(r.left, innerWidth - 300) + 'px'; tip.style.top = (r.bottom + 6) + 'px'; tip.classList.add('show')
-  })
+  document.addEventListener('mouseover', (e) => { const el = e.target.closest('[data-tip]'); if (!el) return tip.classList.remove('show'); tip.innerHTML = el.dataset.tip + (el.dataset.key ? kbd(el.dataset.key) : ''); const r = el.getBoundingClientRect(); tip.style.left = Math.min(r.left, innerWidth - 320) + 'px'; tip.style.top = (r.bottom + 6) + 'px'; tip.classList.add('show') })
   document.addEventListener('mouseout', (e) => { if (e.target.closest('[data-tip]')) tip.classList.remove('show') })
 
-  // ---------- the dual-grid demo ----------
-  const W = 16, H = 10
-  const mat = new Array(W * H).fill('grass'), wall = new Array(W * H).fill('stone'), hgt = new Array(W * H).fill(0), wat = new Array(W * H).fill(-1)
-  const idx = (x, y) => y * W + x
-  const inb = (x, y) => x >= 0 && y >= 0 && x < W && y < H
-  ;(function seed() {
-    for (let y = 2; y < 7; y++) for (let x = 3; x < 9; x++) hgt[idx(x, y)] = 2
-    for (let y = 3; y < 5; y++) for (let x = 5; x < 8; x++) hgt[idx(x, y)] = 4
-    for (let x = 0; x < W; x++) mat[idx(x, 8)] = 'path'; mat[idx(9, 7)] = 'path'; mat[idx(9, 6)] = 'path'
-    for (let y = 4; y < 7; y++) for (let x = 11; x < 15; x++) mat[idx(x, y)] = 'sand'
-    mat[idx(12, 5)] = 'dirt'; mat[idx(13, 5)] = 'dirt'; mat[idx(6, 3)] = 'dirt'
-    for (let y = 5; y < 7; y++) for (let x = 12; x < 14; x++) { hgt[idx(x, y)] = 0; wat[idx(x, y)] = 1 }
-  })()
+  // =====================================================================
+  // Rendering: every quarter is a blit from the sheet through the tag lookup
+  // =====================================================================
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d')
-  let cell = 40, ox = 0, oy = 0
-  // From THIS cell's point of view, does neighbour (nx,ny) continue material m at height h?
-  // Same material at the same height counts; so does a TALLER same-material neighbour (no rim at the foot of a cliff);
-  // a lower one does not (the cliff top draws its rim). Off the volume counts as continuing.
-  function same(m, h, nx, ny) {
-    if (!inb(nx, ny)) return true
-    const i = idx(nx, ny)
-    return mat[i] === m && hgt[i] >= h
+  let cell = 40, ox = 0, oy = 0, hover = null, painting = false, anchorH = 0
+  const QBIT = [8, 4, 2, 1] // quarter q (NW NE SW SE of the cell) is this quadrant of the offset tile at its corner
+  function blitQuadrant(g, tile, bit, dx, dy, ds) {
+    if (tile === null) { g.fillStyle = '#d23fb0'; g.fillRect(dx, dy, ds, ds); g.fillStyle = '#000'; g.fillRect(dx + ds / 4, dy + ds / 4, ds / 2, ds / 2); return }
+    const [x, y] = tileXY(tile), [, qx, qy] = QUADS.find(([b]) => b === bit)
+    g.drawImage(sheet, x + qx * 8, y + qy * 8, 8, 8, dx, dy, ds, ds)
   }
-  // materials present at corner (cx,cy) from cell (x,y)'s perspective, and for each its 4-bit quadrant mask (NW=1 NE=2 SW=4 SE=8)
-  function cornerMasks(x, y, cx, cy) {
-    const cells = [[cx - 1, cy - 1, 1], [cx, cy - 1, 2], [cx - 1, cy, 4], [cx, cy, 8]]
-    const h = hgt[idx(x, y)]
-    const masks = {}
-    for (const [nx, ny, bit] of cells) {
-      const m = inb(nx, ny) ? mat[idx(nx, ny)] : mat[idx(x, y)]
-      const hh = inb(nx, ny) ? hgt[idx(nx, ny)] : h
-      // a lower cell does not join this cell's corner tile; a taller one joins as its own material
+  /** Draw one quarter given the materials present at its corner and their quadrant masks. */
+  function drawCornerQuarter(g, dx, dy, ds, myBit, masks) {
+    const present = Object.keys(masks).sort((a, b) => prio(a) - prio(b))
+    blitQuadrant(g, variants(present[0])[15], myBit, dx, dy, ds)
+    for (const m of present) { const bits = masks[m]; if (!(bits & myBit) || bits === 15) continue; blitQuadrant(g, variants(m)[bits], myBit, dx, dy, ds) }
+  }
+  // TOP VIEW. From THIS cell's point of view a neighbour joins the corner when it is not lower; a taller
+  // same-material neighbour counts as continuing (no rim at the foot of a cliff), a lower one never does.
+  function topMasks(x, y, cx, cy) {
+    const h = hgt[idx(x, y)], masks = {}
+    for (const [bit, qx, qy] of QUADS) {
+      const nx = cx - 1 + qx, ny = cy - 1 + qy
+      const m = inb(nx, ny) ? mat[idx(nx, ny)] : mat[idx(x, y)], hh = inb(nx, ny) ? hgt[idx(nx, ny)] : h
       if (hh < h) continue
       masks[m] = (masks[m] ?? 0) | bit
     }
-    // this cell's own material is always present at its own quadrant
     return masks
   }
-  function drawQuarter(x, y, q) {
-    // q: 0 NW, 1 NE, 2 SW, 3 SE. The corner this quarter sits on:
-    const cx = x + (q % 2), cy = y + (q > 1 ? 1 : 0)
-    const px = ox + x * cell + (q % 2) * cell / 2, py = oy + y * cell + (q > 1 ? 1 : 0) * cell / 2, s = cell / 2
-    const myBit = [8, 4, 2, 1][q] // which quadrant of the offset tile this quarter is
-    const masks = cornerMasks(x, y, cx, cy)
-    const present = Object.keys(masks).sort((a, b) => prio(a) - prio(b))
-    ctx.save(); ctx.beginPath(); ctx.rect(px, py, s, s); ctx.clip()
-    // base: the lowest-priority material, full
-    ctx.fillStyle = matOf(present[0]).color; ctx.fillRect(px, py, s, s)
-    for (const m of present) {
-      const bits = masks[m]
-      if (!(bits & myBit)) continue
-      const under = present[Math.max(0, present.indexOf(m) - 1)]
-      paintQuadrant(ctx, px, py, s, myBit, bits, matOf(m), matOf(under).color)
-    }
-    ctx.restore()
+  function pathMask(x, y) {
+    const h = hgt[idx(x, y)]; let m = 0
+    for (const [bit, dx, dy] of [[1, 0, -1], [2, 1, 0], [4, 0, 1], [8, -1, 0]]) { const nx = x + dx, ny = y + dy; if (inb(nx, ny) && path[idx(nx, ny)] && hgt[idx(nx, ny)] === h) m |= bit }
+    return m
   }
-  /**
-   * One quadrant of an offset tile, at (px,py) with side s, drawn the way the
-   * authored art would look: the material's fill, rounded where the quadrant
-   * stands alone, a rim along every edge where the material ends, and a notch
-   * of the material underneath at an inside corner. `myBit` is which quadrant
-   * this is (NW=1 NE=2 SW=4 SE=8) and `bits` which quadrants hold `mat`.
-   */
-  function paintQuadrant(g, px, py, s, myBit, bits, m, underColor) {
-    const r = s * 0.55, inset = 1.2
-    const horiz = { 8: 4, 4: 8, 2: 1, 1: 2 }[myBit], vert = { 8: 2, 2: 8, 4: 1, 1: 4 }[myBit], diag = { 8: 1, 1: 8, 4: 2, 2: 4 }[myBit]
-    const hasH = bits & horiz, hasV = bits & vert, hasD = bits & diag
-    // the offset tile's centre is the quadrant's corner that touches it
-    const tcx = (myBit & 5) ? px + s : px, tcy = (myBit & 3) ? py + s : py
-    const farX = tcx === px ? px + s : px, farY = tcy === py ? py + s : py
-    const ex = tcx === px ? px + inset : px + s - inset, ey = tcy === py ? py + inset : py + s - inset
-    g.fillStyle = m.color
-    g.beginPath()
-    if (!hasH && !hasV) { g.moveTo(farX, farY); g.lineTo(ex, farY); g.arcTo(ex, ey, farX, ey, r); g.lineTo(farX, ey); g.closePath() }
-    else g.rect(px, py, s, s)
-    g.fill()
-    g.strokeStyle = m.dark; g.lineWidth = Math.max(1.5, s * 0.11)
-    g.beginPath()
-    if (!hasH && !hasV) { g.moveTo(ex, farY); g.arcTo(ex, ey, farX, ey, r - inset); g.lineTo(farX, ey) }
-    else {
-      if (!hasH) { g.moveTo(ex, py); g.lineTo(ex, py + s) }
-      if (!hasV) { g.moveTo(px, ey); g.lineTo(px + s, ey) }
+  function drawTop(r) {
+    cell = Math.floor(Math.min((r.width - 40) / W, (r.height - 60) / H)); ox = Math.floor((r.width - W * cell) / 2); oy = Math.floor((r.height - H * cell) / 2) + 8
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const px = ox + x * cell, py = oy + y * cell, s = cell / 2
+      for (let q = 0; q < 4; q++) drawCornerQuarter(ctx, px + (q % 2) * s, py + (q > 1 ? s : 0), s, QBIT[q], topMasks(x, y, x + (q % 2), y + (q > 1 ? 1 : 0)))
+      if (path[idx(x, y)]) { const [tx, ty] = tileXY(variants('path')[pathMask(x, y)]); ctx.drawImage(sheet, tx, ty, TPX, TPX, px, py, cell, cell) }
     }
-    g.stroke()
-    if (hasH && hasV && !hasD) { // inside corner: the material underneath shows through a notch
-      g.fillStyle = underColor
-      g.beginPath(); g.arc(tcx, tcy, r * 0.5, 0, Math.PI * 2); g.fill()
-      g.strokeStyle = m.dark; g.beginPath(); g.arc(tcx, tcy, r * 0.5 + 1, 0, Math.PI * 2); g.stroke()
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = idx(x, y), h = hgt[i], px = ox + x * cell, py = oy + y * cell
+      if (h) { ctx.fillStyle = `rgba(255,255,255,${0.05 * h})`; ctx.fillRect(px, py, cell, cell) }
+      const drop = (nx, ny) => inb(nx, ny) ? h - hgt[idx(nx, ny)] : 0
+      const ds = drop(x, y + 1), de = drop(x + 1, y)
+      if (ds > 0) { for (let L = 0; L < ds; L++) { const wm = bandOv.get(`${x},${y},${h - 1 - L}`) ?? wall[i]; ctx.fillStyle = matOf(wm).dark; ctx.fillRect(px, py + cell - (L + 1) * 4, cell, 4) } ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.fillRect(px, py + cell, cell, ds * 3) }
+      if (de > 0) { ctx.fillStyle = matOf(wall[i]).dark; ctx.fillRect(px + cell - de * 3, py, de * 3, cell) }
+      if (wat[i] > h) { ctx.fillStyle = 'rgba(63,126,166,.75)'; ctx.fillRect(px, py, cell, cell); ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(px + 4, py + 5, cell * 0.4, 2) }
+      if (S.face && y === S.faceRow) { ctx.fillStyle = 'rgba(233,162,59,.18)'; ctx.fillRect(px, py, cell, cell) }
     }
+    grid(ox, oy, W, H, cell)
+    if (hover) { const size = S.tool === 'water' ? S.water.size : S.terrain.size, r0 = Math.floor((size - 1) / 2); ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 1.5; ctx.strokeRect(ox + (hover[0] - r0) * cell + 1, oy + (hover[1] - r0) * cell + 1, size * cell - 2, size * cell - 2) }
+  }
+  // FACE VIEW: the south faces of one row, as a grid of (run, level). Above the top band is the top surface,
+  // below the bottom is ground: both are edges. Off the volume continues.
+  const y0 = () => S.faceRow
+  const lowOf = (x) => inb(x, y0() + 1) ? hgt[idx(x, y0() + 1)] : 0
+  const highOf = (x) => inb(x, y0()) ? hgt[idx(x, y0())] : 0
+  const bandExists = (x, L) => x >= 0 && x < W && L >= lowOf(x) && L < highOf(x)
+  const bandMat = (x, L) => bandOv.get(`${x},${y0()},${L}`) ?? wall[idx(x, y0())]
+  function faceMasks(x, L, cx, cL) { // quadrants around corner (cx, cL): NW=(cx-1,cL) NE=(cx,cL) SW=(cx-1,cL-1) SE=(cx,cL-1)
+    const masks = {}
+    for (const [bit, qx, qy] of QUADS) {
+      const bx = cx - 1 + qx, bL = qy ? cL - 1 : cL
+      if (bx < 0 || bx >= W) { const m = bandMat(x, L); masks[m] = (masks[m] ?? 0) | bit; continue }
+      if (!bandExists(bx, bL)) continue
+      const m = bandMat(bx, bL); masks[m] = (masks[m] ?? 0) | bit
+    }
+    return masks
+  }
+  let fx = 0, fy = 0, maxL = 1
+  function drawFace(r) {
+    maxL = Math.max(1, ...Array.from({ length: W }, (_, x) => highOf(x)))
+    cell = Math.floor(Math.min((r.width - 40) / W, (r.height - 120) / (maxL + 1))); fx = Math.floor((r.width - W * cell) / 2); fy = Math.floor(r.height / 2 + (maxL * cell) / 2)
+    ctx.fillStyle = '#12151b'; ctx.fillRect(fx, fy, W * cell, cell * 0.6)
+    for (let x = 0; x < W; x++) {
+      const px = fx + x * cell
+      ctx.fillStyle = matOf(mat[idx(x, y0())]).color; ctx.globalAlpha = .5; ctx.fillRect(px, fy - highOf(x) * cell - 6, cell, 6); ctx.globalAlpha = 1
+      for (let L = lowOf(x); L < highOf(x); L++) {
+        const py = fy - (L + 1) * cell, s = cell / 2
+        for (let q = 0; q < 4; q++) drawCornerQuarter(ctx, px + (q % 2) * s, py + (q > 1 ? s : 0), s, QBIT[q], faceMasks(x, L, x + (q % 2), q > 1 ? L : L + 1))
+        if (bandOv.has(`${x},${y0()},${L}`)) { ctx.strokeStyle = 'rgba(233,162,59,.5)'; ctx.setLineDash([3, 3]); ctx.strokeRect(px + 1.5, py + 1.5, cell - 3, cell - 3); ctx.setLineDash([]) }
+      }
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath()
+    for (let x = 0; x <= W; x++) { ctx.moveTo(fx + x * cell + 0.5, fy - maxL * cell); ctx.lineTo(fx + x * cell + 0.5, fy) }
+    for (let L = 0; L <= maxL; L++) { ctx.moveTo(fx, fy - L * cell + 0.5); ctx.lineTo(fx + W * cell, fy - L * cell + 0.5) }
+    ctx.stroke()
+    if (S.quarters) { ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.beginPath(); for (let x = 0; x <= W * 2; x++) { ctx.moveTo(fx + x * cell / 2 + 0.5, fy - maxL * cell); ctx.lineTo(fx + x * cell / 2 + 0.5, fy) } for (let L = 0; L <= maxL * 2; L++) { ctx.moveTo(fx, fy - L * cell / 2 + 0.5); ctx.lineTo(fx + W * cell, fy - L * cell / 2 + 0.5) } ctx.stroke() }
+    ctx.fillStyle = '#7b8294'; ctx.font = '11px IBM Plex Mono, monospace'; ctx.fillText(`south faces of row ${y0()} · level 0 at the bottom`, fx, fy + cell * 0.6 + 16)
+    if (hover) { const size = S.terrain.size, r0 = Math.floor((size - 1) / 2); ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 1.5; ctx.strokeRect(fx + (hover[0] - r0) * cell + 1, fy - (hover[1] + 1 + r0) * cell + 1, size * cell - 2, size * cell - 2) }
+  }
+  function grid(x0, y0, w, h, c) {
+    if (S.quarters) { ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1; ctx.beginPath(); for (let i = 0; i <= w * 2; i++) { ctx.moveTo(x0 + i * c / 2 + 0.5, y0); ctx.lineTo(x0 + i * c / 2 + 0.5, y0 + h * c) } for (let j = 0; j <= h * 2; j++) { ctx.moveTo(x0, y0 + j * c / 2 + 0.5); ctx.lineTo(x0 + w * c, y0 + j * c / 2 + 0.5) } ctx.stroke() }
+    ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); for (let i = 0; i <= w; i++) { ctx.moveTo(x0 + i * c + 0.5, y0); ctx.lineTo(x0 + i * c + 0.5, y0 + h * c) } for (let j = 0; j <= h; j++) { ctx.moveTo(x0, y0 + j * c + 0.5); ctx.lineTo(x0 + w * c, y0 + j * c + 0.5) } ctx.stroke()
   }
   function draw() {
     const r = cv.parentElement.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio
-    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
-    cell = Math.floor(Math.min((r.width - 40) / W, (r.height - 60) / H)); ox = Math.floor((r.width - W * cell) / 2); oy = Math.floor((r.height - H * cell) / 2) + 8
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); ctx.imageSmoothingEnabled = false
     ctx.fillStyle = '#0f1115'; ctx.fillRect(0, 0, r.width, r.height)
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let q = 0; q < 4; q++) drawQuarter(x, y, q)
-    // height shading and cliff walls (a top-down cheat: a dark band on the south and east faces)
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const h = hgt[idx(x, y)], px = ox + x * cell, py = oy + y * cell
-      if (h) { ctx.fillStyle = `rgba(255,255,255,${0.035 * h})`; ctx.fillRect(px, py, cell, cell) }
-      const drop = (nx, ny) => inb(nx, ny) ? h - hgt[idx(nx, ny)] : 0
-      const ds = drop(x, y + 1), de = drop(x + 1, y)
-      if (ds > 0) { ctx.fillStyle = matOf(wall[idx(x, y)]).dark; ctx.fillRect(px, py + cell - ds * 3, cell, ds * 3); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(px, py + cell, cell, ds * 2) }
-      if (de > 0) { ctx.fillStyle = matOf(wall[idx(x, y)]).dark; ctx.fillRect(px + cell - de * 2, py, de * 2, cell) }
-      const w = wat[idx(x, y)]
-      if (w > h) { ctx.fillStyle = 'rgba(63,126,166,.75)'; ctx.fillRect(px, py, cell, cell); ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(px + 4, py + 5, cell * 0.4, 2) }
-    }
-    if (S.quarters) { ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1; ctx.beginPath(); for (let i = 0; i <= W * 2; i++) { ctx.moveTo(ox + i * cell / 2 + 0.5, oy); ctx.lineTo(ox + i * cell / 2 + 0.5, oy + H * cell) } for (let j = 0; j <= H * 2; j++) { ctx.moveTo(ox, oy + j * cell / 2 + 0.5); ctx.lineTo(ox + W * cell, oy + j * cell / 2 + 0.5) } ctx.stroke() }
-    ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); for (let i = 0; i <= W; i++) { ctx.moveTo(ox + i * cell + 0.5, oy); ctx.lineTo(ox + i * cell + 0.5, oy + H * cell) } for (let j = 0; j <= H; j++) { ctx.moveTo(ox, oy + j * cell + 0.5); ctx.lineTo(ox + W * cell, oy + j * cell + 0.5) } ctx.stroke()
-    // brush preview
-    if (hover) { const size = S.tool === 'water' ? S.water.size : S.terrain.size; const r0 = Math.floor((size - 1) / 2); ctx.strokeStyle = 'var(--accent)'; ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 1.5; ctx.strokeRect(ox + (hover[0] - r0) * cell + 1, oy + (hover[1] - r0) * cell + 1, size * cell - 2, size * cell - 2) }
-    document.getElementById('dormant').textContent = `${dormant} dormant`
+    if (S.face) drawFace(r); else drawTop(r)
   }
-  let hover = null, painting = false, anchorH = 0, dormant = 3
-  function cellAt(e) { const r = cv.getBoundingClientRect(); const x = Math.floor((e.clientX - r.left - ox) / cell), y = Math.floor((e.clientY - r.top - oy) / cell); return inb(x, y) ? [x, y] : null }
-  function brushCells([cx, cy]) {
-    const size = S.tool === 'water' ? S.water.size : S.terrain.size, r0 = Math.floor((size - 1) / 2), out = []
-    for (let y = cy - r0; y < cy - r0 + size; y++) for (let x = cx - r0; x < cx - r0 + size; x++) if (inb(x, y)) out.push([x, y])
-    return out
+
+  // ---------- painting and sculpting in the demo ----------
+  function cellAt(e) {
+    const r = cv.getBoundingClientRect()
+    if (S.face) { const x = Math.floor((e.clientX - r.left - fx) / cell), L = Math.floor((fy - (e.clientY - r.top)) / cell); return x >= 0 && x < W && L >= 0 && L < maxL ? [x, L] : null }
+    const x = Math.floor((e.clientX - r.left - ox) / cell), y = Math.floor((e.clientY - r.top - oy) / cell); return inb(x, y) ? [x, y] : null
   }
+  function brushCells([cx, cy]) { const size = S.tool === 'water' ? S.water.size : S.terrain.size, r0 = Math.floor((size - 1) / 2), out = []; for (let y = cy - r0; y < cy - r0 + size; y++) for (let x = cx - r0; x < cx - r0 + size; x++) out.push([x, y]); return out }
   function apply(c, e) {
     const t = S.terrain
-    if (S.tool === 'water') { for (const [x, y] of brushCells(c)) { const i = idx(x, y); if (S.water.mode === 'drain') wat[i] = -1; else if (S.water.level > hgt[i]) wat[i] = S.water.level } return }
+    if (S.face) {
+      if (S.tool !== 'terrain' || t.mode !== 'paint' || t.paintVerb !== 'material') return
+      if (e.altKey) { if (bandExists(c[0], c[1])) { t.material = bandMat(c[0], c[1]); render() } return }
+      const m = matOf(t.material); if (m.kind !== 'fill') return
+      for (const [x, L] of brushCells(c)) { if (!bandExists(x, L)) continue; const k = `${x},${y0()},${L}`; if (e.shiftKey) bandOv.delete(k); else bandOv.set(k, t.material) }
+      return
+    }
+    if (S.tool === 'water') { for (const [x, y] of brushCells(c)) { if (!inb(x, y)) continue; const i = idx(x, y); if (S.water.mode === 'drain') wat[i] = -1; else if (S.water.level > hgt[i]) wat[i] = S.water.level } return }
     if (S.tool !== 'terrain') return
-    if (e.altKey) { const i = idx(c[0], c[1]); if (t.mode === 'paint') t.material = mat[i]; else t.height = hgt[i]; render(); return }
+    if (e.altKey) { const i = idx(c[0], c[1]); if (t.mode === 'paint') t.material = path[i] ? 'path' : mat[i]; else t.height = hgt[i] * 2; render(); return }
+    const step = Math.max(1, Math.round(t.strength / 2))
     for (const [x, y] of brushCells(c)) {
+      if (!inb(x, y)) continue
       const i = idx(x, y)
-      if (t.mode === 'paint') { if (t.paintVerb === 'material') mat[i] = e.shiftKey ? 'grass' : t.material; continue }
-      if (t.verb === 'raise') hgt[i] = Math.max(0, Math.min(8, hgt[i] + (e.shiftKey ? -t.strength : t.strength)))
+      if (t.mode === 'paint') {
+        if (t.paintVerb !== 'material') continue
+        const m = matOf(t.material)
+        if (m.kind === 'path') path[i] = !e.shiftKey
+        else if (e.shiftKey) { mat[i] = 'grass'; path[i] = false } else mat[i] = t.material
+        continue
+      }
+      if (t.verb === 'raise') hgt[i] = Math.max(0, Math.min(5, hgt[i] + (e.shiftKey ? -step : step)))
       else if (t.verb === 'flatten') hgt[i] = anchorH
-      else if (t.verb === 'smooth') { let s = 0, n = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (inb(x + dx, y + dy)) { s += hgt[idx(x + dx, y + dy)]; n++ } const target = Math.round(s / n); hgt[i] += Math.max(-t.strength, Math.min(t.strength, target - hgt[i])) }
+      else if (t.verb === 'smooth') { let s = 0, n = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (inb(x + dx, y + dy)) { s += hgt[idx(x + dx, y + dy)]; n++ } hgt[i] += Math.max(-step, Math.min(step, Math.round(s / n) - hgt[i])) }
       if (wat[i] >= 0 && wat[i] <= hgt[i]) wat[i] = -1
     }
   }
-  cv.addEventListener('pointerdown', (e) => { const c = cellAt(e); if (!c) return; painting = true; anchorH = S.terrain.height = hgt[idx(c[0], c[1])]; apply(c, e); if (S.terrain.mode === 'sculpt') render(); else draw() })
+  cv.addEventListener('pointerdown', (e) => { const c = cellAt(e); if (!c) return; painting = true; if (!S.face) anchorH = hgt[idx(c[0], c[1])]; apply(c, e); if (S.terrain.mode === 'sculpt') render(); else draw() })
   cv.addEventListener('pointermove', (e) => {
     const c = cellAt(e); hover = c
     const u = document.getElementById('under')
-    if (c) { const i = idx(c[0], c[1]); u.textContent = `top (${c[0]}, ${c[1]}) · ${matOf(mat[i]).name} · h ${hgt[i]}${wat[i] > hgt[i] ? ' · water ' + wat[i] : ''}` }
-    if (painting && c && S.terrain.mode === 'paint' || painting && c && S.tool === 'water') apply(c, e)
+    if (c) { if (S.face) u.textContent = bandExists(c[0], c[1]) ? `cliff (${c[0]}, ${y0()}) S level ${c[1]} · ${matOf(bandMat(c[0], c[1])).name}${bandOv.has(`${c[0]},${y0()},${c[1]}`) ? ' (override)' : ''}` : `— no face at (${c[0]}, level ${c[1]})`; else { const i = idx(c[0], c[1]); u.textContent = `top (${c[0]}, ${c[1]}) · ${matOf(mat[i]).name}${path[i] ? ' + path' : ''} · h ${hgt[i]}${wat[i] > hgt[i] ? ' · water ' + wat[i] : ''}` } }
+    if (painting && c && (S.terrain.mode === 'paint' || S.tool === 'water')) apply(c, e)
     draw()
   })
   addEventListener('pointerup', () => { if (painting) { painting = false; render() } })
   cv.addEventListener('pointerleave', () => { hover = null; draw() })
-  addEventListener('resize', draw)
+  addEventListener('resize', () => { draw(); drawSheetView() })
 
-  // the authored 4×4 dual set and the √2 ramp strip for the active material, drawn procedurally
-  function drawDual() {
-    const host = document.getElementById('dual'); if (!host) return
-    const m = matOf(S.terrain.material), under = matOf(S.order[Math.max(0, prio(m.id) - 1)] === m.id ? S.order[0] : S.order[Math.max(0, prio(m.id) - 1)])
+  // the active material's 16 variants, straight from the sheet
+  function drawSet16() {
+    const host = document.getElementById('set16'); if (!host) return
     host.innerHTML = ''
-    for (let mask = 0; mask < 16; mask++) {
-      const c = document.createElement('canvas'); c.width = c.height = 64; host.appendChild(c)
-      const g = c.getContext('2d'); const uc = under.id === m.id ? '#1f232c' : under.color; g.fillStyle = uc; g.fillRect(0, 0, 64, 64)
-      // the same quadrant painter the demo uses, so the 4×4 set IS what the viewport composes from
-      for (const [bit, qx, qy] of [[1, 0, 0], [2, 1, 0], [4, 0, 1], [8, 1, 1]]) {
-        if (!(mask & bit)) continue
-        g.save(); g.beginPath(); g.rect(qx * 32, qy * 32, 32, 32); g.clip()
-        paintQuadrant(g, qx * 32, qy * 32, 32, bit, mask, m, uc)
-        g.restore()
-      }
-      c.title = `mask ${mask.toString(2).padStart(4, '0')}`
-    }
+    const table = variants(S.terrain.material)
+    for (let mask = 0; mask < 16; mask++) { const c = document.createElement('canvas'); c.width = c.height = TPX; host.appendChild(c); if (table[mask] !== null) { const [x, y] = tileXY(table[mask]); c.getContext('2d').drawImage(sheet, x, y, TPX, TPX, 0, 0, TPX, TPX) } c.title = `mask ${mask.toString(2).padStart(4, '0')}` }
   }
-  function drawRamp() {
-    const host = document.getElementById('rampstrip'); if (!host) return
-    const m = matOf(S.terrain.material); host.innerHTML = ''
-    for (const kind of ['single', 'left', 'middle', 'right', 'half']) {
-      const c = document.createElement('canvas'); c.width = 28; c.height = 40; host.appendChild(c)
-      const g = c.getContext('2d'); g.fillStyle = m.color; g.fillRect(0, 0, 28, kind === 'half' ? 20 : 40)
-      g.strokeStyle = m.dark; g.lineWidth = 2
-      g.beginPath(); for (let y = 6; y < (kind === 'half' ? 20 : 40); y += 8) { g.moveTo(3, y); g.lineTo(25, y) } g.stroke()
-      g.lineWidth = 3; g.beginPath(); if (kind === 'single' || kind === 'left') { g.moveTo(1.5, 0); g.lineTo(1.5, 40) } if (kind === 'single' || kind === 'right') { g.moveTo(26.5, 0); g.lineTo(26.5, 40) } g.stroke()
-      if (kind === 'half') { g.fillStyle = '#1f232c'; g.fillRect(0, 20, 28, 20) }
-      c.title = kind + (kind === 'half' ? ' — one half-tile over half a cell' : ' — 1 × √2 tiles')
+
+  // =====================================================================
+  // The static setup mockup: the sheet with its tags, and the terrain-set panel
+  // =====================================================================
+  function drawSheetView() {
+    const c = document.getElementById('sheetview'), scale = 4
+    c.width = SC * TPX * scale; c.height = SR * TPX * scale
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false
+    g.fillStyle = '#1f232c'; g.fillRect(0, 0, c.width, c.height)
+    for (let y = 0; y < SR; y++) for (let x = 0; x < SC; x++) if ((x + y) % 2) { g.fillStyle = '#262b36'; g.fillRect(x * TPX * scale, y * TPX * scale, TPX * scale, TPX * scale) }
+    g.drawImage(sheet, 0, 0, c.width, c.height)
+    const T = TPX * scale
+    for (let i = 0; i < SC * SR; i++) {
+      const x = (i % SC) * T, y = Math.floor(i / SC) * T
+      cornerTags[i].forEach((tid, k) => { if (!tid) return; const [, qx, qy] = QUADS[k]; g.fillStyle = matOf(tid).light; g.beginPath(); const cx = x + qx * T, cy = y + qy * T; g.moveTo(cx, cy); g.lineTo(cx + (qx ? -10 : 10), cy); g.lineTo(cx, cy + (qy ? -10 : 10)); g.closePath(); g.fill() })
+      sideTags[i].forEach((tid, k) => { if (!tid) return; g.fillStyle = matOf(tid).light; const [sx, sy, sw, sh] = [[x + T / 2 - 6, y, 12, 3], [x + T - 3, y + T / 2 - 6, 3, 12], [x + T / 2 - 6, y + T - 3, 12, 3], [x, y + T / 2 - 6, 3, 12]][k]; g.fillRect(sx, sy, sw, sh) })
+    }
+    g.strokeStyle = 'rgba(255,255,255,.1)'; g.beginPath(); for (let x = 0; x <= SC; x++) { g.moveTo(x * T + .5, 0); g.lineTo(x * T + .5, c.height) } for (let y = 0; y <= SR; y++) { g.moveTo(0, y * T + .5); g.lineTo(c.width, y * T + .5) } g.stroke()
+    // the template stamp about to be placed: a 4×4 outline where the pointer is
+    g.strokeStyle = '#e9a23b'; g.lineWidth = 2; g.setLineDash([6, 4]); g.strokeRect(8 * T + 1, 4 * T + 1, 4 * T - 2, 4 * T - 2); g.setLineDash([])
+    g.fillStyle = '#e9a23b'; g.font = '600 12px IBM Plex Sans, sans-serif'; g.fillText('template 4×4 · path', 8 * T + 6, 4 * T - 6)
+    document.getElementById('sheetlegend').innerHTML = `Corner triangles are corner tags (fills); side ticks are side tags (the path). ` + MATS.map((m) => `<span class="tag"><i style="background:${m.light}"></i>${m.name}</span>`).join(' · ')
+    document.getElementById('setuplist').innerHTML = section('Materials', `<div class="list">${MATS.slice().reverse().map((m) => `<div class="mat ${m.id === 'path' ? 'on' : ''}"><span class="grip">${m.kind === 'fill' ? '⋮⋮' : ''}</span><i class="sw" style="background-image:url(${tileUrl(m.id)})"></i><span>${m.name}</span><span class="role">${m.kind}</span><span class="n">16/16</span></div>`).join('')}<div class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></div></div>`, { sum: '6' })
+      + section('Path', `${row('Kind', 'path · sides')}${row('Template', 'Edge 4×4 ▾')}${row('Block', '8,4')}${row('Variants', '16 / 16')}<div class="hint">Place template fills every side tag from the tile's position in the block. Tag sides fixes a tileset that was not drawn to the template, one side at a time; Tag corners does the same for fills. A material with fewer than 16 variants paints, and its missing variants show as magenta in the viewport.</div>`)
+      + section('Preview', `<canvas id="setpreview" style="width:100%;image-rendering:pixelated;border-radius:3px"></canvas><div class="hint">A fixed patch of the material over the fill below it in the list, redrawn as tags change.</div>`)
+    // the preview: a small patch of path over grass, straight from the lookup
+    const p = document.getElementById('setpreview'), pw = 8, ph = 3; p.width = pw * TPX; p.height = ph * TPX
+    const pg = p.getContext('2d'); pg.imageSmoothingEnabled = false
+    const on = [[0, 1], [1, 1], [2, 1], [3, 1], [3, 0], [3, 2], [4, 1], [5, 1], [6, 1], [6, 0], [7, 1]]
+    const has = (x, y) => on.some(([a, b]) => a === x && b === y)
+    for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) {
+      const [gx, gy] = tileXY(variants('grass')[15]); pg.drawImage(sheet, gx, gy, TPX, TPX, x * TPX, y * TPX, TPX, TPX)
+      if (!has(x, y)) continue
+      let m = 0; if (has(x, y - 1)) m |= 1; if (has(x + 1, y)) m |= 2; if (has(x, y + 1)) m |= 4; if (has(x - 1, y)) m |= 8
+      const [tx, ty] = tileXY(variants('path')[m]); pg.drawImage(sheet, tx, ty, TPX, TPX, x * TPX, y * TPX, TPX, TPX)
     }
   }
 
-  render()
+  render(); drawSheetView()
 </script>
