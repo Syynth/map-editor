@@ -5,10 +5,10 @@ import { applyPatches, History, inversePatch, patchAddress, type Patch, type Str
 import { cellIndex, createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
 import { childrenOf, descendantsOf, type VoxelStructure } from './structure'
 import { deserialize, LoadError, serialize } from './io'
-import { addObject, addSketchPoint, addStructure, brushCells, closeSketch, createSketch, deleteSketchPoint, fillCells, flatten, paintTop, raise, removeObject, removeStructure, reparentStructure, setRamp, setSketch, updateObject } from './ops'
+import { addObject, addSketchPoint, addStructure, brushCells, closeSketch, createSketch, deleteSketchPoint, fillCells, flatten, paintTop, placeStructureOnto, raise, removeObject, removeStructure, reparentStructure, setRamp, setSketch, updateObject } from './ops'
 import { cliffKey, countDormant, topKey } from './paint'
 import { EditorStore } from './store'
-import { groundHeight } from './terrain'
+import { frameOf, groundHeight, structureAt } from './terrain'
 
 function objectAt(id: string, x: number, z: number): MapObject {
   return {
@@ -550,6 +550,55 @@ describe('structures', () => {
     applyPatches(doc, inverse)
     expect(doc.structures[tier.id]?.parent).toBe(islandId)
     expect(childrenOf(doc, islandId).map((s) => s.id)).toEqual([tier.id])
+  })
+
+  it('structureAt answers the highest structure under a point, a child over its parent, and leaves out what is excluded', () => {
+    const doc = island()
+    const islandId = sketchId(doc)
+    const tier = createSketch(islandId, 'Tier', { x: 2, z: 2, yaw: 0 })
+    tier.points = [
+      { x: 0, z: 0, smooth: false },
+      { x: 2, z: 0, smooth: false },
+      { x: 2, z: 2, smooth: false },
+      { x: 0, z: 2, smooth: false },
+    ]
+    tier.closed = true
+    applyPatches(doc, addStructure(doc, tier))
+
+    expect(structureAt(doc, 0.5, 0.5)).toBe('ground')
+    expect(structureAt(doc, 1.5, 1.5)).toBe(islandId)
+    expect(structureAt(doc, 3, 3)).toBe(tier.id)
+    expect(structureAt(doc, 3, 3, new Set([tier.id]))).toBe(islandId)
+    expect(structureAt(doc, 3, 3, new Set([tier.id, islandId]))).toBe('ground')
+    expect(structureAt(doc, -1, -1)).toBeNull()
+  })
+
+  it('placeStructureOnto keeps where a structure is in the world while it changes parent, and re-measures its placement', () => {
+    const doc = island()
+    const islandId = sketchId(doc)
+    applyPatches(doc, [{ t: 'structure.meta', id: islandId, field: 'placement', value: { x: 1, z: 1, yaw: 1 } }])
+    const tier = createSketch(islandId, 'Tier', { x: 2, z: 1, yaw: 1 })
+    applyPatches(doc, addStructure(doc, tier))
+    const before = frameOf(doc, tier.id)
+
+    // Onto the ground at the same world point: a different placement, the same frame (but for the height it stands at).
+    applyPatches(doc, placeStructureOnto(doc, tier.id, 'ground', { x: before.x, z: before.z }))
+    expect(doc.structures[tier.id]?.parent).toBe('ground')
+    expect(doc.structures[tier.id]?.placement).toEqual({ x: before.x, z: before.z, yaw: 2 })
+    const after = frameOf(doc, tier.id)
+    expect([after.x, after.z, after.yaw]).toEqual([before.x, before.z, before.yaw])
+
+    // Back onto the island, snapped in the island's frame.
+    applyPatches(doc, placeStructureOnto(doc, tier.id, islandId, { x: before.x + 0.4, z: before.z }, Math.round))
+    expect(doc.structures[tier.id]?.parent).toBe(islandId)
+    expect(doc.structures[tier.id]?.placement).toEqual({ x: 2, z: 1, yaw: 1 })
+
+    // Refused for the root, for a cycle, and for a parent that is not there.
+    expect(placeStructureOnto(doc, 'ground', null, { x: 0, z: 0 })).toEqual([])
+    expect(placeStructureOnto(doc, islandId, tier.id, { x: 0, z: 0 })).toEqual([])
+    expect(placeStructureOnto(doc, tier.id, 'nope', { x: 0, z: 0 })).toEqual([])
+    // Nothing changes: nothing to write.
+    expect(placeStructureOnto(doc, tier.id, islandId, { x: before.x, z: before.z }, Math.round)).toEqual([])
   })
 
   it('refuses to make a structure its own ancestor', () => {

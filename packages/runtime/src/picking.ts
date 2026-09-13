@@ -20,9 +20,12 @@ export interface PickResult {
   point: THREE.Vector3 | null
   objectId: string | null
   distance: number
+  /** The ray the pick was made along, so a handler can find where it crosses another height. */
+  ray: { readonly origin: THREE.Vector3; readonly direction: THREE.Vector3 } | null
 }
 
-const EMPTY: PickResult = { surface: null, point: null, objectId: null, distance: Infinity }
+const EMPTY: PickResult = { surface: null, point: null, objectId: null, distance: Infinity, ray: null }
+const NOTHING: ReadonlySet<string> = new Set()
 
 export class Picker {
   private raycaster = new THREE.Raycaster()
@@ -32,6 +35,8 @@ export class Picker {
    * @param ndcX  -1..1
    * @param ndcY  -1..1
    * @param throughObjects  skip object hits, as with the reach-through modifier
+   * @param lookPast  ids of structures and objects the ray passes through as if they were not there:
+   *                  what a drag is carrying, so the pick answers what it would land on
    */
   pick(
     scene: RuntimeScene,
@@ -39,13 +44,15 @@ export class Picker {
     ndcX: number,
     ndcY: number,
     throughObjects = false,
+    lookPast: ReadonlySet<string> = NOTHING,
   ): PickResult {
     this.pointer.set(ndcX, ndcY)
     this.raycaster.setFromCamera(this.pointer, camera)
+    const ray = { origin: this.raycaster.ray.origin.clone(), direction: this.raycaster.ray.direction.clone() }
 
     let objectHit: PickResult | null = null
     if (!throughObjects) {
-      const groups = scene.objectGroups()
+      const groups = scene.objectGroups().filter((group) => !lookPast.has(group.userData.objectId as string))
       const hits = this.raycaster.intersectObjects(groups, true)
       const hit = hits[0]
       if (hit) {
@@ -57,6 +64,7 @@ export class Picker {
             point: hit.point.clone(),
             objectId: node.userData.objectId as string,
             distance: hit.distance,
+            ray,
           }
         }
       }
@@ -66,7 +74,8 @@ export class Picker {
     // tool edits the ground under it, and the preview is drawn there, so a
     // pick that stopped at the water would name the wrong cell — the one
     // under the pointer on the surface rather than the one under the ray.
-    const terrainHits = this.raycaster.intersectObjects(scene.solidTerrainMeshes(), false)
+    const solid = scene.solidTerrainMeshes().filter((mesh) => !lookPast.has(mesh.userData.structureId as string))
+    const terrainHits = this.raycaster.intersectObjects(solid, false)
     const terrainHit = terrainHits[0]
 
     let terrainResult: PickResult | null = null
@@ -78,6 +87,7 @@ export class Picker {
           point: terrainHit.point.clone(),
           objectId: null,
           distance: terrainHit.distance,
+          ray,
         }
       }
     }
@@ -85,7 +95,7 @@ export class Picker {
     if (objectHit && terrainResult) {
       return objectHit.distance <= terrainResult.distance ? objectHit : terrainResult
     }
-    return objectHit ?? terrainResult ?? EMPTY
+    return objectHit ?? terrainResult ?? { ...EMPTY, ray }
   }
 
   /** Where a ray meets the horizontal plane at world height `y`. */

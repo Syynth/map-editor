@@ -41,12 +41,14 @@
 import {
   addObject,
   defaultFacing,
+  descendantsOf,
   frameOf,
   groundedPosition,
   newId,
-  placeStructure,
+  placeStructureOnto,
   snapTo,
-  toLocal,
+  structureAt,
+  toWorld,
   updateObject,
   type DocumentReader,
   type MapObject,
@@ -74,8 +76,11 @@ export interface PointerModifiers {
  */
 export interface PickSample {
   readonly surface: SurfaceAddress | null
-  readonly point: { readonly x: number; readonly z: number } | null
+  /** The hit, with its height when the pick had one (a test's may not). */
+  readonly point: { readonly x: number; readonly y?: number; readonly z: number } | null
   readonly objectId: string | null
+  /** The ray the pick was made along, so a handler can find where it crosses another height; absent from a test's pick. */
+  readonly ray?: { readonly origin: { readonly x: number; readonly y: number; readonly z: number }; readonly direction: { readonly x: number; readonly y: number; readonly z: number } } | null
   /**
    * Mid-stroke only: where the pointer's ray meets the horizontal plane
    * through the press's hit, whatever is under the cursor now. A handler
@@ -118,7 +123,13 @@ export interface StrokeDeps {
   contract(toolId: string): ToolContract<StrokeSample, Patch> | undefined
 }
 
-export type EditorStrokeHandler = StrokeHandler<StrokeSample, Patch>
+/**
+ * A stroke handler as the host runs it: the registry's contract, plus what
+ * the stroke is CARRYING — the ids a pick taken while it is open looks past,
+ * so the sample says what the carried thing would land on rather than
+ * hitting the thing itself. A handler that carries nothing leaves it out.
+ */
+export type EditorStrokeHandler = StrokeHandler<StrokeSample, Patch> & { carrying?(): ReadonlySet<string> }
 
 /**
  * The handler for a left press at `sample` under the current tool, or
@@ -160,6 +171,7 @@ function selectStroke(deps: StrokeDeps, sample: StrokeSample, selection: Selecti
 
   return {
     label,
+    carrying: () => drag.carrying(),
     begin(sample) {
       const { pick, modifiers } = sample
       if (pick.objectId) {
@@ -190,6 +202,7 @@ function objectStroke(deps: StrokeDeps, selection: Selection | null): EditorStro
 
   return {
     label: 'Edit object',
+    carrying: () => drag.carrying(),
     begin(sample) {
       const doc = deps.reader.doc
       const tools = deps.tools()
@@ -260,8 +273,10 @@ class Drag {
   private target: DragTarget | null = null
   /** Where the press's plane point was, in the world. */
   private pressed: { x: number; z: number } | null = null
-  /** Where the target was at the grab, in the frame its position is measured in. */
+  /** Where the target's origin was at the grab, in the world. */
   private origin: { x: number; z: number } | null = null
+  /** How far above the target's base the grabbed point was: a structure grabbed by its cap is carried by its cap. */
+  private grabHeight = 0
 
   constructor(private readonly deps: StrokeDeps) {}
 
@@ -271,13 +286,22 @@ class Drag {
     this.target = at && origin ? target : null
     this.pressed = at ? { x: at.x, z: at.z } : null
     this.origin = origin
+    const doc = this.deps.reader.doc
+    this.grabHeight = target.kind === 'structure' && pick.point?.y !== undefined && doc.structures[target.id] ? Math.max(0, pick.point.y - frameOf(doc, target.id).y) : 0
   }
 
   release(): void {
     this.target = null
   }
 
-  /** Where the target is, in the frame its position is measured in; `null` for what cannot move. */
+  /** What the drag is carrying — the target and, for a structure, everything standing on it — for a pick to look past. */
+  carrying(): ReadonlySet<string> {
+    if (!this.target) return new Set()
+    if (this.target.kind === 'object') return new Set([this.target.id])
+    return new Set([this.target.id, ...descendantsOf(this.deps.reader.doc, this.target.id)])
+  }
+
+  /** Where the target's origin is in the world; `null` for what cannot move. */
   private positionOf(target: DragTarget): { x: number; z: number } | null {
     const doc = this.deps.reader.doc
     if (target.kind === 'object') {
@@ -285,7 +309,9 @@ class Drag {
       return object ? { x: object.position[0], z: object.position[2] } : null
     }
     const structure = doc.structures[target.id]
-    return structure && structure.parent !== null ? { x: structure.placement.x, z: structure.placement.z } : null
+    if (!structure || structure.parent === null) return null
+    const [x, z] = toWorld(frameOf(doc, structure.parent), structure.placement.x, structure.placement.z)
+    return { x, z }
   }
 
   move(sample: StrokeSample): readonly Patch[] {
@@ -293,9 +319,28 @@ class Drag {
     if (!this.target || !this.pressed || !this.origin || !at) return []
     const { modifiers } = sample
     const snap: SnapMode = modifiers.ctrl ? 'free' : this.deps.tools().snap
-    const to = this.constrained(at, this.pressed, modifiers.shift)
-    if (this.target.kind === 'object') return this.moveObject(this.target.id, this.origin, this.pressed, to, snap)
-    return this.moveStructure(this.target.id, this.origin, this.pressed, to, snap)
+    if (this.target.kind === 'object') return this.moveObject(this.target.id, this.origin, this.pressed, this.constrained(at, this.pressed, modifiers.shift), snap)
+    const landing = this.landing(sample.pick)
+    const to = this.constrained(landing?.at ?? at, this.pressed, modifiers.shift)
+    return this.moveStructure(this.target.id, this.origin, this.pressed, to, landing?.parent ?? null, snap)
+  }
+
+  /**
+   * Where a carried structure lands: the pick looked past what is carried
+   * (`carrying`), so its hit is the surface underneath the pointer, and its
+   * structure is the parent to stand on. The carried thing is held by the
+   * point that was grabbed, `grabHeight` above its base, so the pointer is
+   * walked back up its ray by that height — the grabbed point stays under
+   * the cursor, resting on what is beneath. `null` when the pick has no such
+   * hit (nothing under the pointer, or a test without a picker): the press
+   * plane and what stands under it decide instead.
+   */
+  private landing(pick: PickSample): { at: { x: number; z: number }; parent: string } | null {
+    const { surface, point, ray } = pick
+    if (!surface || !point || point.y === undefined || !ray) return null
+    if (this.carrying().has(surface.structure)) return null
+    const back = ray.direction.y !== 0 ? this.grabHeight / ray.direction.y : 0
+    return { at: { x: point.x + ray.direction.x * back, z: point.z + ray.direction.z * back }, parent: surface.structure }
   }
 
   /** The pointer held to the axis it has travelled further along since the press. */
@@ -318,17 +363,21 @@ class Drag {
     })
   }
 
-  private moveStructure(id: string, origin: { x: number; z: number }, pressed: { x: number; z: number }, at: { x: number; z: number }, snap: SnapMode): readonly Patch[] {
+  /**
+   * A structure's origin moves through the world by the pointer's travel,
+   * and it stands on whatever is under the POINTER as it goes — dragged over
+   * an island it hops onto it, dragged off it drops to the ground — so a
+   * stack of sketches moves as one and a tier can be slid between islands.
+   * The structure and its descendants cannot be what is under it; where
+   * nothing is (off every volume) it keeps the parent it has.
+   */
+  private moveStructure(id: string, origin: { x: number; z: number }, pressed: { x: number; z: number }, at: { x: number; z: number }, landingOn: string | null, snap: SnapMode): readonly Patch[] {
     const doc = this.deps.reader.doc
     const structure = doc.structures[id]
     if (!structure || structure.parent === null) return []
-    // The placement moves by how far the pointer has travelled, measured in the parent's frame.
-    const frame = frameOf(doc, structure.parent)
-    const [fromX, fromZ] = toLocal(frame, pressed.x, pressed.z)
-    const [toX, toZ] = toLocal(frame, at.x, at.z)
+    const world = { x: origin.x + at.x - pressed.x, z: origin.z + at.z - pressed.z }
+    const parent = landingOn ?? structureAt(doc, at.x, at.z, this.carrying()) ?? structure.parent
     const step = structure.kind === 'voxel' ? 'grid' : snap
-    const placement = { x: snapTo(origin.x + toX - fromX, step), z: snapTo(origin.z + toZ - fromZ, step), yaw: structure.placement.yaw }
-    if (placement.x === structure.placement.x && placement.z === structure.placement.z) return []
-    return placeStructure(doc, id, placement)
+    return placeStructureOnto(doc, id, parent, world, (value) => snapTo(value, step))
   }
 }

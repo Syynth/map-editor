@@ -1,8 +1,10 @@
 import {
+  HALF,
   addObject,
   cellIndex,
   createDocument,
   createMap,
+  frameOf,
   groundHeight,
   defaultFacing,
   raise,
@@ -11,6 +13,7 @@ import {
   type MapObject,
   type Patch,
   type SurfaceAddress,
+  type SurfaceKind,
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
@@ -1013,6 +1016,110 @@ describe('deleting objects', () => {
     expect(host.reader.doc.objects[object.id]).toBeUndefined()
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
     expect(host.contextKeys()['view.hasSelection']).toBe(false)
+  })
+
+  it('a dragged structure hops onto whatever is under the pointer and off it again, and its children ride along', () => {
+    const { host, dispatch } = makeHost()
+    const doc = host.reader.doc
+    // An island on the ground, a tier on the island.
+    dispatch('sketch.new', { parent: 'ground', name: 'Island' })
+    const island = doc.structureOrder[1]
+    for (const point of [
+      { x: 0, z: 0, smooth: false },
+      { x: 4, z: 0, smooth: false },
+      { x: 4, z: 4, smooth: false },
+      { x: 0, z: 4, smooth: false },
+    ])
+      dispatch('sketch.point.add', { id: island, point })
+    dispatch('sketch.close', { id: island })
+    dispatch('structure.place', { id: island, placement: { x: 2, z: 2, yaw: 0 } })
+    dispatch('sketch.new', { parent: island, name: 'Tier' })
+    const tier = doc.structureOrder[2]
+    dispatch('structure.place', { id: tier, placement: { x: 1, z: 1, yaw: 0 } })
+    dispatch('tools.set', { tool: 'select' })
+    expect(frameOf(doc, tier).x).toBe(3)
+
+    // Drag the island: the tier keeps its placement in the island and moves through the world with it.
+    const cap = (structure: string): SurfaceAddress => ({ structure, kind: 3, x: 0, y: 0, dir: -1, level: 0 })
+    host.input.pointerDown(pressAt(3, 3, { pick: { surface: cap(island), point: { x: 3, z: 3 }, objectId: null } }))
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 4, z: 3 } }, NO_MODIFIERS)
+    host.input.pointerUp({ x: 40, y: 30 })
+    expect(doc.structures[island].placement).toEqual({ x: 3, z: 2, yaw: 0 })
+    expect(doc.structures[tier].placement).toEqual({ x: 1, z: 1, yaw: 0 })
+    expect(frameOf(doc, tier).x).toBe(4)
+
+    // Drag the tier off the island onto bare ground: it becomes the ground's child, where it was dropped.
+    host.input.pointerDown(pressAt(4, 3, { pick: { surface: cap(tier), point: { x: 4, z: 3 }, objectId: null } }))
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 1, z: 0 } }, NO_MODIFIERS)
+    expect(doc.structures[tier].parent).toBe('ground')
+    expect(doc.structures[tier].placement).toEqual({ x: 1, z: 0, yaw: 0 })
+    expect(frameOf(doc, tier).y).toBe(groundHeight(doc, 1, 0))
+    // ... and back onto the island: the island's child again, placed in the island's frame.
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5, z: 4 } }, NO_MODIFIERS)
+    expect(doc.structures[tier].parent).toBe(island)
+    expect(doc.structures[tier].placement).toEqual({ x: 2, z: 2, yaw: 0 })
+    host.input.pointerUp({ x: 50, y: 40 })
+    expect(host.reader.undoLabel()).toBe('Move structure')
+    // One undo takes the whole drag back, parent included.
+    dispatch('undo')
+    expect(doc.structures[tier].parent).toBe(island)
+    expect(doc.structures[tier].placement).toEqual({ x: 1, z: 1, yaw: 0 })
+  })
+
+  it('carried by the point it was grabbed at, a structure lands on the surface the pick found under the pointer', () => {
+    const { host, dispatch } = makeHost()
+    const doc = host.reader.doc
+    dispatch('sketch.new', { parent: 'ground', name: 'Island' })
+    const island = doc.structureOrder[1]
+    for (const point of [
+      { x: 0, z: 0, smooth: false },
+      { x: 6, z: 0, smooth: false },
+      { x: 6, z: 6, smooth: false },
+      { x: 0, z: 6, smooth: false },
+    ])
+      dispatch('sketch.point.add', { id: island, point })
+    dispatch('sketch.close', { id: island })
+    dispatch('sketch.set', { id: island, changes: { layers: 4 } })
+    dispatch('sketch.new', { parent: 'ground', name: 'Tier' })
+    const tier = doc.structureOrder[2]
+    for (const point of [
+      { x: 0, z: 0, smooth: false },
+      { x: 2, z: 0, smooth: false },
+      { x: 2, z: 2, smooth: false },
+      { x: 0, z: 2, smooth: false },
+    ])
+      dispatch('sketch.point.add', { id: tier, point })
+    dispatch('sketch.close', { id: tier })
+    dispatch('sketch.set', { id: tier, changes: { layers: 2 } })
+    dispatch('structure.place', { id: tier, placement: { x: 7, z: 1, yaw: 0 } })
+    dispatch('tools.set', { tool: 'select' })
+
+    // The stroke says what it carries: the tier and whatever stands on it.
+    expect(host.input.carrying()).toEqual(new Set())
+    // `groundHeight` is the top of whatever stands there: at (8, 2) that is the tier's cap, a whole cap above its base.
+    const capY = groundHeight(doc, 8, 2)
+    expect(capY).toBe(frameOf(doc, tier).y + 2 * HALF)
+    const cap = (structure: string, kind: SurfaceKind): SurfaceAddress => ({ structure, kind, x: 0, y: 0, dir: -1, level: 0 })
+    // Grabbed at (8, 2) on its cap: one cell east and one south of its origin, a whole cap's height above its base.
+    host.input.pointerDown(pressAt(8, 2, { pick: { surface: cap(tier, 3), point: { x: 8, y: capY, z: 2 }, objectId: null } }))
+    expect(host.input.carrying()).toEqual(new Set([tier]))
+
+    // The pick looked past the tier and found the island's cap at (3, 3), along a ray coming down at 45° from the north.
+    const s = Math.SQRT1_2
+    const ray = { origin: { x: 3, y: 100, z: 3 - 100 }, direction: { x: 0, y: -s, z: s } }
+    const islandCapY = groundHeight(doc, 3, 3)
+    host.input.strokeMove({ surface: cap(island, 3), point: { x: 3, y: islandCapY, z: 3 }, objectId: null, ray, plane: { x: 99, z: 99 } }, NO_MODIFIERS)
+    // Walking back up the ray by the cap's height (one unit) moves the grabbed point one unit north of the hit:
+    // the tier's cap point under the cursor is (3, 2), so its origin is (2, 1) — in the island's frame, where it now stands.
+    expect(doc.structures[tier].parent).toBe(island)
+    expect(doc.structures[tier].placement).toEqual({ x: 2, z: 1, yaw: 0 })
+    // A pick that hit the carried thing itself (a test's, or a stale one) is not a landing; the press plane decides,
+    // and what stands under the pointer there — the ground, off the island's east edge — is the parent.
+    host.input.strokeMove({ surface: cap(tier, 3), point: { x: 0, y: 0, z: 0 }, objectId: null, ray, plane: { x: 7.5, z: 3 } }, NO_MODIFIERS)
+    expect(doc.structures[tier].parent).toBe('ground')
+    expect(doc.structures[tier].placement).toEqual({ x: 7, z: 2, yaw: 0 })
+    host.input.pointerUp({ x: 0, y: 0 })
+    expect(host.input.carrying()).toEqual(new Set())
   })
 
   it('selection.nudge moves the selection a cell along the world axes, by its kind', () => {

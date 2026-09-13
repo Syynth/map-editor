@@ -525,6 +525,8 @@ export interface EditorInput {
   pointerUp(release: PointerRelease): void
   /** The pick under the pointer while `pointerMove` answers `'stroke'`; the viewport picks only then. */
   strokeMove(pick: PickSample, modifiers: PointerModifiers): void
+  /** What the open stroke is carrying: ids the viewport's pick looks past, so the sample says what they would land on. Empty outside a stroke. */
+  carrying(): ReadonlySet<string>
   keyDown(key: string): void
   keyUp(key: string): void
   heldKeys(): ReadonlySet<string>
@@ -613,6 +615,10 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
     },
     pointerUp: (release) => gesture.send({ type: 'pointer.up', ...release }),
     strokeMove: (pick, modifiers) => gesture.send({ type: 'stroke.move', sample: { pick, modifiers } }),
+    carrying: () => {
+      const snapshot = gesture.getSnapshot()
+      return snapshot.value === 'stroke' ? (snapshot.context.handler?.carrying?.() ?? NOTHING) : NOTHING
+    },
     keyDown: (key) => gesture.send({ type: 'key.down', key }),
     keyUp: (key) => gesture.send({ type: 'key.up', key }),
     heldKeys: () => gesture.getSnapshot().context.held,
@@ -677,6 +683,7 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
   }
 
   const MAX_EXPANSION_DEPTH = 8
+  const NOTHING: ReadonlySet<string> = new Set()
 
   function dispatch(id: string, args?: unknown): DispatchResult {
     return dispatchAt(id, args, 0)

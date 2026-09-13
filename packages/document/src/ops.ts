@@ -10,8 +10,8 @@
 import type { Patch } from './edits'
 import { NO_RAMP, NO_WATER, cellIndex, inBounds, newId, worldHeight, type DeepReadonly, type MapObject, type ReadonlyMapDoc } from './document'
 import { cliffKey, tintKey, topKey } from './paint'
-import { descendantsOf, type Placement, type ProfilePoint, type ReadonlySketch, type ReadonlyVoxel, type SketchStructure, type Structure } from './structure'
-import { groundHeight } from './terrain'
+import { descendantsOf, type Placement, type ProfilePoint, type QuarterTurn, type ReadonlySketch, type ReadonlyVoxel, type SketchStructure, type Structure } from './structure'
+import { frameOf, groundHeight, toLocal, type Frame } from './terrain'
 
 export type BrushShape = 'square' | 'circle'
 
@@ -288,7 +288,39 @@ export function placeStructure(doc: ReadonlyMapDoc, id: string, placement: Place
   return doc.structures[id] ? [{ t: 'structure.meta', id, field: 'placement', value: { ...placement } }] : []
 }
 
-/** Move a structure under another (or to the root); refused when that would make a cycle. */
+/**
+ * Put a structure's origin at a world point, standing on `parent` (or the
+ * root), with the placement re-measured in that parent's frame so where it
+ * is and which way it faces in the world do not change with the parent —
+ * a drag that carries a tier off its island and onto the ground. `snap`
+ * rounds the placement in the new frame. Refused (empty) for the root, for
+ * a parent that would make a cycle, and for one that is not there.
+ */
+export function placeStructureOnto(
+  doc: ReadonlyMapDoc,
+  id: string,
+  parent: string | null,
+  world: { readonly x: number; readonly z: number },
+  snap: (value: number) => number = (value) => value,
+): Patch[] {
+  const structure = doc.structures[id]
+  if (!structure || structure.parent === null) return []
+  if (parent !== null && (parent === id || !doc.structures[parent] || descendantsOf(doc, id).includes(parent))) return []
+  const from = frameOf(doc, structure.parent)
+  const to = parent === null ? ROOT_FRAME : frameOf(doc, parent)
+  const [lx, lz] = toLocal(to, world.x, world.z)
+  const worldYaw = (from.yaw + structure.placement.yaw) % 4
+  const placement: Placement = { x: snap(lx), z: snap(lz), yaw: ((worldYaw - to.yaw + 4) % 4) as QuarterTurn }
+  const patches: Patch[] = []
+  if (parent !== structure.parent) patches.push({ t: 'structure.meta', id, field: 'parent', value: parent })
+  if (placement.x !== structure.placement.x || placement.z !== structure.placement.z || placement.yaw !== structure.placement.yaw || parent !== structure.parent)
+    patches.push({ t: 'structure.meta', id, field: 'placement', value: placement })
+  return patches
+}
+
+const ROOT_FRAME: Frame = { x: 0, z: 0, yaw: 0, y: 0 }
+
+/** Move a structure under another (or to the root), keeping its placement as measured; refused when that would make a cycle. */
 export function reparentStructure(doc: ReadonlyMapDoc, id: string, parent: string | null): Patch[] {
   if (!doc.structures[id]) return []
   if (parent !== null && (parent === id || !doc.structures[parent] || descendantsOf(doc, id).includes(parent))) return []

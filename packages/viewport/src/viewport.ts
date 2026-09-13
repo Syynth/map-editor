@@ -161,6 +161,8 @@ export interface ViewportHandlers {
   onPointerUp(release: { x: number; y: number }): void
   /** One tick of an open stroke: only sent while `onPointerMove` answers `'stroke'`. */
   onStrokeMove(pick: StrokePick, modifiers: PointerModifiers): void
+  /** What the open stroke is carrying: the pick looks past these ids so it answers what they would land on. */
+  carrying(): ReadonlySet<string>
   /**
    * Keys held right now, lower-cased. Read every frame for WASD; the set
    * itself lives in the gesture actor and is fed by the app's one keydown
@@ -739,9 +741,11 @@ export class Viewport {
     }
   }
 
-  private pickAt(event: PointerEvent): EditorPick {
+  private pickAt(event: PointerEvent, lookPast?: ReadonlySet<string>): EditorPick {
     const [x, y] = this.ndc(event)
-    return { ...this.picker.pick(this.scene, this.camera, x, y, event.ctrlKey || event.metaKey), handle: this.handleAt(event) }
+    // Carrying something, the pick looks past it and through objects: what matters is where it would land.
+    const through = event.ctrlKey || event.metaKey || (lookPast !== undefined && lookPast.size > 0)
+    return { ...this.picker.pick(this.scene, this.camera, x, y, through, lookPast), handle: this.handleAt(event) }
   }
 
   /** Within this many CSS pixels of a drawn point, the pointer is on it. */
@@ -815,7 +819,7 @@ export class Viewport {
     if (gesture === 'pending') return
     if (this.playing) return
 
-    const pick = this.pickAt(event)
+    const pick = this.pickAt(event, gesture === 'stroke' ? this.handlers.carrying() : undefined)
     this.handlers.onHover(pick)
     if (gesture === 'stroke') {
       const [ndcX, ndcY] = this.ndc(event)
