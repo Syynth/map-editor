@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { HALF, allChunkKeys, createMap, createSketch, frameOf, type RgbaImage, type SpriteAsset } from '@papercut/document'
 import { CUT_TINT, GHOST_TINT } from './layers'
+import { rgbaTexture } from './billboard'
 import { RuntimeScene } from './scene'
 
 // Raw pixels by hand, same as `export.test.ts`: the scene runs under plain
@@ -157,5 +158,42 @@ describe('bounds of a target', () => {
     expect((sketch?.max.y ?? 0) - (sketch?.min.y ?? 0)).toBeCloseTo(2 * HALF, 1)
     expect(runtime.boundsOf({ kind: 'structure', id: 'nope' })).toBeNull()
     expect(runtime.boundsOf({ kind: 'object', id: 'nope' })).toBeNull()
+  })
+})
+
+describe('textures the scene no longer draws with go back to the GPU', () => {
+  /** How many times each image's texture has been disposed, watched from its first creation. */
+  function watch(...images: RgbaImage[]) {
+    const counts = new Map<RgbaImage, number>(images.map((image) => [image, 0]))
+    for (const image of images) rgbaTexture(image, true).addEventListener('dispose', () => counts.set(image, (counts.get(image) ?? 0) + 1))
+    return counts
+  }
+
+  it('releases the old sheet when a new one replaces it — as every document load does — and keeps a sheet handed in again', () => {
+    const first = solid(16, 5, [0, 255, 0, 255])
+    const second = solid(16, 5, [0, 0, 255, 255])
+    const runtime = new RuntimeScene(createMap(4, 4), { sheet: first, sprites, textures: {} })
+    const disposed = watch(first, second)
+
+    runtime.refreshSheet(first)
+    expect(disposed.get(first)).toBe(0)
+    runtime.refreshSheet(second)
+    expect(disposed.get(first)).toBe(1)
+    expect(disposed.get(second)).toBe(0)
+    // The released image is forgotten: asking again makes a fresh texture rather than handing back the disposed one.
+    expect(rgbaTexture(first, true)).not.toBe(undefined)
+  })
+
+  it('releases the images a new sprite set dropped, and only those', () => {
+    const kept = sprites.rock
+    const tree: SpriteAsset = { name: 'tree', facings: [solid(4, 6, [0, 128, 0, 255])], widthTiles: 1, heightTiles: 2, emissive: false }
+    const runtime = new RuntimeScene(createMap(4, 4), { sheet: solid(16, 5, [0, 255, 0, 255]), sprites: { rock: kept }, textures: {} })
+    const disposed = watch(kept.facings[0], tree.facings[0])
+
+    runtime.setSprites({ rock: kept, tree })
+    expect(disposed.get(kept.facings[0])).toBe(0)
+    runtime.setSprites({ tree })
+    expect(disposed.get(kept.facings[0])).toBe(1)
+    expect(disposed.get(tree.facings[0])).toBe(0)
   })
 })

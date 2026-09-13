@@ -34,7 +34,7 @@ import {
   type DocumentTarget,
 } from '@papercut/document'
 import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@papercut/geometry'
-import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
+import { ObjectView, releaseReplaced, releaseTexture, rgbaTexture, spriteImages, type ObjectViewContext } from './billboard'
 import { CUT_TINT, GHOST_TINT, layerView, withinLayers, type LayerRange } from './layers'
 import { Sky, sunDirection } from './sky'
 
@@ -221,15 +221,22 @@ export class RuntimeScene {
     }
   }
 
+  /** Draw the terrain with `sheet`, and give back the GPU texture of the sheet it replaces. */
   refreshSheet(sheet: RgbaImage): void {
+    const previous = this.sheet
     this.sheet = sheet
     this.applySheet()
+    // A document load regenerates the sheet as a new image every time; without this each one left a texture on the GPU.
+    if (previous !== sheet) releaseTexture(previous)
   }
 
+  /** Draw objects and backdrops with `sprites`, and give back the GPU textures of images the new set no longer has. */
   setSprites(sprites: Record<string, SpriteAsset>): void {
+    const previous = this.sprites
     this.sprites = sprites
     this.dropViews()
     this.sky.apply(this.doc.atmosphere, this.sprites, this.doc.filtering === 'nearest')
+    releaseReplaced(spriteImages(previous), spriteImages(sprites))
   }
 
   private applySheet(): void {
@@ -582,5 +589,7 @@ export class RuntimeScene {
     this.waterMaterial.dispose()
     for (const material of this.surfaceMaterials.values()) material.dispose()
     this.sky.dispose()
+    releaseTexture(this.sheet)
+    for (const image of [...spriteImages(this.sprites), ...Object.values(this.textures)]) releaseTexture(image)
   }
 }
