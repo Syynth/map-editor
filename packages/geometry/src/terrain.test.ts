@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  CORNER_OFFSETS,
+  DIR_VECTORS,
+  HALF,
+  NO_RAMP,
   cellIndex,
   cliffKey,
+  cornerHeights,
   createMap,
   readAddress,
   SURFACE_CLIFF,
@@ -192,5 +197,127 @@ describe('mesher', () => {
     expect(solid.faceAddr.length / 4).toBe(solid.triangleCount)
     expect([...solid.positions].every(Number.isFinite)).toBe(true)
     expect([...solid.normals].every(Number.isFinite)).toBe(true)
+  })
+})
+
+describe('walls are watertight', () => {
+  /** Which corners each side walks, start to end (as the mesher's SIDE_CORNERS). */
+  const SIDE_CORNERS = [
+    [2, 3],
+    [1, 2],
+    [0, 1],
+    [3, 0],
+  ] as const
+
+  /** A 16 × 16 map of random heights with a ramp on a third of the cells, from a fixed seed. */
+  function rampy(seed: number): MapDoc {
+    const doc = createMap(16, 16)
+    const g = ground(doc)
+    let state = seed
+    const next = () => {
+      state = (state * 1664525 + 1013904223) % 4294967296
+      return state / 4294967296
+    }
+    for (let i = 0; i < g.terrain.height.length; i++) {
+      g.terrain.height[i] = Math.floor(next() * 10)
+      g.terrain.ramp[i] = next() < 0.35 ? Math.floor(next() * 4) : NO_RAMP
+    }
+    return doc
+  }
+
+  /**
+   * Along every side of every cell, sampled on a grid of positions and heights: a point strictly between the two
+   * cells' edges must be covered by a wall triangle from one side or the other, and a point outside that span must not
+   * be (a fin standing proud of a surface).
+   */
+  function gaps(doc: MapDoc): string[] {
+    const g = ground(doc)
+    const mesh = meshTerrainChunk(doc, g, '0,0')
+    const { positions, indices, faceAddr } = mesh.solid
+    const walls = new Map<string, Array<[[number, number, number], [number, number, number], [number, number, number]]>>()
+    for (let tri = 0; tri < indices.length / 3; tri++) {
+      const address = readAddress(faceAddr, tri, 'ground')
+      if (address.kind !== SURFACE_CLIFF) continue
+      const corner = (k: number): [number, number, number] => {
+        const v = indices[tri * 3 + k] * 3
+        return [positions[v], positions[v + 1], positions[v + 2]]
+      }
+      const key = `${address.x},${address.y},${address.dir}`
+      const list = walls.get(key) ?? []
+      list.push([corner(0), corner(1), corner(2)])
+      walls.set(key, list)
+    }
+    const origins = [[1, 1], [0, 1], [0, 0], [1, 0]] as const
+    const axes = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const
+    const problems: string[] = []
+    const { width, height } = g.size
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        for (let dir = 0; dir < 4; dir++) {
+          const [dx, dy] = DIR_VECTORS[dir]
+          const nx = x + dx
+          const ny = y + dy
+          const here = cornerHeights(g, x, y)
+          const [sc, ec] = SIDE_CORNERS[dir]
+          const top = [here[sc], here[ec]]
+          let low = [0, 0]
+          const outside = !(nx >= 0 && ny >= 0 && nx < width && ny < height)
+          if (!outside) {
+            const there = cornerHeights(g, nx, ny)
+            const across = (c: number) => {
+              const [ox, oy] = CORNER_OFFSETS[c]
+              return CORNER_OFFSETS.findIndex(([px, py]) => px === ox - dx && py === oy - dy)
+            }
+            low = [there[across(sc)], there[across(ec)]]
+          }
+          const ox = x + origins[dir][0]
+          const oz = y + origins[dir][1]
+          const [ux, uz] = axes[dir]
+          // Walls on this side from this cell, and from the neighbour on its facing side.
+          const tris = [...(walls.get(`${x},${y},${dir}`) ?? []), ...(walls.get(`${nx},${ny},${(dir + 2) % 4}`) ?? [])]
+          const flat = tris.map((t) => t.map(([px, py, pz]) => [(px - ox) * ux + (pz - oz) * uz, py / HALF] as const))
+          const covered = (t: number, h: number) =>
+            flat.some(([a, b, c]) => {
+              const d1 = (t - b[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (h - b[1])
+              const d2 = (t - c[0]) * (b[1] - c[1]) - (b[0] - c[0]) * (h - c[1])
+              const d3 = (t - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (h - a[1])
+              const negative = d1 < -1e-9 || d2 < -1e-9 || d3 < -1e-9
+              const positive = d1 > 1e-9 || d2 > 1e-9 || d3 > 1e-9
+              return !(negative && positive)
+            })
+          // Twelve positions along the side and quarter-band heights: a hole or fin is at least a triangle half a band tall.
+          for (let i = 1; i < 12; i++) {
+            const t = i / 12
+            const hTop = top[0] + (top[1] - top[0]) * t
+            const hLow = low[0] + (low[1] - low[0]) * t
+            // Past the map's edge there is nothing to meet below the floor: only the wall above it is owed.
+            const lo = outside ? Math.max(0, Math.min(hTop, hLow)) : Math.min(hTop, hLow)
+            const hi = outside ? Math.max(0, hTop) : Math.max(hTop, hLow)
+            if (hi <= lo) continue
+            for (let h = Math.floor(lo) - 1; h <= hi + 1; h += 0.25) {
+              const within = h > lo + 0.02 && h < hi - 0.02
+              const beyond = h < lo - 0.02 || h > hi + 0.02
+              if (within && !covered(t, h)) problems.push(`hole at cell ${x},${y} side ${dir}, t ${t.toFixed(2)}, h ${h.toFixed(2)}`)
+              if (beyond && covered(t, h)) problems.push(`fin at cell ${x},${y} side ${dir}, t ${t.toFixed(2)}, h ${h.toFixed(2)}`)
+            }
+          }
+        }
+      }
+    }
+    return problems
+  }
+
+  it('beside a ramp that drops across a band boundary — the gap on the sample map — the wall follows the slope', () => {
+    // (9, 19) on the sample map: a 5 ramping south to 3, a flat 3 to its east.
+    const doc = createMap(4, 4)
+    const g = ground(doc)
+    g.terrain.height.fill(3)
+    g.terrain.height[cellIndex(g.size, 1, 1)] = 5
+    g.terrain.ramp[cellIndex(g.size, 1, 1)] = 1
+    expect(gaps(doc).slice(0, 5)).toEqual([])
+  })
+
+  it('has no hole and no fin anywhere on maps of random heights and ramps', () => {
+    for (const seed of [1, 7, 42, 1234]) expect(gaps(rampy(seed)).slice(0, 5)).toEqual([])
   })
 })

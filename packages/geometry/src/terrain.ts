@@ -91,6 +91,55 @@ class BufferBuilder {
   }
 
   /**
+   * Emit a convex polygon as a fan of triangles, corners in winding order as
+   * for `quad`. Wall bands are clipped to arbitrary convex shapes — a slope
+   * crossing a band leaves a triangle or a pentagon, not a quad.
+   */
+  polygon(
+    corners: ReadonlyArray<readonly [number, number, number]>,
+    cornerUvs: ReadonlyArray<readonly [number, number]>,
+    shade: readonly number[],
+    tint: readonly [number, number, number],
+    address: readonly [number, number, number, number],
+  ): void {
+    if (corners.length < 3) return
+    const base = this.vertexCount
+    // The normal of the fan's widest turn, so a sliver at the first corner cannot zero it out.
+    let nx = 0
+    let ny = 0
+    let nz = 0
+    const [p0] = corners
+    for (let i = 1; i + 1 < corners.length; i++) {
+      const p1 = corners[i]
+      const p2 = corners[i + 1]
+      const ax = p1[0] - p0[0]
+      const ay = p1[1] - p0[1]
+      const az = p1[2] - p0[2]
+      const bx = p2[0] - p0[0]
+      const by = p2[1] - p0[1]
+      const bz = p2[2] - p0[2]
+      nx += ay * bz - az * by
+      ny += az * bx - ax * bz
+      nz += ax * by - ay * bx
+    }
+    const len = Math.hypot(nx, ny, nz) || 1
+    nx /= len
+    ny /= len
+    nz /= len
+    for (let i = 0; i < corners.length; i++) {
+      this.positions.push(corners[i][0], corners[i][1], corners[i][2])
+      this.normals.push(nx, ny, nz)
+      this.uvs.push(cornerUvs[i][0], cornerUvs[i][1])
+      const s = shade[i]
+      this.colors.push(tint[0] * s, tint[1] * s, tint[2] * s)
+    }
+    for (let i = 1; i + 1 < corners.length; i++) {
+      this.indices.push(base, base + i, base + i + 1)
+      this.faceAddr.push(...address)
+    }
+  }
+
+  /**
    * Emit a quad as two triangles. Corners must be given in winding order
    * p0, p1, p2, p3 such that (p1-p0) x (p2-p0) points outwards.
    *
@@ -176,9 +225,69 @@ function heightOutside(voxel: ReadonlyVoxel, x: number, y: number): number {
   return voxel.terrain.height[cellIndex(voxel.size, x, y)]
 }
 
-/** A value held to a band: not below its floor, not above its ceiling. */
-function clamp(value: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, value))
+/** A point on a wall: `t` along the side from its start corner (0) to its end corner (1), `h` its height in half-tiles. */
+type WallPoint = readonly [t: number, h: number]
+
+/**
+ * The wall on one side of a cell, exactly: the region between the
+ * neighbour's edge below and this cell's edge above, both straight lines
+ * along the side, where this cell's stands higher. Where the two lines cross
+ * — a slope beside a level, or two slopes — the wall is the triangle on this
+ * cell's side of the crossing; the neighbour walls the other side.
+ */
+function wallRegion(lowStart: number, lowEnd: number, topStart: number, topEnd: number): WallPoint[] {
+  const start = topStart - lowStart
+  const end = topEnd - lowEnd
+  if (start <= 0 && end <= 0) return []
+  if (start >= 0 && end >= 0) return [[0, lowStart], [1, lowEnd], [1, topEnd], [0, topStart]]
+  const t = start / (start - end)
+  const h = lowStart + (lowEnd - lowStart) * t
+  return start > 0 ? [[0, lowStart], [t, h], [0, topStart]] : [[t, h], [1, lowEnd], [1, topEnd]]
+}
+
+/**
+ * A convex wall region cut to the band between `bottom` and `top`
+ * (Sutherland–Hodgman, one edge at a time). The previous band clipping
+ * clamped each end of a sloped edge into the band and joined the ends with a
+ * straight line, which is only right when the slope stays inside the band:
+ * a slope crossing a band midway left a triangular hole under it and a fin
+ * above it, half a band off — the gaps beside ramps.
+ */
+function clipToBand(polygon: readonly WallPoint[], bottom: number, top: number): WallPoint[] {
+  const below = clipAgainst(polygon, (p) => p[1] - bottom)
+  return clipAgainst(below, (p) => top - p[1])
+}
+
+/** Keep the part of a convex polygon where `inside` is non-negative. */
+function clipAgainst(polygon: readonly WallPoint[], inside: (p: WallPoint) => number): WallPoint[] {
+  const out: WallPoint[] = []
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i]
+    const b = polygon[(i + 1) % polygon.length]
+    const da = inside(a)
+    const db = inside(b)
+    if (da >= 0) out.push(a)
+    if ((da >= 0) !== (db >= 0)) {
+      const s = da / (da - db)
+      out.push([a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s])
+    }
+  }
+  // Points the clip produced twice, or a band the region only touches, would make zero-area triangles.
+  const unique = out.filter((p, i) => {
+    const q = out[(i + 1) % out.length]
+    return Math.abs(p[0] - q[0]) > 1e-9 || Math.abs(p[1] - q[1]) > 1e-9
+  })
+  return unique.length >= 3 && area(unique) > 1e-9 ? unique : []
+}
+
+function area(polygon: readonly WallPoint[]): number {
+  let sum = 0
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i]
+    const b = polygon[(i + 1) % polygon.length]
+    sum += a[0] * b[1] - b[0] * a[1]
+  }
+  return Math.abs(sum) / 2
 }
 
 function unpackTint(packed: number | undefined): [number, number, number] {
@@ -323,50 +432,31 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, key:
         const topStart = cornerH[startCorner]
         const topEnd = cornerH[endCorner]
         const [lowStart, lowEnd] = neighbourEdge(voxel, x, y, dir)
-        if (lowStart >= topStart && lowEnd >= topEnd) continue
+        const region = wallRegion(lowStart, lowEnd, topStart, topEnd)
+        if (region.length === 0) continue
 
         const { origin, u } = SIDE_GEOMETRY[dir]
         const ox = x + origin[0]
         const oz = y + origin[1]
-        const ex = ox + u[0]
-        const ez = oz + u[1]
 
         const topLevel = Math.ceil(Math.max(topStart, topEnd)) - 1
         const bottomLevel = Math.floor(Math.min(lowStart, lowEnd))
         for (let level = bottomLevel; level <= topLevel; level++) {
-          const bottom = level
-          const top = level + 1
-          // Clip the band to both edges: the neighbour's below, this cell's above, either possibly sloped.
-          const bStart = clamp(lowStart, bottom, top)
-          const bEnd = clamp(lowEnd, bottom, top)
-          const hStart = clamp(topStart, bStart, top)
-          const hEnd = clamp(topEnd, bEnd, top)
-          if (hStart <= bStart && hEnd <= bEnd) continue
+          // The wall region cut to this half-tile band, exactly: a slope crossing the band is followed, not approximated.
+          const piece = clipToBand(region, level, level + 1)
+          if (piece.length === 0) continue
 
           const band: CliffBand = level === topLevel ? 'top' : level === bottomLevel ? 'bottom' : 'middle'
           const [u0, v0, u1, v1] = tileUv(layout, resolveCliffTile(voxel, layout, x, y, dir, level, band))
 
-          // Keep the texture from stretching when a band is clipped short at either edge.
-          const v = (h: number): number => v0 + (h - bottom) * (v1 - v0)
-
           // Bands sitting in a pit read darker at the bottom.
           const deep = 1 - AO_STRENGTH * Math.min(2, topLevel - level) * 0.5
-          const shade: [number, number, number, number] = [deep, deep, 1, 1]
 
-          solid.quad(
-            [
-              [ox, bStart * HALF, oz],
-              [ex, bEnd * HALF, ez],
-              [ex, hEnd * HALF, ez],
-              [ox, hStart * HALF, oz],
-            ],
-            [
-              [u0, v(bStart)],
-              [u1, v(bEnd)],
-              [u1, v(hEnd)],
-              [u0, v(hStart)],
-            ],
-            shade,
+          solid.polygon(
+            piece.map(([t, h]) => [ox + u[0] * t, h * HALF, oz + u[1] * t] as const),
+            // The texture keeps its scale however the band is cut: u along the side, v up the band.
+            piece.map(([t, h]) => [u0 + (u1 - u0) * t, v0 + (h - level) * (v1 - v0)] as const),
+            piece.map(([, h]) => deep + (1 - deep) * (h - level)),
             tint,
             [SURFACE_CLIFF, x, y, encodeExtra(dir, level)],
           )
