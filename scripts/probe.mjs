@@ -71,10 +71,10 @@ page.on('pageerror', (error) => console.log('PAGEERROR', error.message))
 await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'load' })
 await sleep(5000)
 
-const canvasHandle = await page.$('.stage canvas')
-if (!canvasHandle) throw new Error('".stage canvas" not found — did the editor mount?')
+const canvasHandle = await page.$('canvas.stage-canvas')
+if (!canvasHandle) throw new Error('"canvas.stage-canvas" not found — did the editor mount?')
 const box = await canvasHandle.boundingBox()
-if (!box) throw new Error('".stage canvas" has no bounding box — is it hidden or zero-sized?')
+if (!box) throw new Error('"canvas.stage-canvas" has no bounding box — is it hidden or zero-sized?')
 // Pulled into plain numbers rather than read off `box` inside `report`:
 // `report` below is a hoisted `function` declaration, and `tsc` does not
 // carry a `const` null-check's narrowing into a hoisted function's body (an

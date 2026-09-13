@@ -16,6 +16,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 
+import { FrameProfile, GpuTimer, type FrameProfileReport } from './profile'
+
 import {
   SURFACE_CLIFF,
   SURFACE_TOP,
@@ -198,6 +200,11 @@ const DEFAULT_OPTIONS: ViewportOptions = {
  * post-processing. The editor says so in the status bar so nobody concludes
  * the atmosphere sliders are broken.
  */
+/** A texture, typed as three's default texture rather than the `any`-parameterised one `instanceof` narrows to. */
+function isTexture(value: unknown): value is THREE.Texture {
+  return value instanceof THREE.Texture
+}
+
 function isSoftwareRenderer(renderer: THREE.WebGLRenderer): boolean {
   try {
     const gl = renderer.getContext()
@@ -461,6 +468,96 @@ export class Viewport {
    */
   bypassComposer = true
 
+  /** The frame profile being recorded, if one is: see `startFrameProfileForProbe`. */
+  private profile: FrameProfile | null = null
+  /** Built with the first profile, kept for the next: its queries are pooled. */
+  private gpuTimer: GpuTimer | null = null
+  private recordGpu = (ms: number): void => this.profile?.gpu(ms)
+
+  /**
+   * Start recording per-frame phase timings and GPU time (`profile.ts`),
+   * replacing any recording in progress.
+   */
+  startFrameProfileForProbe(capacity = 8192): void {
+    const gl = this.renderer.getContext()
+    this.gpuTimer ??= typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext ? new GpuTimer(gl) : null
+    this.profile = new FrameProfile(capacity, this.gpuTimer?.available ?? false)
+  }
+
+  /** The canvas's drawing buffer in device pixels: what the GPU fills each frame. */
+  drawingBufferForProbe(): { width: number; height: number; pixelRatio: number } {
+    const gl = this.renderer.getContext()
+    return { width: gl.drawingBufferWidth, height: gl.drawingBufferHeight, pixelRatio: this.renderer.getPixelRatio() }
+  }
+
+  /** Stop recording and hand back what was recorded; `null` when nothing was. */
+  takeFrameProfileForProbe(): FrameProfileReport | null {
+    const report = this.profile?.report() ?? null
+    this.profile = null
+    return report
+  }
+
+  /**
+   * What the GPU holds for this scene: three's own counts, the last frame's
+   * draw calls, and the bytes behind every geometry and texture reachable
+   * from the scene — the part of the footprint the JS heap does not show.
+   */
+  gpuMemoryForProbe(): { drawCalls: number; triangles: number; geometries: number; textures: number; programs: number; sceneGeometryBytes: number; sceneTextureBytes: number; sceneNodes: number } {
+    const geometries = new Set<THREE.BufferGeometry>()
+    const textures = new Set<THREE.Texture>()
+    let nodes = 0
+    this.scene.scene.traverse((node) => {
+      nodes += 1
+      const mesh = node as THREE.Mesh
+      if (mesh.geometry) geometries.add(mesh.geometry)
+      const materials = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : []
+      for (const material of materials) {
+        for (const value of Object.values(material)) if (isTexture(value)) textures.add(value)
+        const uniforms = (material as THREE.ShaderMaterial).uniforms
+        if (uniforms) for (const uniform of Object.values(uniforms)) if (isTexture(uniform.value)) textures.add(uniform.value)
+      }
+    })
+    let geometryBytes = 0
+    for (const geometry of geometries) {
+      for (const attribute of Object.values(geometry.attributes)) geometryBytes += (attribute as THREE.BufferAttribute).array.byteLength
+      if (geometry.index) geometryBytes += geometry.index.array.byteLength
+    }
+    let textureBytes = 0
+    for (const texture of textures) {
+      const image = texture.image as { data?: ArrayBufferView; width?: number; height?: number } | undefined
+      const base = image?.data ? image.data.byteLength : (image?.width ?? 0) * (image?.height ?? 0) * 4
+      textureBytes += texture.generateMipmaps ? Math.round(base * (4 / 3)) : base
+    }
+    const info = this.renderer.info
+    return {
+      drawCalls: info.render.calls,
+      triangles: info.render.triangles,
+      geometries: info.memory.geometries,
+      textures: info.memory.textures,
+      programs: info.programs?.length ?? 0,
+      sceneGeometryBytes: geometryBytes,
+      sceneTextureBytes: textureBytes,
+      sceneNodes: nodes,
+    }
+  }
+
+  /** What is under a client-space point, as a script needs to find something to press. */
+  pickForProbe(clientX: number, clientY: number): { structure: string | null; kind: number | null; objectId: string | null } {
+    const rect = this.canvas.getBoundingClientRect()
+    const x = ((clientX - rect.left) / rect.width) * 2 - 1
+    const y = -((clientY - rect.top) / rect.height) * 2 + 1
+    const pick = this.picker.pick(this.scene, this.camera, x, y)
+    return { structure: pick.surface?.structure ?? null, kind: pick.surface?.kind ?? null, objectId: pick.objectId }
+  }
+
+  /** The WebGL renderer's name as the driver reports it, unmasked where the browser allows. */
+  rendererNameForProbe(): string {
+    const gl = this.renderer.getContext()
+    const plain = String(gl.getParameter(gl.RENDERER))
+    const info = /webkit webgl|^mozilla$/i.test(plain) ? gl.getExtension('WEBGL_debug_renderer_info') : null
+    return info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : plain
+  }
+
   setCameraForProbe(state: Partial<{ yaw: number; pitch: number; distance: number }>): void {
     if (state.yaw !== undefined) this.orbit.yaw = state.yaw
     if (state.pitch !== undefined) this.orbit.pitch = state.pitch
@@ -518,6 +615,7 @@ export class Viewport {
     this.detachEvents()
     this.character?.dispose()
     this.scene.dispose()
+    this.gpuTimer?.dispose()
     this.composer.dispose()
     this.renderer.dispose()
   }
@@ -720,10 +818,13 @@ export class Viewport {
   }
 
   private pickAt(event: PointerEvent, lookPast?: ReadonlySet<string>): EditorPick {
+    const started = this.profile ? performance.now() : 0
     const [x, y] = this.ndc(event)
     // Carrying something, the pick looks past it and through objects: what matters is where it would land.
     const through = event.ctrlKey || event.metaKey || (lookPast !== undefined && lookPast.size > 0)
-    return { ...this.picker.pick(this.scene, this.camera, x, y, through, lookPast), handle: this.handleAt(event) }
+    const pick = { ...this.picker.pick(this.scene, this.camera, x, y, through, lookPast), handle: this.handleAt(event) }
+    this.profile?.pick(performance.now() - started)
+    return pick
   }
 
   /** Within this many CSS pixels of a drawn point, the pointer is on it. */
@@ -852,6 +953,8 @@ export class Viewport {
     if (this.disposed) return
     this.frameHandle = requestAnimationFrame(this.loop)
 
+    const profile = this.profile
+    profile?.begin()
     const now = performance.now()
     const realDt = (now - this.lastTime) / 1000
     // Simulation uses a clamped step so a long stall does not teleport the
@@ -905,12 +1008,15 @@ export class Viewport {
       this.orbit.distance,
     )
     applyRig(this.camera, this.orbit)
+    profile?.mark()
 
     // --- scene -------------------------------------------------------------
     this.syncDirty()
+    profile?.mark()
     this.scene.syncObjects(this.viewContext())
     this.scene.updateObjects(this.orbit.yaw, dt, this.viewContext())
     this.scene.sky.update(this.camera.position, this.scene.mapCentre())
+    profile?.mark()
 
     if (this.gridLines) this.gridLines.visible = this.options.showGrid && !this.playing
     this.updateBrushPreview()
@@ -922,8 +1028,16 @@ export class Viewport {
       this.bloom.strength = doc.atmosphere.bloom
     }
 
+    profile?.mark()
+
+    if (profile) this.gpuTimer?.begin()
     if (this.bypassComposer) this.renderer.render(this.scene.scene, this.camera)
     else this.composer.render()
+    if (profile) {
+      this.gpuTimer?.end()
+      this.gpuTimer?.poll(this.recordGpu)
+    }
+    profile?.mark()
 
     // --- reporting ---------------------------------------------------------
     this.handlers.onCameraChange({
@@ -946,6 +1060,8 @@ export class Viewport {
       this.fpsAccumulator = 0
       this.fpsFrames = 0
     }
+    profile?.mark()
+    profile?.end()
   }
 
   /** Where on the ground a screen point lands, for object placement. */
