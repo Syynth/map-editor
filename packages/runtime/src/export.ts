@@ -142,7 +142,7 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
       continue
     }
     if (!structure.closed || structure.points.length < 3) continue
-    const parts = sketchMeshOf(doc, structure, structure.layers)
+    const parts = sketchMeshOf(doc, structure)
     const cap = doc.surfaceMaterials[structure.capMaterial]
     const wall = doc.surfaceMaterials[structure.wallMaterial]
     const dressing: Array<[MeshBuffers, string | null, boolean]> = [
