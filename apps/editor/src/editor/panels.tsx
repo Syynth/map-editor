@@ -491,9 +491,6 @@ export function AtmosphereProperties({
       <Field label="Bloom">
         <Slider value={atmosphere.bloom} min={0} max={2} step={0.05} onChange={(bloom) => onChange({ bloom })} format={(v) => v.toFixed(2)} />
       </Field>
-      <Field label="Tilt shift">
-        <Slider value={atmosphere.tiltShift} min={0} max={1.5} step={0.05} onChange={(tiltShift) => onChange({ tiltShift })} format={(v) => v.toFixed(2)} />
-      </Field>
       <Field label="Sky top">
         <ColorInput value={atmosphere.skyTop} onChange={(skyTop) => onChange({ skyTop })} />
       </Field>
