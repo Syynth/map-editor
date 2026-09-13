@@ -237,10 +237,12 @@ const DEFAULT_OPTIONS: ViewportOptions = {
 function isSoftwareRenderer(renderer: THREE.WebGLRenderer): boolean {
   try {
     const gl = renderer.getContext()
-    const info = gl.getExtension('WEBGL_debug_renderer_info')
-    const name = info
-      ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL))
-      : String(gl.getParameter(gl.RENDERER))
+    // Firefox answers the real name to the plain query and deprecates the
+    // extension; Chrome masks the plain query and needs the extension.
+    const plain = String(gl.getParameter(gl.RENDERER))
+    const masked = /webkit webgl|^mozilla$/i.test(plain)
+    const info = masked ? gl.getExtension('WEBGL_debug_renderer_info') : null
+    const name = info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL)) : plain
     return /swiftshader|llvmpipe|software|mesa offscreen/i.test(name)
   } catch {
     return false
@@ -308,7 +310,7 @@ export class Viewport {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     this.renderer.shadowMap.enabled = true
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.0
 
@@ -325,7 +327,17 @@ export class Viewport {
     this.camera = createCamera(reader.doc.camera, canvas.clientWidth / Math.max(1, canvas.clientHeight))
     applyRig(this.camera, this.orbit)
 
-    this.composer = new EffectComposer(this.renderer)
+    // The composer draws the scene into an offscreen target before the passes
+    // run, and three gives a plain offscreen target only a 16-bit depth
+    // buffer — the canvas gets 24. With the near plane at 0.1 and the far at
+    // 500 that is marginal on any GPU and, on one Apple GPU driver (an M5,
+    // 2026-09-12), fragments past a certain view depth failed the depth test
+    // outright: the level rendered only up close, with a straight cutoff that
+    // receded as the camera zoomed in. A multisampled target gets a 24-bit
+    // depth buffer in WebGL2, and the post chain gets the antialiasing the
+    // canvas's own `antialias` never reached it with.
+    const target = new THREE.WebGLRenderTarget(Math.max(1, canvas.clientWidth), Math.max(1, canvas.clientHeight), { type: THREE.HalfFloatType, samples: 4 })
+    this.composer = new EffectComposer(this.renderer, target)
     this.composer.addPass(new RenderPass(this.scene.scene, this.camera))
     // Built at the real size rather than a placeholder that resize() fixes up
     // later. (That was a suspect for the software-GL black frame below; it was
