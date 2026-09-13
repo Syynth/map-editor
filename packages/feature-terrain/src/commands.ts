@@ -21,9 +21,8 @@ import {
   MIN_HEIGHT,
   clearRampRun,
   flatten,
-  paintCliff,
+  paintFace,
   paintTint,
-  paintTop,
   raise,
   rampRun,
   setMaterial,
@@ -45,8 +44,8 @@ const cells = z.array(cell).min(1)
 /** The voxel volume the cells are in: nothing ambient, a command names its structure. */
 const structure = z.string().min(1)
 
-/** One cliff band: a cell, the face it points along, and the level on that face. */
-const face = z.object({ x: z.int().min(0), y: z.int().min(0), dir: z.int().min(0).max(3), level: z.int().min(0) }).strict()
+/** One face of one voxel: the cell, the layer, and the side (0–3, 4 top, 5 bottom). */
+const face = z.object({ x: z.int().min(0), z: z.int().min(0), y: z.int().min(0), dir: z.int().min(0).max(5) }).strict()
 
 const raiseArgs = z.object({ structure, cells, delta: z.int().min(-MAX_HEIGHT).max(MAX_HEIGHT) }).strict()
 const flattenArgs = z.object({ structure, cells, height: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT) }).strict()
@@ -56,8 +55,7 @@ const rampArgs = z.object({ structure, edge: z.object({ x: z.int().min(0), z: z.
 const rampClearArgs = z.object({ structure, cell }).strict()
 const waterArgs = z.object({ structure, cells, level: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT).nullable() }).strict()
 const materialArgs = z.object({ structure, cells, material: z.int().min(0) }).strict()
-const topArgs = z.object({ structure, cells, tile: z.int().min(0).nullable() }).strict()
-const cliffArgs = z.object({ structure, faces: z.array(face).min(1), tile: z.int().min(0).nullable() }).strict()
+const faceArgs = z.object({ structure, faces: z.array(face).min(1), material: z.int().min(0).nullable() }).strict()
 const tintArgs = z.object({ structure, cells, tint: z.int().min(0).max(0xffffff).nullable() }).strict()
 
 /**
@@ -71,11 +69,10 @@ const terrainParams = z
   .object({
     terrainMode: z.enum(['sculpt', 'paint']).exactOptional(),
     sculptVerb: z.enum(['raise', 'flatten', 'ramp', 'water']).exactOptional(),
-    paintVerb: z.enum(['tile', 'material', 'tint']).exactOptional(),
+    paintVerb: z.enum(['material', 'tint']).exactOptional(),
     strokeShape: z.enum(['brush', 'rect', 'fill']).exactOptional(),
     brush: z.object({ size: z.int().min(1).max(12), shape: z.enum(['square', 'circle']) }).exactOptional(),
     material: z.int().min(0).exactOptional(),
-    tile: z.int().min(0).exactOptional(),
     tint: z.int().min(0).max(0xffffff).exactOptional(),
     sculptDeadZone: z.number().min(0).max(0.5).exactOptional(),
   })
@@ -94,9 +91,8 @@ export function declareTerrainCommands(owner: OwnerId): void {
   commands.declare(owner, { id: 'terrain.ramp.clear', title: 'Remove Ramp', category: 'Terrain', args: rampClearArgs })
   commands.declare(owner, { id: 'terrain.water', title: 'Set Water', category: 'Terrain', args: waterArgs })
   commands.declare(owner, { id: 'terrain.material', title: 'Set Material', category: 'Terrain', args: materialArgs })
-  commands.declare(owner, { id: 'terrain.paint.top', title: 'Paint Tile', category: 'Terrain', args: topArgs })
-  commands.declare(owner, { id: 'terrain.paint.cliff', title: 'Paint Cliff Band', category: 'Terrain', args: cliffArgs })
-  commands.declare(owner, { id: 'terrain.paint.tint', title: 'Tint Cells', category: 'Terrain', args: tintArgs })
+  commands.declare(owner, { id: 'terrain.face', title: 'Paint Face', category: 'Terrain', args: faceArgs })
+  commands.declare(owner, { id: 'terrain.tint', title: 'Tint Cells', category: 'Terrain', args: tintArgs })
 }
 
 /** One command's effect: its undo label and the patches it produces. */
@@ -146,15 +142,11 @@ export function terrainEdit(doc: ReadonlyMapDoc, id: string, args: unknown): Ter
       const { cells, material } = args as z.infer<typeof materialArgs>
       return { label: 'Set material', patches: setMaterial(voxel, cells, material) }
     }
-    case 'terrain.paint.top': {
-      const { cells, tile } = args as z.infer<typeof topArgs>
-      return { label: tile === null ? 'Clear paint' : 'Paint', patches: paintTop(voxel, cells, tile ?? undefined) }
+    case 'terrain.face': {
+      const { faces, material } = args as z.infer<typeof faceArgs>
+      return { label: material === null ? 'Clear face' : 'Paint face', patches: paintFace(voxel, faces, material ?? undefined) }
     }
-    case 'terrain.paint.cliff': {
-      const { faces, tile } = args as z.infer<typeof cliffArgs>
-      return { label: tile === null ? 'Clear paint' : 'Paint', patches: paintCliff(voxel, faces, tile ?? undefined) }
-    }
-    case 'terrain.paint.tint': {
+    case 'terrain.tint': {
       const { cells, tint } = args as z.infer<typeof tintArgs>
       return { label: tint === null ? 'Clear tint' : 'Tint', patches: paintTint(voxel, cells, tint ?? undefined) }
     }

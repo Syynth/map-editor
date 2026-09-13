@@ -216,7 +216,7 @@ describe('the read and write paths', () => {
     // @ts-expect-error indexed assignment
     g.voxels.material[0] = 1
     // @ts-expect-error record assignment
-    g.paint.top['0,0'] = 1
+    g.paint.faces['0,0,0,4'] = 1
     // @ts-expect-error array mutation
     doc.objectOrder.push('x')
     // @ts-expect-error property replacement

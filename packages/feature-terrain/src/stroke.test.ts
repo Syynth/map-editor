@@ -4,11 +4,11 @@ import {
   SURFACE_CLIFF,
   SURFACE_TOP,
   createMap,
+  faceKey,
   fillColumn,
   rampDirAt,
   rampShape,
   topHeight,
-  topKey,
   voxelIndex,
   type Patch,
   type ReadonlyMapDoc,
@@ -47,11 +47,10 @@ const cellsTouched = (patches: readonly Patch[] | undefined): number =>
 const defaults: TerrainParams = {
   terrainMode: 'sculpt',
   sculptVerb: 'raise',
-  paintVerb: 'tile',
+  paintVerb: 'material',
   strokeShape: 'brush',
   brush: { size: 1, shape: 'square' },
   material: 0,
-  tile: 0,
   tint: 0xffffff,
   sculptDeadZone: 0.2,
 }
@@ -171,20 +170,25 @@ describe('the terrain tool contract', () => {
     expect(cellsTouched(handler?.move(sample(top(4, 4))))).toBe(9)
   })
 
-  it('alt picks a tile up instead of editing, and only on the press', () => {
+  it('alt picks a material up instead of editing, and only on the press', () => {
     const doc = createMap(8, 8)
-    ground(doc).paint.top[topKey(2, 2)] = 9
-    const { deps, current } = stub(doc, { terrainMode: 'paint', paintVerb: 'tile' })
-    const handler = terrainContract(deps).stroke(sample(top(2, 2), { alt: true }))
+    // (2,2) stands two cubes tall; its upper cube's west face carries an
+    // override, which is what a band is drawn with and so what alt picks up.
+    fillColumn(ground(doc), 2, 2, 4)
+    ground(doc).paint.faces[faceKey(2, 2, 1, 2)] = 2
+    const band: SurfaceAddress = { structure: 'ground', x: 2, y: 2, kind: SURFACE_CLIFF, dir: 2, level: 2 }
+    const { deps, current } = stub(doc, { terrainMode: 'paint', paintVerb: 'material' })
+    const handler = terrainContract(deps).stroke(sample(band, { alt: true }))
 
-    expect(handler?.begin(sample(top(2, 2), { alt: true }))).toEqual([])
-    expect(current().tile).toBe(9)
+    expect(handler?.begin(sample(band, { alt: true }))).toEqual([])
+    expect(current().material).toBe(2)
 
     // A move with alt still held changes nothing further: the eyedropper is a
-    // click, not a drag.
-    ground(doc).paint.top[topKey(3, 3)] = 4
+    // click, not a drag. (3,3)'s top voxel is a different material, and it
+    // stays unpicked.
+    fillColumn(ground(doc), 3, 3, 2, 3)
     expect(handler?.move(sample(top(3, 3), { alt: true }))).toEqual([])
-    expect(current().tile).toBe(9)
+    expect(current().material).toBe(2)
   })
 
   it('cuts a ramp back from a clicked cliff face, descending the way it points', () => {

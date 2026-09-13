@@ -15,7 +15,9 @@ import {
   makeAtmosphere,
   type MapDoc,
   type MapObject,
+  type MaterialDef,
   type ReadonlyMapDoc,
+  type TerrainRef,
 } from './document'
 import { DEFAULT_WALL_PROFILE } from './ops'
 import { defaultSurfaceMaterials, type SketchStructure, type Structure, type VoxelStructure } from './structure'
@@ -72,7 +74,7 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
       throw new LoadError(`${id}.water should hold ${count} entries, found ${Array.isArray(water) ? water.length : 'none'}.`)
     }
     const paint = (raw.paint ?? {}) as Partial<VoxelStructure['paint']>
-    return { ...base, kind: 'voxel', size, layers, voxels, water: water as number[], paint: { top: paint.top ?? {}, cliff: paint.cliff ?? {}, tint: paint.tint ?? {} } }
+    return { ...base, kind: 'voxel', size, layers, voxels, water: water as number[], paint: { faces: paint.faces ?? {}, tint: paint.tint ?? {} } }
   }
   if (raw.kind === 'sketch') {
     const wall = (raw.wall ?? {}) as Partial<SketchStructure['wall']>
@@ -89,6 +91,25 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
     }
   }
   throw new LoadError(`Structure ${id} has an unknown kind: ${String(raw.kind)}.`)
+}
+
+/** A material names its terrains or it is not a material; the rest defaults. */
+function normaliseMaterials(raw: unknown): MapDoc['materials'] {
+  if (!Array.isArray(raw)) return DEFAULT_MATERIALS.map((m) => ({ ...m }))
+  return raw.map((value, index) => {
+    const m = value as Partial<MaterialDef>
+    const top = m.top as Partial<TerrainRef> | undefined
+    if (!top || typeof top.sheet !== 'string' || typeof top.terrain !== 'string') throw new LoadError(`Material ${index} names no terrain.`)
+    const side = m.side as Partial<TerrainRef> | undefined
+    return {
+      id: typeof m.id === 'string' ? m.id : `material_${index}`,
+      name: typeof m.name === 'string' ? m.name : `Material ${index + 1}`,
+      color: typeof m.color === 'number' ? m.color : 0x808080,
+      role: m.role === 'top' || m.role === 'wall' ? m.role : 'any',
+      top: { sheet: top.sheet, terrain: top.terrain },
+      ...(side && typeof side.sheet === 'string' && typeof side.terrain === 'string' ? { side: { sheet: side.sheet, terrain: side.terrain } } : {}),
+    }
+  })
 }
 
 export function deserialize(text: string): MapDoc {
@@ -129,7 +150,7 @@ export function deserialize(text: string): MapDoc {
     name: (raw.name as string) ?? 'Untitled Map',
     texelDensity: (raw.texelDensity as number) ?? 16,
     filtering: (raw.filtering as MapDoc['filtering']) ?? 'nearest',
-    materials: (raw.materials as MapDoc['materials']) ?? DEFAULT_MATERIALS.map((m) => ({ ...m })),
+    materials: normaliseMaterials(raw.materials),
     surfaceMaterials: { ...defaultSurfaceMaterials(), ...((raw.surfaceMaterials as MapDoc['surfaceMaterials']) ?? {}) },
     structures,
     structureOrder,

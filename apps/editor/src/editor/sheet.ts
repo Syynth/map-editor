@@ -1,93 +1,58 @@
 /**
- * Loading an artist's own template sheet.
+ * Loading an artist's own terrain set: a sheet PNG and the sidecar beside it.
  *
- * This is where brief section 10's resolution profile earns its keep. A sheet
- * authored at a different texel density than the map is the fastest way to
- * make pixel art in 3D look wrong, so the editor checks the dimensions against
- * the layout the template expects and says something rather than silently
- * stretching the art.
- *
- * When the mismatch is a whole-number ratio, nearest-neighbour rescaling is
- * offered, which is lossless for pixel art in the upward direction and at
- * least predictable downward.
+ * The sidecar says what every tile is (spec §2); the PNG is only pixels. The
+ * two are picked together, because the editor cannot read a sibling file
+ * from a browser file picker. The sheet is checked against the sidecar's own
+ * size, not against any layout the editor expects — there is none — and a
+ * tile size that differs from the map's texel density is reported rather
+ * than rescaled, because a sheet authored at another density is the fastest
+ * way to make pixel art in 3D look wrong (brief section 10).
  */
 
-import { BLOCK_COLUMNS, BLOCK_ROWS } from '@papercut/geometry'
 import type { ReadonlyMapDoc, RgbaImage } from '@papercut/document'
+import { parseTerrainSet, type LoadedSet } from '@papercut/geometry'
 
-export interface SheetLoadResult {
-  /** Raw pixels, the form the runtime takes a sheet in (#47). */
-  image: RgbaImage
-  /** Density the file appears to have been authored at. */
-  detectedDensity: number
+export interface TerrainLoadResult {
+  set: LoadedSet
   warning: string | null
-  rescaled: boolean
 }
 
-export function expectedSheetSize(doc: ReadonlyMapDoc): { width: number; height: number } {
-  return {
-    width: doc.materials.length * BLOCK_COLUMNS * doc.texelDensity,
-    height: BLOCK_ROWS * doc.texelDensity,
-  }
-}
-
-function drawTo(image: HTMLImageElement, width: number, height: number): RgbaImage {
-  const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('2D canvas unavailable')
-  ctx.imageSmoothingEnabled = false
-  ctx.drawImage(image, 0, 0, width, height)
-  // The canvas was only ever the decoder and the rescaler; what leaves is pixels.
-  return { width, height, data: ctx.getImageData(0, 0, width, height).data }
-}
-
-export async function loadSheetFromFile(file: File, doc: ReadonlyMapDoc): Promise<SheetLoadResult> {
+function decode(file: File): Promise<RgbaImage> {
   const url = URL.createObjectURL(file)
-  try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const element = new Image()
-      element.onload = () => resolve(element)
-      element.onerror = () => reject(new Error(`Could not decode ${file.name}`))
-      element.src = url
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const element = new Image()
+    element.onload = () => resolve(element)
+    element.onerror = () => reject(new Error(`Could not decode ${file.name}`))
+    element.src = url
+  })
+    .then((image) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = image.width
+      canvas.height = image.height
+      const ctx = canvas.getContext('2d')
+      if (!ctx) throw new Error('2D canvas unavailable')
+      ctx.drawImage(image, 0, 0)
+      // The canvas was only ever the decoder; what leaves is pixels.
+      return { width: image.width, height: image.height, data: ctx.getImageData(0, 0, image.width, image.height).data }
     })
+    .finally(() => URL.revokeObjectURL(url))
+}
 
-    const expected = expectedSheetSize(doc)
-    const columns = doc.materials.length * BLOCK_COLUMNS
-    const detectedDensity = image.width / columns
-
-    if (image.width === expected.width && image.height === expected.height) {
-      return { image: drawTo(image, image.width, image.height), detectedDensity, warning: null, rescaled: false }
-    }
-
-    const ratio = expected.width / image.width
-    const sameShape =
-      Math.abs(image.width / image.height - expected.width / expected.height) < 0.001
-    const wholeRatio = Number.isInteger(ratio) || Number.isInteger(1 / ratio)
-
-    if (sameShape && wholeRatio) {
-      return {
-        image: drawTo(image, expected.width, expected.height),
-        detectedDensity,
-        warning:
-          `Sheet was authored at ${detectedDensity}px per tile; this map is ${doc.texelDensity}px. ` +
-          `Rescaled by ${ratio > 1 ? `${ratio}x` : `1/${1 / ratio}`} with nearest neighbour.`,
-        rescaled: true,
-      }
-    }
-
-    return {
-      image: drawTo(image, expected.width, expected.height),
-      detectedDensity,
-      warning:
-        `Sheet is ${image.width}x${image.height}, but this map's template expects ` +
-        `${expected.width}x${expected.height} (${doc.materials.length} materials x ${BLOCK_COLUMNS} ` +
-        `columns x ${doc.texelDensity}px). Stretched to fit — expect it to look wrong. ` +
-        `Set the map's texel density to ${Math.round(detectedDensity)} to match the art.`,
-      rescaled: true,
-    }
-  } finally {
-    URL.revokeObjectURL(url)
+/** Load a terrain set from the files picked together: one `.terrain.json` (or `.json`) and one image. */
+export async function loadTerrainSetFiles(files: readonly File[], doc: ReadonlyMapDoc): Promise<TerrainLoadResult> {
+  const sidecar = files.find((f) => f.name.endsWith('.json'))
+  const image = files.find((f) => !f.name.endsWith('.json'))
+  if (!sidecar || !image) throw new Error('Pick the sheet PNG and its .terrain.json together.')
+  const set = parseTerrainSet(JSON.parse(await sidecar.text()))
+  const pixels = await decode(image)
+  const expected = { width: set.columns * set.tile, height: set.rows * set.tile }
+  if (pixels.width !== expected.width || pixels.height !== expected.height) {
+    throw new Error(`${image.name} is ${pixels.width}x${pixels.height}, but ${sidecar.name} describes a ${set.columns}×${set.rows} sheet of ${set.tile}px tiles (${expected.width}x${expected.height}).`)
   }
+  const warning =
+    set.tile === doc.texelDensity
+      ? null
+      : `${sidecar.name} has ${set.tile}px tiles; this map is ${doc.texelDensity}px per tile. Set the map's texel density to ${set.tile} to match the art.`
+  return { set: { set: { ...set, sheet: set.sheet || image.name }, image: pixels }, warning }
 }

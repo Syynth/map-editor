@@ -64,8 +64,7 @@ export function TerrainBar({ params, set, platform }: TerrainPanelProps) {
           value={params.paintVerb}
           onChange={(paintVerb) => set({ paintVerb })}
           options={[
-            { value: 'tile', icon: 'tile', title: 'Paint a tile from the sheet' },
-            { value: 'material', icon: 'material', title: 'Paint a material' },
+            { value: 'material', icon: 'material', title: 'Material — a top takes it, a cliff band is painted with it, ⇧ clears a band' },
             { value: 'tint', icon: 'tint', title: 'Tint' },
           ]}
         />

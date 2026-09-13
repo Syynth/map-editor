@@ -132,8 +132,8 @@ describe('the React glue', () => {
     // A real transition on the tools actor, changing a parameter this
     // component does not select. `useSelector` compares what the selector
     // returned, which is the whole reason `useActor` is not offered.
-    act(() => void host.dispatch('terrain.params', { tile: 7 }))
-    expect((host.children.tools.getSnapshot().context.features.terrain as { tile: number }).tile).toBe(7)
+    act(() => void host.dispatch('terrain.params', { material: 2 }))
+    expect((host.children.tools.getSnapshot().context.features.terrain as { material: number }).material).toBe(2)
     expect(renders).toBe(before)
   })
 

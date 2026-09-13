@@ -6,13 +6,14 @@ import {
   cellIndex,
   columnHeights,
   createMap,
+  faceKey,
   materialAt,
   paintTint,
   patchAddress,
   raise,
   rampDirAt,
+  tintPaint,
   topHeight,
-  topKey,
   type Patch,
   type SurfaceAddress,
   type MapDoc,
@@ -99,16 +100,15 @@ describe('what the feature declares, before anything is running', () => {
       .sort()
     expect(ids).toEqual([
       'terrain.brush.resize',
+      'terrain.face',
       'terrain.flatten',
       'terrain.material',
-      'terrain.paint.cliff',
-      'terrain.paint.tint',
-      'terrain.paint.top',
       'terrain.params',
       'terrain.raise',
       'terrain.ramp',
       'terrain.ramp.clear',
       'terrain.smooth',
+      'terrain.tint',
       'terrain.water',
     ])
     expect(tools.get('terrain')).toMatchObject({ title: 'Terrain', icon: 'terrain' })
@@ -173,12 +173,18 @@ describe('the terrain commands, dispatched through the host', () => {
     expect(topHeight(g(), 1, 1)).toBe(3)
     expect(g().water[cellIndex(size, 1, 1)]).toBe(5)
 
-    expect(dispatch('terrain.paint.top', { structure: 'ground', cells: [[1, 1]], tile: 5 })).toEqual({ ok: true })
-    expect(ground(host.reader.doc).paint.top[topKey(1, 1)]).toBe(5)
+    // A face override holds a material, keyed by voxel and side: the bottom
+    // cube's west face here. `null` clears it, and the label says which.
+    expect(dispatch('terrain.face', { structure: 'ground', faces: [{ x: 1, z: 1, y: 0, dir: 2 }], material: 2 })).toEqual({ ok: true })
+    expect(ground(host.reader.doc).paint.faces[faceKey(1, 1, 0, 2)]).toBe(2)
+    expect(host.reader.undoLabel()).toBe('Paint face')
+    expect(dispatch('terrain.face', { structure: 'ground', faces: [{ x: 1, z: 1, y: 0, dir: 2 }], material: null })).toEqual({ ok: true })
+    expect(ground(host.reader.doc).paint.faces[faceKey(1, 1, 0, 2)]).toBeUndefined()
+    expect(host.reader.undoLabel()).toBe('Clear face')
 
-    expect(dispatch('terrain.paint.tint', { structure: 'ground', cells: [[1, 1]], tint: 0x00ff00 })).toEqual({ ok: true })
-    expect(dispatch('terrain.paint.cliff', { structure: 'ground', faces: [{ x: 1, y: 1, dir: 2, level: 0 }], tile: 7 })).toEqual({ ok: true })
-    expect(host.reader.undoLabel()).toBe('Paint')
+    expect(dispatch('terrain.tint', { structure: 'ground', cells: [[1, 1]], tint: 0x00ff00 })).toEqual({ ok: true })
+    expect(tintPaint(ground(host.reader.doc).paint, 1, 1)).toBe(0x00ff00)
+    expect(host.reader.undoLabel()).toBe('Tint')
   })
 
   it('refuses arguments the schema does not admit, before anything is sent', () => {
@@ -507,7 +513,7 @@ describe('the terrain feature owns its parameters', () => {
     for (let i = 0; i < 20; i++) dispatch('terrain.brush.resize', { by: 1 })
     expect(slice().brush.size).toBe(12)
     expect(dispatch('terrain.brush.resize', { by: 99 })).toMatchObject({ ok: false, kind: 'invalid-args' })
-    dispatch('terrain.params', { terrainMode: 'sculpt', paintVerb: 'tile', brush: { size: 1, shape: 'square' } })
+    dispatch('terrain.params', { terrainMode: 'sculpt', paintVerb: 'material', brush: { size: 1, shape: 'square' } })
   })
 
   it('binds Tab to its mode toggle and the brackets to the brush, at the feature weight', () => {

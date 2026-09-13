@@ -133,13 +133,16 @@ async function shot(name, caption, { settle = 900, viewportOnly = false } = {}) 
 }
 
 /**
- * Click a button by its visible text, scoped to a panel side.
+ * Click a button by its visible text, or — for the bar's icon-only buttons,
+ * whose tooltip title is also their `aria-label` — by the start of that
+ * title, scoped to a panel side.
  * @param {string} text
  * @param {string} [scope]
  */
 async function clickText(text, scope = '') {
-  const target = page.locator(`${scope} button`, { hasText: new RegExp(`^${text}$`) }).first()
-  await target.click()
+  const byText = page.locator(`${scope} button`, { hasText: new RegExp(`^${text}$`) })
+  const byTitle = page.locator(`${scope} button[aria-label^="${text}"]`)
+  await byText.or(byTitle).first().click()
   await sleep(400)
 }
 
@@ -198,8 +201,11 @@ async function counts() {
     const ground = /** @type {import('@papercut/document').VoxelStructure} */ (doc.structures[doc.structureOrder[0]])
     // The column tops, derived the way `topHeight` derives them: the page has the raw document, not the helpers.
     const { width, height } = ground.size
+    // The material the paint step brushes on; a top's material is its top voxel's.
+    const path = doc.materials.findIndex((m) => m.id === 'path')
     let ramps = 0
     let heightSum = 0
+    let pathCells = 0
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         for (let layer = ground.layers - 1; layer >= 0; layer--) {
@@ -207,6 +213,7 @@ async function counts() {
           if (ground.voxels.material[i] === -1) continue
           const shape = ground.voxels.shape[i]
           if (shape >= 2) ramps += 1
+          if (ground.voxels.material[i] === path) pathCells += 1
           heightSum += layer * 2 + (shape === 1 || (shape >= 6 && shape < 10) ? 1 : 2)
           break
         }
@@ -214,8 +221,8 @@ async function counts() {
     }
     return {
       ramps,
-      topPaint: Object.keys(ground.paint.top).length,
-      cliffPaint: Object.keys(ground.paint.cliff).length,
+      faces: Object.keys(ground.paint.faces).length,
+      pathCells,
       tint: Object.keys(ground.paint.tint).length,
       objects: doc.objectOrder.length,
       heightSum,
@@ -399,16 +406,20 @@ await shot(
 await focus(18, 18, 22)
 await camera({ pitch: 36, yaw: 35 })
 await page.keyboard.press('Tab')
-await shot('paint-palette', 'Tab switches to Paint. The template sheet is the palette; each material owns four columns.')
+await shot('paint-verbs', 'Tab switches to Paint. There is no tile palette: the Material brush sets what a surface IS, and the terrain set draws it.')
 
-// Pick a stone tile from the sheet, then brush it on.
-const palette = await page.$('.palette-sheet')
-if (!palette) throw new Error('".palette-sheet" not found — did Paint mode mount its sheet?')
-const pbox = await palette.boundingBox()
-if (!pbox) throw new Error('".palette-sheet" has no bounding box — is it hidden or zero-sized?')
-await page.mouse.click(pbox.x + pbox.width * 0.66, pbox.y + pbox.height * 0.4)
+// The Material verb, with the path material, brushed onto the ground. The
+// material is chosen through the same command the inspector's picker sends,
+// and looked up by id rather than assumed to sit at a fixed index.
+await clickText('Material', '.left')
+await page.evaluate(() => {
+  const path = window.__host.reader.doc.materials.findIndex((m) => m.id === 'path')
+  if (path < 0) throw new Error('the sample map has no "path" material to paint with')
+  return window.__host.dispatch('terrain.params', { material: path })
+})
 await page.keyboard.press('[')
 await page.keyboard.press('[')
+const beforePaint = await counts()
 await page.mouse.move(cx - 40, cy + 20)
 await page.mouse.down()
 for (let i = 0; i < 9; i++) {
@@ -416,11 +427,14 @@ for (let i = 0; i < 9; i++) {
   await sleep(40)
 }
 await page.mouse.up()
-const topPainted = (await counts()).topPaint
-await expect('tile painting landed', () => Object.keys(/** @type {import('@papercut/document').VoxelStructure} */ (window.__host.reader.doc.structures[window.__host.reader.doc.structureOrder[0]]).paint.top).length > 0)
+const afterPaint = await counts()
+const pathPainted = afterPaint.pathCells - beforePaint.pathCells
+if (pathPainted <= 0) {
+  throw new Error(`material painting did not set any top voxel to path: ${beforePaint.pathCells} path cells before, ${afterPaint.pathCells} after`)
+}
 await shot(
-  'paint-tile',
-  `Painting a tile over the terrain — ${topPainted} cells carry a painted override. The cell keeps its material underneath; this is a layer on top of what the template picks automatically.`,
+  'paint-material',
+  `Painting the path material over the terrain — ${pathPainted} more cells now have path as their top voxel's material. Nothing is stamped on top: the terrain set's transitions are what draw the edge.`,
 )
 
 // ---------------------------------------------------------------- 5. tint
@@ -440,16 +454,17 @@ await shot(
 
 // ------------------------------------------- 6. paint survives sculpt (the point)
 const cliff = await faceCamera(9, 8)
-await clickText('Tile', '.left')
+await clickText('Material', '.left')
 await shot(
   'cliff-before',
-  `A cliff face seen head on, ${cliff.drop} half-tiles tall, with the tile brush selected.`,
+  `A cliff face seen head on, ${cliff.drop} half-tiles tall, with the Material brush selected.`,
   { settle: 1600 },
 )
 
-// Paint bands of that face through the UI. Find the face first, then walk up
-// and down from it, checking the status bar still reports a cliff before each
-// click so no stroke lands on a terrain top by accident.
+// Paint bands of that face through the UI: on a side band the Material brush
+// sets a face override rather than the voxel's own material. Find the face
+// first, then walk up and down from it, checking the status bar still reports
+// a cliff before each click so no stroke lands on a terrain top by accident.
 const cliffPixel = await findCliffPixel()
 if (!cliffPixel) throw new Error('no cliff face visible to paint')
 for (const dy of [-30, -10, 0, 10, 30]) {
@@ -462,20 +477,23 @@ for (const dy of [-30, -10, 0, 10, 30]) {
   await sleep(200)
 }
 
-const painted = (await counts()).cliffPaint
+const painted = (await counts()).faces
 if (painted === 0) {
   throw new Error('cliff painting did not land on any cliff face — captions would be wrong')
 }
 await shot(
   'cliff-painted',
-  `Cliff bands painted one at a time — ${painted} painted faces. Each is keyed by cell, side and absolute half-tile level, never by a triangle.`,
+  `Cliff bands painted one at a time — ${painted} face overrides. Each is keyed by voxel and side, never by a triangle, and holds a material rather than a tile.`,
 )
 
 // Now sculpt the cliff away.
 // Through the command, not through a private write path: `terrain.flatten` is
 // what the sculpt tool's own stroke ends up calling, so this step drives the
 // editor rather than its insides.
-await page.evaluate((c) => window.__host.dispatch('terrain.flatten', { cells: [[c.x, c.y]], height: c.bottom }), cliff)
+await page.evaluate(
+  (c) => window.__host.dispatch('terrain.flatten', { structure: window.__host.reader.doc.structureOrder[0], cells: [[c.x, c.y]], height: c.bottom }),
+  cliff,
+)
 const dormantLine = (await statusBar())[2]
 const dormantCount = Number(dormantLine.replace(/\D+/g, ''))
 if (dormantCount === 0) {
@@ -483,17 +501,17 @@ if (dormantCount === 0) {
 }
 await shot(
   'cliff-lowered',
-  `Sculpting the cliff down. The bands are gone from the mesh, and the status bar counts them as dormant rather than deleted — "${dormantLine}".`,
+  `Sculpting the cliff down. The overridden faces are gone from the mesh, and the status bar counts them as dormant rather than deleted — "${dormantLine}".`,
 )
 
 await page.evaluate(() => window.__host.dispatch('undo'))
 await expect(
   'paint came back with the geometry',
-  () => Object.keys(/** @type {import('@papercut/document').VoxelStructure} */ (window.__host.reader.doc.structures[window.__host.reader.doc.structureOrder[0]]).paint.cliff).length > 0,
+  () => Object.keys(/** @type {import('@papercut/document').VoxelStructure} */ (window.__host.reader.doc.structures[window.__host.reader.doc.structureOrder[0]]).paint.faces).length > 0,
 )
 await shot(
   'cliff-restored',
-  'Raising it back brings every painted band with it, because nothing ever garbage-collected the paint.',
+  'Raising it back brings every overridden face with it, because nothing ever garbage-collected the paint.',
 )
 
 // ---------------------------------------------------------------- 7. objects

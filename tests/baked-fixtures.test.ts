@@ -19,7 +19,6 @@ const ROOT = new URL('..', import.meta.url).pathname
 const BAKED = join(ROOT, 'packages/fixtures/baked')
 
 interface Manifest {
-  sheet: { file: string; width: number; height: number }
   sprites: Record<string, { frame: { width: number; height: number }; facings: string[] }>
 }
 
@@ -34,7 +33,6 @@ function pngSize(bytes: Buffer): { width: number; height: number } {
 
 function referenced(manifest: Manifest): Array<{ file: string; width: number; height: number }> {
   return [
-    manifest.sheet,
     ...Object.values(manifest.sprites).flatMap((sprite) =>
       sprite.facings.map((file) => ({ file, ...sprite.frame })),
     ),

@@ -46,6 +46,8 @@ export interface FrameStats {
   readonly fps: number
   readonly triangles: number
   readonly meshMs: number
+  /** Corner combinations the atlas had to compose because no tile is authored for them (spec §3). */
+  readonly missingTransitions: number
 }
 
 export type BrushCells = ReadonlyArray<readonly [number, number]>
@@ -59,20 +61,30 @@ export interface ViewportState {
   readonly stats: FrameStats
   /** The viewport fell back to a software rasterizer and dropped post-processing. */
   readonly softwareRenderer: boolean
-  /** A template sheet loaded from a file, drawn instead of the generated one; `null` draws the generated sheet. */
-  readonly loadedSheet: RgbaImage | null
-  /** What loading a sheet had to say: a size mismatch, or why it failed. */
-  readonly sheetWarning: string | null
+  /** A terrain set loaded from files, drawn instead of the generated one; `null` draws the generated one. */
+  readonly loadedTerrain: LoadedTerrain | null
+  /** What loading a terrain set had to say: a size mismatch, or why it failed. */
+  readonly terrainWarning: string | null
+}
+
+/**
+ * A terrain set and its sheet, as the host holds it: the app loads it and
+ * the app reads it back, so this is the narrowest shape that says what it
+ * is, and `geometry`'s `LoadedSet` fits it.
+ */
+export interface LoadedTerrain {
+  readonly set: { readonly sheet: string; readonly tile: number; readonly columns: number; readonly rows: number }
+  readonly image: RgbaImage
 }
 
 const INITIAL: ViewportState = {
   hover: null,
   brushCells: [],
   camera: { yaw: 45, pitch: 35, distance: 26, inBounds: true },
-  stats: { fps: 0, triangles: 0, meshMs: 0 },
+  stats: { fps: 0, triangles: 0, meshMs: 0, missingTransitions: 0 },
   softwareRenderer: false,
-  loadedSheet: null,
-  sheetWarning: null,
+  loadedTerrain: null,
+  terrainWarning: null,
 }
 
 export function sameSurface(a: SurfaceAddress | null, b: SurfaceAddress | null): boolean {
@@ -101,8 +113,8 @@ export const viewportLogic = setup({
       camera: types<{ camera: CameraReadout }>(),
       stats: types<{ stats: FrameStats }>(),
       renderer: types<{ software: boolean }>(),
-      /** A sheet loaded from a file (or `null` to go back to the generated one), and what loading it said. */
-      sheet: types<{ image: RgbaImage | null; warning: string | null }>(),
+      /** A terrain set loaded from files (or `null` to go back to the generated one), and what loading it said. */
+      terrain: types<{ set: LoadedTerrain | null; warning: string | null }>(),
       command: types<{ id: string; args: unknown }>(),
     },
     emitted: {
@@ -126,8 +138,8 @@ export const viewportLogic = setup({
         camera: ({ context, event }) => (sameCamera(context.camera, event.camera) ? undefined : { context: { camera: event.camera } }),
         stats: ({ event }) => ({ context: { stats: event.stats } }),
         renderer: ({ context, event }) => (context.softwareRenderer === event.software ? undefined : { context: { softwareRenderer: event.software } }),
-        sheet: ({ context, event }) =>
-          context.loadedSheet === event.image && context.sheetWarning === event.warning ? undefined : { context: { loadedSheet: event.image, sheetWarning: event.warning } },
+        terrain: ({ context, event }) =>
+          context.loadedTerrain === event.set && context.terrainWarning === event.warning ? undefined : { context: { loadedTerrain: event.set, terrainWarning: event.warning } },
         command: ({ event }, enq) => {
           if (event.id === 'viewport.frame') enq.emit({ type: 'frame' })
           else if (event.id === 'viewport.sweep') enq.emit({ type: 'sweep' })

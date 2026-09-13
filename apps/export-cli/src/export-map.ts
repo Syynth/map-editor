@@ -13,6 +13,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { deserialize } from '@papercut/document'
 import { exportGltf } from '@papercut/runtime/export'
 
+import { generatePlaceholderTerrainSet } from '@papercut/fixtures'
+
 import { loadBakedAssets } from './baked-assets'
 import { encodePngPure } from './encode-png'
 import { installNodeFileReader } from './node-file-reader'
@@ -40,13 +42,15 @@ export async function exportMapFile(
   // rejected here with `LoadError` rather than half-exported.
   const doc = deserialize(await readFile(inputPath, 'utf8'))
 
-  // The pre-baked stand-in for `generateTerrainSheet` / `generateSprites`:
-  // this app has no canvas to draw them live with, which is the whole point
-  // (#48). A future flag for an artist's own sheet would decode it through
-  // the same `fast-png`, into the same `RgbaImage` shape, right here.
-  const { sheet, sprites } = await loadBakedAssets()
+  // The pre-baked stand-in for `generateSprites`: this app has no canvas to
+  // draw them live with, which is the whole point (#48). The terrain set
+  // needs none, so it is drawn here the way the editor draws it. A future
+  // flag for an artist's own sheet would decode it through the same
+  // `fast-png`, into the same `RgbaImage` shape, right here.
+  const { sprites } = await loadBakedAssets()
+  const terrain = [generatePlaceholderTerrainSet(doc.texelDensity)]
 
-  const bytes = new Uint8Array(await exportGltf(doc, { merge: options.merge, sheet, sprites, textures: {}, encodePng: encodePngPure }))
+  const bytes = new Uint8Array(await exportGltf(doc, { merge: options.merge, terrain, sprites, textures: {}, encodePng: encodePngPure }))
   await writeFile(outputPath, bytes)
 
   return { name: doc.name, bytes: bytes.byteLength }

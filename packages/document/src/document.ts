@@ -75,17 +75,15 @@ export interface VoxelData {
 /**
  * Painted overrides. Keys are stable grid addresses (see paint.ts).
  *
- * Entries are NEVER deleted when geometry shrinks. A cliff face that stops
+ * Entries are NEVER deleted when geometry shrinks. A face that stops
  * existing leaves its paint behind, dormant; raising the terrain again brings
  * it back. That dormancy is the whole mechanism behind "paint survives
  * sculpt", and it works precisely because nothing garbage-collects this.
  */
 export interface PaintLayers {
-  /** `${x},${y}` -> tile id */
-  top: Record<string, number>
-  /** `${x},${y},${dir},${level}` -> tile id */
-  cliff: Record<string, number>
-  /** `${x},${y}` -> packed 0xRRGGBB */
+  /** `${x},${z},${y},${dir}` -> the material one face of one voxel is drawn with, instead of the voxel's own. */
+  faces: Record<string, number>
+  /** `${x},${z}` -> packed 0xRRGGBB */
   tint: Record<string, number>
 }
 
@@ -212,12 +210,27 @@ export interface BackdropCard {
   opacity: number
 }
 
+/** A terrain in a terrain set: the sheet's file name and the terrain's id in its sidecar (spec §2). */
+export interface TerrainRef {
+  sheet: string
+  terrain: string
+}
+
+/**
+ * A terrain material: what a voxel is made of, and which terrains draw it.
+ * `top` draws its top faces and, unless `side` says otherwise, its sides;
+ * grass-topped dirt is one material with both. The order of the map's
+ * materials is their priority: which is the shape when a template is placed
+ * for a pair, and the layering of a composited corner.
+ */
 export interface MaterialDef {
+  id: string
   name: string
-  /** Column block on the template sheet. See template.ts for the layout. */
-  block: number
-  /** Fallback colour when no sheet is loaded. */
+  /** Fallback colour when no sheet is loaded, and the swatch. */
   color: number
+  role: 'top' | 'wall' | 'any'
+  top: TerrainRef
+  side?: TerrainRef
 }
 
 export interface MapDoc {
@@ -250,7 +263,7 @@ export interface MapDoc {
  * A structural, recursive `readonly` over `MapDoc`: every property, every
  * array and every nested object. Verified during prototyping to reject all
  * four write shapes — indexed assignment (`voxel.voxels.material[i] = m`),
- * record assignment (`doc.paint.top[key] = t`), array mutation (`push`,
+ * record assignment (`voxel.paint.faces[key] = m`), array mutation (`push`,
  * `splice`) and property replacement (`doc.name = …`) — while leaving reads
  * untouched. No branding is needed because the arrays are plain `number[]`
  * and the records plain `Record<string, number>`: the mapped type is enough,
@@ -289,11 +302,17 @@ export function worldHeight(halfTiles: number): number {
   return halfTiles * HALF
 }
 
+/** The placeholder terrain set's sheet, which the default materials point into. */
+export const PLACEHOLDER_SHEET = 'ground.png'
+
+const placeholder = (terrain: string): TerrainRef => ({ sheet: PLACEHOLDER_SHEET, terrain })
+
 export const DEFAULT_MATERIALS: MaterialDef[] = [
-  { name: 'Grass', block: 0, color: 0x6aa84f },
-  { name: 'Dirt', block: 1, color: 0x8b6b45 },
-  { name: 'Stone', block: 2, color: 0x8e8e8e },
-  { name: 'Sand', block: 3, color: 0xd9c27e },
+  { id: 'grass', name: 'Grass', color: 0x6aa84f, role: 'top', top: placeholder('grass'), side: placeholder('dirt') },
+  { id: 'dirt', name: 'Dirt', color: 0x8b6b45, role: 'any', top: placeholder('dirt') },
+  { id: 'stone', name: 'Stone', color: 0x8e8e8e, role: 'wall', top: placeholder('stone') },
+  { id: 'sand', name: 'Sand', color: 0xd9c27e, role: 'top', top: placeholder('sand'), side: placeholder('dirt') },
+  { id: 'path', name: 'Path', color: 0xb08f5e, role: 'top', top: placeholder('path'), side: placeholder('dirt') },
 ]
 
 export const ATMOSPHERE_PRESETS: Record<string, Omit<Atmosphere, 'preset' | 'backdrop'>> = {
@@ -424,7 +443,7 @@ export function createVoxel(width: number, height: number, name = 'Ground', pare
     layers,
     voxels: { material, shape: new Array<number>(count * layers).fill(SHAPE_BLOCK) },
     water: new Array<number>(count).fill(NO_WATER),
-    paint: { top: {}, cliff: {}, tint: {} },
+    paint: { faces: {}, tint: {} },
   }
 }
 

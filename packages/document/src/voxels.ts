@@ -19,7 +19,8 @@
  * imports it.
  */
 
-import { AIR, NO_RAMP, SHAPE_BLOCK, SHAPE_HALF_RAMP, SHAPE_HALF_RAMP_UP, SHAPE_RAMP, SHAPE_SLAB, cellIndex, type MapSize } from './document'
+import { AIR, DIR_VECTORS, NO_RAMP, SHAPE_BLOCK, SHAPE_HALF_RAMP, SHAPE_HALF_RAMP_UP, SHAPE_RAMP, SHAPE_SLAB, cellIndex, inBounds, type MapSize } from './document'
+import { FACE_BOTTOM, FACE_TOP } from './paint'
 import type { ReadonlyVoxel, VoxelStructure } from './structure'
 
 export interface VoxelBox {
@@ -128,6 +129,25 @@ export function materialAt(voxel: ReadonlyVoxel, x: number, z: number): number {
 /** The direction the column's top descends toward, or NO_RAMP. */
 export function rampDirAt(voxel: ReadonlyVoxel, x: number, z: number): number {
   return shapeRampDir(topShapeAt(voxel, x, z))
+}
+
+/** The voxel at (x, z, y), or AIR off the volume. */
+export function voxelAt(voxel: ReadonlyVoxel, x: number, z: number, y: number): number {
+  if (!inBounds(voxel.size, x, z) || y < 0 || y >= voxel.layers) return AIR
+  return voxel.voxels.material[voxelIndex(voxel, x, z, y)]
+}
+
+/**
+ * Whether a face of a voxel is drawn: the voxel is not air and nothing
+ * stands against that side of it. The edge of the volume counts as open.
+ * Slopes do not enter into it — a wall clipped by a ramp is still that face.
+ */
+export function faceExposed(voxel: ReadonlyVoxel, x: number, z: number, y: number, dir: number): boolean {
+  if (voxelAt(voxel, x, z, y) === AIR) return false
+  if (dir === FACE_TOP) return voxelAt(voxel, x, z, y + 1) === AIR
+  if (dir === FACE_BOTTOM) return y > 0 && voxelAt(voxel, x, z, y - 1) === AIR
+  const [dx, dz] = DIR_VECTORS[dir]
+  return voxelAt(voxel, x + dx, z + dz, y) === AIR
 }
 
 /** Every column's top height, in half-tiles, indexed by cell — what the layer view's cap and slider read. */

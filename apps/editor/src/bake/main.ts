@@ -17,7 +17,7 @@ import type { RgbaImage } from '@papercut/document'
 import { createSampleMap } from '@papercut/fixtures'
 // See `App.tsx`'s import of the same package for why the generator sits
 // behind its own subpath.
-import { generateSprites, generateTerrainSheet } from '@papercut/fixtures/textures'
+import { generateSprites } from '@papercut/fixtures/textures'
 import { rgbaToDataUrl } from '../editor/rgba'
 
 export interface BakedSprite {
@@ -35,7 +35,6 @@ export interface BakeManifest {
   regenerate: string
   texelDensity: number
   materials: Array<{ name: string; color: number }>
-  sheet: { file: string; width: number; height: number }
   sprites: Record<string, BakedSprite>
 }
 
@@ -47,16 +46,15 @@ export interface BakeResult {
 
 function bake(): BakeResult {
   const doc = createSampleMap()
-  const sheet = generateTerrainSheet(doc.materials, doc.texelDensity)
+  // The terrain set is not baked: `generatePlaceholderTerrainSet` draws it without a canvas, so a headless consumer makes its own.
   const sprites = generateSprites(doc.texelDensity)
 
-  const files: Record<string, string> = { 'sheet.png': rgbaToDataUrl(sheet) }
+  const files: Record<string, string> = {}
   const manifest: BakeManifest = {
     source: 'createSampleMap() in packages/fixtures/src/sample.ts, drawn by packages/fixtures/src/textures.ts',
     regenerate: 'pnpm bake',
     texelDensity: doc.texelDensity,
     materials: doc.materials.map(({ name, color }) => ({ name, color })),
-    sheet: { file: 'sheet.png', width: sheet.width, height: sheet.height },
     sprites: {},
   }
 
@@ -98,7 +96,6 @@ function show(result: BakeResult): void {
       root.append(img)
     }
   }
-  section(`Sheet — ${result.manifest.sheet.width}x${result.manifest.sheet.height}`, ['sheet.png'])
   for (const [name, sprite] of Object.entries(result.manifest.sprites)) {
     section(`${name} — ${sprite.facings.length} facing(s), ${sprite.frame.width}x${sprite.frame.height}`, sprite.facings)
   }

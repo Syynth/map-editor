@@ -953,18 +953,20 @@ describe('the viewport actor: what the viewport observed', () => {
     viewport.send({ type: 'camera', camera: { ...camera, inBounds: false } })
     expect(viewport.getSnapshot().context.camera.inBounds).toBe(false)
 
-    viewport.send({ type: 'stats', stats: { fps: 60, triangles: 5000, meshMs: 1.5 } })
+    viewport.send({ type: 'stats', stats: { fps: 60, triangles: 5000, meshMs: 1.5, missingTransitions: 0 } })
     viewport.send({ type: 'renderer', software: true })
     expect(viewport.getSnapshot().context).toMatchObject({ stats: { fps: 60 }, softwareRenderer: true })
   })
 
-  it('holds a loaded sheet and what loading it said, until told to go back to the generated one', () => {
+  it('holds a loaded terrain set and what loading it said, until told to go back to the generated one', () => {
     const { host } = makeHost()
-    const image = { width: 16, height: 16, data: new Uint8ClampedArray(16 * 16 * 4) }
-    host.children.viewport.send({ type: 'sheet', image, warning: 'expected 16 × 5 tiles' })
-    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedSheet: image, sheetWarning: 'expected 16 × 5 tiles' })
-    host.children.viewport.send({ type: 'sheet', image: null, warning: null })
-    expect(host.children.viewport.getSnapshot().context.loadedSheet).toBeNull()
+    const image = { width: 64, height: 64, data: new Uint8ClampedArray(64 * 64 * 4) }
+    const set = { set: { sheet: 'ground.png', tile: 16, columns: 4, rows: 4 }, image }
+    host.children.viewport.send({ type: 'terrain', set, warning: 'expected 16 × 5 tiles' })
+    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedTerrain: set, terrainWarning: 'expected 16 × 5 tiles' })
+    host.children.viewport.send({ type: 'terrain', set: null, warning: null })
+    expect(host.children.viewport.getSnapshot().context.loadedTerrain).toBeNull()
+    expect(host.children.viewport.getSnapshot().context.terrainWarning).toBeNull()
   })
 
   it('answers frame and sweep with an event for whoever holds the viewport', () => {

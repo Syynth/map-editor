@@ -9,7 +9,7 @@
 
 import type { Patch } from './edits'
 import { AIR, DEFAULT_LAYERS, DIR_VECTORS, NO_RAMP, NO_WATER, SHAPE_BLOCK, SHAPE_HALF_RAMP, SHAPE_SLAB, cellIndex, inBounds, newId, worldHeight, type DeepReadonly, type MapObject, type ReadonlyMapDoc } from './document'
-import { cliffKey, tintKey, topKey } from './paint'
+import { faceKey, tintKey } from './paint'
 import { descendantsOf, type Placement, type ProfilePoint, type QuarterTurn, type ReadonlySketch, type ReadonlyVoxel, type SketchStructure, type Structure } from './structure'
 import { frameOf, groundHeight, toLocal, type Frame } from './terrain'
 import { columnShapes, columnTopAt, halfRampShape, halfRampUpShape, materialAt, maxHeightOf, rampDirAt, rampShape, topHeight, voxelIndex } from './voxels'
@@ -266,18 +266,17 @@ export function setWater(voxel: ReadonlyVoxel, cells: Cell[], level: number | nu
 
 // --- paint -------------------------------------------------------------------
 
-export function paintTop(voxel: ReadonlyVoxel, cells: Cell[], tile: number | undefined): Patch[] {
-  return cells.map(([x, y]) => ({ t: 'voxelPaint', id: voxel.id, layer: 'top', key: topKey(x, y), value: tile }))
+/** One face of one voxel: the cell, the layer, and the side (0–3, FACE_TOP, FACE_BOTTOM). */
+export interface FaceRef {
+  x: number
+  z: number
+  y: number
+  dir: number
 }
 
-export function paintCliff(voxel: ReadonlyVoxel, faces: Array<{ x: number; y: number; dir: number; level: number }>, tile: number | undefined): Patch[] {
-  return faces.map((face) => ({
-    t: 'voxelPaint',
-    id: voxel.id,
-    layer: 'cliff',
-    key: cliffKey(face.x, face.y, face.dir, face.level),
-    value: tile,
-  }))
+/** Draw these faces with `material` instead of their voxel's own; `undefined` clears the override. */
+export function paintFace(voxel: ReadonlyVoxel, faces: readonly FaceRef[], material: number | undefined): Patch[] {
+  return faces.map((face) => ({ t: 'voxelPaint', id: voxel.id, layer: 'faces', key: faceKey(face.x, face.z, face.y, face.dir), value: material }))
 }
 
 export function paintTint(voxel: ReadonlyVoxel, cells: Cell[], color: number | undefined): Patch[] {

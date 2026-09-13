@@ -48,5 +48,7 @@ export type { PickResult } from './picking'
 
 export { RuntimeScene } from './scene'
 export type { SceneAssets } from './scene'
+/** The terrain sets a scene is textured with: `geometry`'s type, re-exported so the viewport need not reach past the runtime. */
+export type { LoadedSet } from '@papercut/geometry'
 
 export type { LayerRange } from './layers'

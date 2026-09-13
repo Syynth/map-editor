@@ -55,7 +55,8 @@ import {
   type SceneAssets,
   type LayerRange,
 } from '@papercut/runtime'
-import type { RgbaImage, SpriteAsset } from '@papercut/document'
+import type { SpriteAsset } from '@papercut/document'
+import type { LoadedSet } from '@papercut/runtime'
 
 /** Tilt-shift: a cheap vertical-gradient blur, the HD-2D miniature look. */
 export interface PointerModifiers {
@@ -146,7 +147,7 @@ export interface ViewportHandlers {
   onCameraChange(state: { yaw: number; pitch: number; distance: number; inBounds: boolean }): void
   /** The view cube was clicked on the view the camera already has: flip the editor's projection. */
   onProjectionToggle(): void
-  onStats(stats: { fps: number; triangles: number; meshMs: number }): void
+  onStats(stats: { fps: number; triangles: number; meshMs: number; missingTransitions: number }): void
 }
 
 /** Where a play session puts the character down, in world units. The host's play actor computes it. */
@@ -470,8 +471,8 @@ export class Viewport {
     this.scene.applyAtmosphere()
   }
 
-  loadSheet(sheet: RgbaImage): void {
-    this.scene.refreshSheet(sheet)
+  loadTerrain(sets: LoadedSet[]): void {
+    this.scene.refreshTerrain(sets)
   }
 
   loadSprites(sprites: Record<string, SpriteAsset>): void {
@@ -1216,6 +1217,7 @@ export class Viewport {
         // last pass, which is a fullscreen quad.
         triangles: this.scene.stats.triangles,
         meshMs: this.scene.stats.lastMeshMs,
+        missingTransitions: this.scene.missingTransitions().length,
       })
       this.fpsAccumulator = 0
       this.fpsFrames = 0

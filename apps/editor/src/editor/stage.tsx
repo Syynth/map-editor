@@ -103,7 +103,7 @@ export function Stage({ platform }: { platform: Platform }) {
     const observed = host.children.viewport
     // Pointer input is not a command: it goes straight to the host's gesture actor, which answers with what the press
     // turned out to be (#11).
-    const viewport = new Viewport(canvas, host.reader, { sheet: artRef.current.sheet, sprites: artRef.current.sprites, textures: artRef.current.textures }, {
+    const viewport = new Viewport(canvas, host.reader, { terrain: artRef.current.terrain, sprites: artRef.current.sprites, textures: artRef.current.textures }, {
       onPointerDown: (press) => void host.input.pointerDown(press),
       onPointerMove: (motion) => host.input.pointerMove(motion),
       onPointerUp: (release) => host.input.pointerUp(release),
@@ -167,14 +167,14 @@ export function Stage({ platform }: { platform: Platform }) {
     viewportRef.current?.refreshAtmosphere()
   }, [atmosphere])
 
-  // A change to the generated sheet (the document's materials changed) sets aside a sheet the artist loaded, as it
-  // always has; the sheet drawn is whichever of the two is current.
+  // A change to the generated terrain set (the document's texel density changed) sets aside a set the artist loaded,
+  // as it always has; what the terrain draws with is whichever of the two is current.
   useEffect(() => {
-    host.children.viewport.send({ type: 'sheet', image: null, warning: null })
-  }, [host, art.generatedSheet])
+    host.children.viewport.send({ type: 'terrain', set: null, warning: null })
+  }, [host, art.generatedTerrain])
   useEffect(() => {
-    viewportRef.current?.loadSheet(art.sheet)
-  }, [art.sheet])
+    viewportRef.current?.loadTerrain(art.terrain)
+  }, [art.terrain])
   useEffect(() => {
     viewportRef.current?.loadSprites(art.sprites)
   }, [art.sprites])

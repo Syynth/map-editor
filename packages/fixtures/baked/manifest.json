@@ -18,13 +18,12 @@
     {
       "name": "Sand",
       "color": 14271102
+    },
+    {
+      "name": "Path",
+      "color": 11571038
     }
   ],
-  "sheet": {
-    "file": "sheet.png",
-    "width": 256,
-    "height": 80
-  },
   "sprites": {
     "tree": {
       "widthTiles": 1.6,

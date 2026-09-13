@@ -5,9 +5,11 @@ import {
   DIR_VECTORS,
   HALF,
   NO_RAMP,
-  cliffKey,
+  PLACEHOLDER_SHEET,
   cornerHeights,
   createMap,
+  faceExposed,
+  faceKey,
   fillColumn,
   materialAt,
   rampShape,
@@ -17,13 +19,63 @@ import {
   SURFACE_TOP,
   type MapDoc,
   type ReadonlyMapDoc,
+  type RgbaImage,
   type VoxelStructure,
 } from '@papercut/document'
-import { meshTerrainChunk } from './terrain'
+import type { LoadedSet } from './atlas'
+import { createTerrainLook } from './look'
+import { meshTerrainChunk, type MeshBuffers, type TerrainChunkMesh } from './terrain'
+import { addTerrain, createTerrainSet, stampTemplate } from './terrainset'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
 const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
+const TILE = 4
+
+function solid(width: number, height: number, rgba: [number, number, number, number]): RgbaImage {
+  const data = new Uint8ClampedArray(width * height * 4)
+  for (let i = 0; i < data.length; i += 4) data.set(rgba, i)
+  return { width, height, data }
+}
+
+/**
+ * A stand-in for the placeholder terrain set the default materials point
+ * into: the five terrains, each with an edge set stamped on its own 4×4
+ * block (four blocks per block-row on a 16-column sheet), over one flat
+ * colour. Every corner the mesher asks for resolves — exact for one terrain,
+ * a composite for a pair — so the look never refuses.
+ */
+function placeholderSet(): LoadedSet {
+  let set = createTerrainSet(PLACEHOLDER_SHEET, TILE, 16, 8)
+  ;['grass', 'dirt', 'stone', 'sand', 'path'].forEach((id, i) => {
+    set = addTerrain(set, { id, name: id, color: '#808080' })
+    set = stampTemplate(set, (i % 4) * 4, Math.floor(i / 4) * 4, null, id)
+  })
+  return { set, image: solid(16 * TILE, 8 * TILE, [0, 255, 0, 255]) }
+}
+
+/** Mesh one chunk of the ground through a fresh look over the map's materials. */
+function mesh(doc: MapDoc, key: string): TerrainChunkMesh {
+  return meshTerrainChunk(ground(doc), key, createTerrainLook(doc.materials, [placeholderSet()]))
+}
+
+/**
+ * The polygons a solid buffer was built from, each as its vertex range. The
+ * builder fans every polygon from its first vertex, so a triangle whose first
+ * index is new starts a polygon and the polygon's vertices run from there to
+ * the highest index its triangles reach.
+ */
+function polygons(solid: MeshBuffers): Array<{ first: number; last: number }> {
+  const out: Array<{ first: number; last: number }> = []
+  for (let tri = 0; tri < solid.triangleCount; tri++) {
+    const base = solid.indices[tri * 3]
+    const end = Math.max(solid.indices[tri * 3 + 1], solid.indices[tri * 3 + 2])
+    const current = out[out.length - 1]
+    if (current && current.first === base) current.last = Math.max(current.last, end)
+    else out.push({ first: base, last: end })
+  }
+  return out
+}
 
 /** Stand a column at `h` half-tiles, level on top: the voxel model's "set the height here". */
 function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
@@ -37,7 +89,7 @@ function setRamp(doc: MapDoc, x: number, y: number, dir: number): void {
 }
 
 describe('paint survives sculpt', () => {
-  it('keeps cliff paint dormant when the cliff is lowered, and restores it', () => {
+  it('keeps a face override dormant when the cliff is lowered, and restores it', () => {
     // Built directly, and no store at all: this is a fact about the mesher and
     // the paint addressing, and a test may construct a document (#10). The
     // write path is an actor in another package now — reaching for one here
@@ -45,14 +97,16 @@ describe('paint survives sculpt', () => {
     const doc = createMap(8, 8)
     setHeight(doc, 3, 3, 8)
 
-    // Paint the band at absolute level 6 on the east face.
-    const key = cliffKey(3, 3, 0, 6)
-    ground(doc).paint.cliff[key] = 42
-    expect(ground(doc).paint.cliff[key]).toBe(42)
+    // Override the east side of the column's top voxel (layer 3, whose bands are levels 6 and 7) with stone.
+    const key = faceKey(3, 3, 3, 0)
+    ground(doc).paint.faces[key] = 2
+    expect(ground(doc).paint.faces[key]).toBe(2)
+    expect(faceExposed(ground(doc), 3, 3, 3, 0)).toBe(true)
 
-    // Sculpt the cliff down below that band. The face stops being meshed.
+    // Sculpt the cliff down below that voxel. The face stops existing and stops being meshed.
     setHeight(doc, 3, 3, 4)
-    const lowered = meshTerrainChunk(doc, ground(doc), '0,0')
+    expect(faceExposed(ground(doc), 3, 3, 3, 0)).toBe(false)
+    const lowered = mesh(doc, '0,0')
     const levels = new Set<number>()
     for (let tri = 0; tri < lowered.solid.triangleCount; tri++) {
       const address = readAddress(lowered.solid.faceAddr, tri, 'ground')
@@ -63,11 +117,12 @@ describe('paint survives sculpt', () => {
     expect(levels.has(6)).toBe(false)
 
     // The paint is still there. Nothing garbage-collected it.
-    expect(ground(doc).paint.cliff[key]).toBe(42)
+    expect(ground(doc).paint.faces[key]).toBe(2)
 
     // Raise it back and the artist's work reappears at the same address.
     setHeight(doc, 3, 3, 8)
-    const restored = meshTerrainChunk(doc, ground(doc), '0,0')
+    expect(faceExposed(ground(doc), 3, 3, 3, 0)).toBe(true)
+    const restored = mesh(doc, '0,0')
     let found = false
     for (let tri = 0; tri < restored.solid.triangleCount; tri++) {
       const address = readAddress(restored.solid.faceAddr, tri, 'ground')
@@ -76,29 +131,34 @@ describe('paint survives sculpt', () => {
       }
     }
     expect(found).toBe(true)
-    expect(ground(doc).paint.cliff[key]).toBe(42)
+    expect(ground(doc).paint.faces[key]).toBe(2)
   })
 })
 
 describe('mesher', () => {
-  it('emits a top quad per cell and addresses it back to the cell', () => {
+  it('emits a top face per cell as four quarters, every one addressed back to the cell', () => {
     const doc = createMap(4, 4)
-    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
-    const tops = new Set<string>()
-    for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
-      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
-      if (address.kind === SURFACE_TOP) tops.add(`${address.x},${address.y}`)
+    const { solid } = mesh(doc, '0,0')
+    // Four quarter quads, two triangles each: eight top triangles per cell.
+    const tops = new Map<string, number>()
+    for (let tri = 0; tri < solid.triangleCount; tri++) {
+      const address = readAddress(solid.faceAddr, tri, 'ground')
+      if (address.kind !== SURFACE_TOP) continue
+      const cell = `${address.x},${address.y}`
+      tops.set(cell, (tops.get(cell) ?? 0) + 1)
     }
     expect(tops.size).toBe(16)
+    expect([...tops.values()].every((count) => count === 8)).toBe(true)
   })
 
-  it('emits one cliff band per half-tile level of the drop', () => {
+  it('emits one cliff band per half-tile level of the drop, however many pieces each band is cut into', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 6)
-    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
+    const { solid } = mesh(doc, '0,0')
+    // A band is up to four quarter pieces; what is counted is the distinct (side, level) addresses.
     const east = new Set<number>()
-    for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
-      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
+    for (let tri = 0; tri < solid.triangleCount; tri++) {
+      const address = readAddress(solid.faceAddr, tri, 'ground')
       if (address.kind === SURFACE_CLIFF && address.x === 1 && address.y === 1 && address.dir === 0) {
         east.add(address.level)
       }
@@ -111,9 +171,9 @@ describe('mesher', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 4)
     setRamp(doc, 1, 1, 0)
-    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
-    for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
-      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
+    const { solid } = mesh(doc, '0,0')
+    for (let tri = 0; tri < solid.triangleCount; tri++) {
+      const address = readAddress(solid.faceAddr, tri, 'ground')
       if (address.kind === SURFACE_CLIFF && address.x === 1 && address.y === 1) {
         expect(address.dir).not.toBe(0)
       }
@@ -129,11 +189,11 @@ describe('mesher', () => {
     setHeight(doc, 1, 1, 4)
     setHeight(doc, 1, 0, 4)
     setRamp(doc, 1, 1, 0)
-    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
+    const { solid } = mesh(doc, '0,0')
     const south = new Set<number>()
     let rampNorth = 0
-    for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
-      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
+    for (let tri = 0; tri < solid.triangleCount; tri++) {
+      const address = readAddress(solid.faceAddr, tri, 'ground')
       if (address.kind !== SURFACE_CLIFF) continue
       if (address.x === 1 && address.y === 0 && address.dir === 1) south.add(address.level)
       if (address.x === 1 && address.y === 1 && address.dir === 3) rampNorth++
@@ -148,59 +208,64 @@ describe('mesher', () => {
     setHeight(doc, 1, 1, 4)
     setHeight(doc, 2, 1, 0)
     setRamp(doc, 1, 1, 0)
-    const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
+    const { solid } = mesh(doc, '0,0')
     const east = new Set<number>()
-    for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
-      const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
+    for (let tri = 0; tri < solid.triangleCount; tri++) {
+      const address = readAddress(solid.faceAddr, tri, 'ground')
       if (address.kind === SURFACE_CLIFF && address.x === 1 && address.y === 1 && address.dir === 0) east.add(address.level)
     }
     // The low edge is at 2; the neighbour at 0: bands 0 and 1, and nothing above the edge.
     expect([...east].sort((a, b) => a - b)).toEqual([0, 1])
   })
 
-  it('gives every quad a non-degenerate UV rectangle', () => {
+  it('gives every polygon a non-degenerate UV rectangle', () => {
     // Regression: top quads and side faces walk their corners along different
     // axes, and a shared rectangle-to-corner mapping collapsed the top quad's
-    // UVs onto two points, which streaked the whole terrain.
+    // UVs onto two points, which streaked the whole terrain. A top quarter is a
+    // quad; a wall piece clipped by a slope may be a triangle or a pentagon,
+    // and the same must hold of each.
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 6)
-    const { solid } = meshTerrainChunk(doc, ground(doc), '0,0')
+    const { solid } = mesh(doc, '0,0')
+    const found = polygons(solid)
+    expect(found.length).toBeGreaterThan(0)
 
-    for (let quad = 0; quad < solid.positions.length / 3 / 4; quad++) {
+    for (const { first, last } of found) {
       const us: number[] = []
       const vs: number[] = []
-      for (let corner = 0; corner < 4; corner++) {
-        const index = (quad * 4 + corner) * 2
-        us.push(solid.uvs[index])
-        vs.push(solid.uvs[index + 1])
+      for (let vertex = first; vertex <= last; vertex++) {
+        us.push(solid.uvs[vertex * 2])
+        vs.push(solid.uvs[vertex * 2 + 1])
       }
       // A tile occupies a rectangle, so both axes must actually vary.
       expect(Math.max(...us) - Math.min(...us)).toBeGreaterThan(1e-6)
       expect(Math.max(...vs) - Math.min(...vs)).toBeGreaterThan(1e-6)
-      // And all four corners must be distinct points in UV space.
+      // And every corner must be a distinct point in UV space.
       const unique = new Set(us.map((u, i) => `${u.toFixed(6)},${vs[i].toFixed(6)}`))
-      expect(unique.size).toBe(4)
+      expect(unique.size).toBe(us.length)
     }
   })
 
-  it('maps the sheet the right way up on a top quad', () => {
+  it('maps the atlas the right way up on a top quarter', () => {
     const doc = createMap(4, 4)
-    const { solid } = meshTerrainChunk(doc, ground(doc), '0,0')
-    // Corner order is c00, c01, c11, c10. c00 is the sheet's top-left, which
-    // in GL coordinates is the largest v.
+    const { solid } = mesh(doc, '0,0')
+    // The first polygon is the north-west quarter of cell (0, 0), corners in
+    // order c00, c01, c11, c10. Sheets are authored top-down, so walking +Z
+    // down the map (c00 to c01) walks down the atlas, which is decreasing v;
+    // walking +X (c01 to c11) is increasing u.
     const v00 = solid.uvs[1]
     const v01 = solid.uvs[3]
-    const u00 = solid.uvs[0]
+    const u01 = solid.uvs[2]
     const u11 = solid.uvs[4]
     expect(v00).toBeGreaterThan(v01)
-    expect(u11).toBeGreaterThan(u00)
+    expect(u11).toBeGreaterThan(u01)
   })
 
   it('produces finite, consistent buffers', () => {
     const doc = createMap(8, 8)
     setHeight(doc, 2, 2, 7)
     setRamp(doc, 3, 2, 1)
-    const { solid } = meshTerrainChunk(doc, ground(doc), '0,0')
+    const { solid } = mesh(doc, '0,0')
     expect(solid.positions.length / 3).toBe(solid.normals.length / 3)
     expect(solid.positions.length / 3).toBe(solid.uvs.length / 2)
     expect(solid.positions.length / 3).toBe(solid.colors.length / 3)
@@ -250,8 +315,7 @@ describe('walls are watertight', () => {
    */
   function gaps(doc: MapDoc): string[] {
     const g = ground(doc)
-    const mesh = meshTerrainChunk(doc, g, '0,0')
-    const { positions, indices, faceAddr } = mesh.solid
+    const { positions, indices, faceAddr } = mesh(doc, '0,0').solid
     const walls = new Map<string, Array<[[number, number, number], [number, number, number], [number, number, number]]>>()
     for (let tri = 0; tri < indices.length / 3; tri++) {
       const address = readAddress(faceAddr, tri, 'ground')

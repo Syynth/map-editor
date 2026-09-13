@@ -113,7 +113,7 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
       // The eyedropper changes a tool parameter, not the document, so it
       // leaves through `setParams` — an event at the tools actor — and the
       // stroke produces no patches at all.
-      if (phase === 'start') deps.setParams(eyedrop(deps.doc(), voxel, deps.params(), address))
+      if (phase === 'start') deps.setParams(eyedrop(voxel, deps.params(), address))
       return []
     }
 

@@ -12,7 +12,7 @@
 
 import { useMemo, useSyncExternalStore } from 'react'
 
-import { SURFACE_CLIFF, countDormant, describeSurface, inBounds, topHeight, type ReadonlyMapDoc } from '@papercut/document'
+import { SURFACE_CLIFF, countDormant, describeSurface, faceExposed, parseFaceKey, type ReadonlyMapDoc } from '@papercut/document'
 import { sameSurface, useDocumentSelector, useHost, useToolsSelector, useViewSelector, useViewportSelector } from '@papercut/editor-host'
 import { Hint, StatusHints, StatusRight } from '@papercut/ui'
 
@@ -78,14 +78,10 @@ function dormantPaint(doc: ReadonlyMapDoc): number {
   for (const id of doc.structureOrder) {
     const voxel = doc.structures[id]
     if (!voxel || voxel.kind !== 'voxel') continue
-    const counts = countDormant(voxel.paint, (kind, key) => {
-      const [x, y] = key.split(',').map(Number)
-      if (!inBounds(voxel.size, x, y)) return false
-      if (kind === 'top') return true
-      const level = Number(key.split(',')[3])
-      return level < topHeight(voxel, x, y)
+    total += countDormant(voxel.paint, (key) => {
+      const { x, z, y, dir } = parseFaceKey(key)
+      return faceExposed(voxel, x, z, y, dir)
     })
-    total += counts.top + counts.cliff
   }
   return total
 }
@@ -97,6 +93,7 @@ export function StatusBar() {
       <StatusRight>
         <HoverReadout />
         <DormantPaint />
+        <MissingTransitions />
         <LayersReadout />
         <CameraReadout />
         <FrameStats />
@@ -135,6 +132,12 @@ function HoverReadout() {
 function DormantPaint() {
   const dormant = useDocumentSelector(dormantPaint, { equal: Object.is, settled: true })
   return <span title="Painted work that is currently hidden by geometry, and would come back">dormant paint {dormant}</span>
+}
+
+/** Corners the atlas had to compose because no tile is authored for them: the artist's list of transitions to draw (spec §3). */
+function MissingTransitions() {
+  const missing = useViewportSelector((snapshot) => snapshot.context.stats.missingTransitions)
+  return <span title="Corner combinations composed from edge sets because nobody has drawn the transition; each is a tile to author">{missing} to author</span>
 }
 
 function LayersReadout() {

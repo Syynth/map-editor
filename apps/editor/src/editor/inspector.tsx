@@ -11,7 +11,7 @@
 
 import { useMemo } from 'react'
 
-import type { Atmosphere, CameraRig, DeepReadonly, MapObject, Placement, ReadonlyMapDoc, RgbaImage } from '@papercut/document'
+import type { Atmosphere, CameraRig, DeepReadonly, MapObject, Placement, ReadonlyMapDoc } from '@papercut/document'
 import { useDocument, useHost, useToolsSelector, useViewSelector, type Selection } from '@papercut/editor-host'
 import { mergeParams, type EditorParams } from './params'
 import { chordFor, type Platform } from '@papercut/registry'
@@ -19,7 +19,7 @@ import { FileButton, InspectorHead, Note, Row, Section } from '@papercut/ui'
 
 import { useArt } from './art'
 import { run, setParams } from './commands'
-import { loadSheetFromFile } from './sheet'
+import { loadTerrainSetFiles } from './sheet'
 
 import { FeaturePanels } from './bars'
 import {
@@ -30,7 +30,6 @@ import {
   ObjectProperties,
   OutlinerList,
   StructureProperties,
-  TilePalette,
   useCoverageFlags,
 } from './panels'
 
@@ -56,12 +55,12 @@ export function InspectorRegion({ platform }: { platform: Platform }) {
   const selected = selection?.kind === 'object' ? (doc.objects[selection.id] ?? null) : null
   const updateObject = (id: string, changes: Partial<MapObject>): void => run(host, 'objects.update', { id, changes })
 
-  const onLoadSheet = async (file: File): Promise<void> => {
+  const onLoadTerrain = async (files: File[]): Promise<void> => {
     try {
-      const result = await loadSheetFromFile(file, host.reader.doc)
-      host.children.viewport.send({ type: 'sheet', image: result.image, warning: result.warning })
+      const result = await loadTerrainSetFiles(files, host.reader.doc)
+      host.children.viewport.send({ type: 'terrain', set: result.set, warning: result.warning })
     } catch (error) {
-      host.children.viewport.send({ type: 'sheet', image: null, warning: String(error) })
+      host.children.viewport.send({ type: 'terrain', set: null, warning: String(error) })
     }
   }
 
@@ -69,16 +68,14 @@ export function InspectorRegion({ platform }: { platform: Platform }) {
     <Inspector
       doc={doc}
       params={params}
-      set={(changes) => setParams(host, changes)}
       selection={selection}
       platform={platform}
       selected={selected}
       deleteKbd={chordFor('selection.delete', undefined, platform)}
       levelOpen={levelOpen}
       onLevelToggle={(open) => run(host, 'view.set', { levelOpen: open })}
-      sheet={art.sheet}
-      sheetWarning={art.sheetWarning}
-      onLoadSheet={(file) => void onLoadSheet(file)}
+      terrainWarning={art.terrainWarning}
+      onLoadTerrain={(files) => void onLoadTerrain(files)}
       onSelect={(id) => {
         // Select an object from a list, and go to Select so the drag and the keys act on it.
         run(host, 'selection.set', { id })
@@ -104,16 +101,14 @@ export function InspectorRegion({ platform }: { platform: Platform }) {
 export function Inspector({
   doc,
   params,
-  set,
   platform,
   selection,
   selected,
   deleteKbd,
   levelOpen,
   onLevelToggle,
-  sheet,
-  sheetWarning,
-  onLoadSheet,
+  terrainWarning,
+  onLoadTerrain,
   onSelect,
   onObject,
   onObjectChange,
@@ -126,16 +121,14 @@ export function Inspector({
 }: {
   doc: ReadonlyMapDoc
   params: EditorParams
-  set: (changes: Partial<EditorParams>) => void
   platform: Platform
   selection: Selection | null
   selected: DeepReadonly<MapObject> | null
   deleteKbd?: string
   levelOpen: boolean
   onLevelToggle: (open: boolean) => void
-  sheet: RgbaImage | null
-  sheetWarning: string | null
-  onLoadSheet: (file: File) => void
+  terrainWarning: string | null
+  onLoadTerrain: (files: File[]) => void
   /** Select an object by id, from the outliner or the coverage list. */
   onSelect: (id: string) => void
   /** A change to the selected object. */
@@ -153,7 +146,6 @@ export function Inspector({
   const flags = useCoverageFlags(levelOpen)
   const structure = selection?.kind === 'structure' ? doc.structures[selection.id] ?? null : null
   const isTerrain = params.tool === 'terrain'
-  const tilePicker = isTerrain && params.terrainMode === 'paint' && params.paintVerb === 'tile'
 
   return (
     <>
@@ -183,14 +175,14 @@ export function Inspector({
         </Section>
       ) : null}
 
-      {/* The sheet itself is the app's: an artist loads a PNG here, and the
-          generated fallback comes from the composition root (#47). The tile
-          the brush lays down is a tool parameter like any other. */}
-      {tilePicker ? (
-        <Section title="Template sheet" summary={`tile ${params.tile}`}>
-          <TilePalette doc={doc} sheet={sheet} selected={params.tile} onSelect={(tile) => set({ tile })} />
-          <FileButton icon="open" title="Load PNG" accept="image/png,image/*" onFile={onLoadSheet} />
-          {sheetWarning ? <Note tone="warn">{sheetWarning}</Note> : null}
+      {/* The terrain set is the app's: an artist loads a sheet and its sidecar
+          here, and the generated fallback comes from the composition root
+          (#47). The Materials section the spec describes (§4) replaces this. */}
+      {isTerrain && params.terrainMode === 'paint' ? (
+        <Section title="Terrain set" summary={doc.materials[params.material]?.top.sheet ?? '—'}>
+          <Note>Every material draws from a terrain set: a sheet and the sidecar that tags its tiles. Pick both files together.</Note>
+          <FileButton icon="open" title="Load sheet + sidecar" accept="image/png,image/*,.json,application/json" multiple onFiles={onLoadTerrain} />
+          {terrainWarning ? <Note tone="warn">{terrainWarning}</Note> : null}
         </Section>
       ) : null}
 

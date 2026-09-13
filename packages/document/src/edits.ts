@@ -24,7 +24,7 @@ import type { MapDoc, MapObject, ReadonlyMapDoc } from './document'
 import type { SketchStructure, Structure, StructureBase, VoxelStructure } from './structure'
 
 export type TerrainField = 'material' | 'shape' | 'water'
-export type PaintLayer = 'top' | 'cliff' | 'tint'
+export type PaintLayer = 'faces' | 'tint'
 export type DocField = 'name' | 'texelDensity' | 'filtering' | 'camera' | 'atmosphere' | 'materials' | 'surfaceMaterials'
 export type SketchField = 'points' | 'closed' | 'layers' | 'wall' | 'lip' | 'capMaterial' | 'wallMaterial'
 export type StructureMetaField = 'name' | 'parent' | 'placement'

@@ -27,7 +27,7 @@ import {
   type RgbaImage,
   type SpriteAsset,
 } from '@papercut/document'
-import { meshTerrainChunk, type MeshBuffers } from '@papercut/geometry'
+import { createTerrainLook, meshTerrainChunk, type LoadedSet, type MeshBuffers } from '@papercut/geometry'
 import { sketchMeshOf } from './scene'
 import { resolveDisplayMode, rgbaTexture } from './billboard'
 import { atlasFor, embedPngImages, type PngEncoder } from './images'
@@ -40,8 +40,8 @@ export interface ExportOptions {
   merge: boolean
   /** Fill-and-edge textures by the names the document's surface materials use. */
   textures: Record<string, RgbaImage>
-  /** The template sheet the terrain samples — generated or the artist's. */
-  sheet: RgbaImage
+  /** The terrain sets the map's materials draw from, with their sheets — generated or the artist's. */
+  terrain: LoadedSet[]
   /** Keyed by `MapObject.sprite`; an unknown name falls back to `rock`. */
   sprites: Record<string, SpriteAsset>
   /** Encodes each embedded texture. See `PngEncoder` for who supplies what. */
@@ -95,9 +95,9 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
   const nearest = doc.filtering === 'nearest'
 
   // --- terrain --------------------------------------------------------------
-  const sheetTexture = rgbaTexture(options.sheet, nearest)
+  // The atlas is textured after the chunks are meshed: a corner nobody drew is baked into it on first sight.
+  const look = createTerrainLook(doc.materials, options.terrain)
   const terrainMaterial = new THREE.MeshStandardMaterial({
-    map: sheetTexture,
     vertexColors: true,
     roughness: 1,
     metalness: 0,
@@ -164,7 +164,7 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
     sketchRoot.add(group)
   }
   for (const { ground, key, matrix } of voxelChunks) {
-    const mesh = meshTerrainChunk(doc, ground, key)
+    const mesh = meshTerrainChunk(ground, key, look)
     if (mesh.solid.triangleCount > 0) {
       const geometry = geometryFrom(mesh.solid)
       geometry.applyMatrix4(matrix)
@@ -238,6 +238,9 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
   scene.add(terrainRoot)
   if (waterRoot.children.length > 0) scene.add(waterRoot)
   if (sketchRoot.children.length > 0) scene.add(sketchRoot)
+
+  terrainMaterial.map = rgbaTexture(look.atlas.image, nearest)
+  terrainMaterial.needsUpdate = true
 
   // --- objects --------------------------------------------------------------
   const sprites = options.sprites

@@ -14,6 +14,7 @@ export {
   HALF,
   NO_RAMP,
   NO_WATER,
+  PLACEHOLDER_SHEET,
   PRESET_REFERENCE_SPAN,
   SHAPE_BLOCK,
   SHAPE_HALF_RAMP,
@@ -34,6 +35,7 @@ export {
   columnHeights,
   columnShapes,
   columnTopAt,
+  faceExposed,
   fillColumn,
   halfRampShape,
   halfRampUpShape,
@@ -50,6 +52,7 @@ export {
   shapeRampDir,
   topHeight,
   topShapeAt,
+  voxelAt,
   voxelIndex,
 } from './voxels'
 export type { VoxelBox } from './voxels'
@@ -71,6 +74,7 @@ export type {
   MaterialDef,
   PaintLayers,
   ReadonlyMapDoc,
+  TerrainRef,
   VoxelData,
 } from './document'
 export { DEFAULT_SURFACE_MATERIALS, ancestorsOf, childrenOf, defaultSurfaceMaterials, descendantsOf, outlineOf, pointInOutline, structureOf } from './structure'
@@ -115,9 +119,8 @@ export {
   flatten,
   groundedPosition,
   heightToWorld,
-  paintCliff,
+  paintFace,
   paintTint,
-  paintTop,
   placeStructure,
   placeStructureOnto,
   raise,
@@ -136,17 +139,8 @@ export {
   updateObject,
   updateSketchPoint,
 } from './ops'
-export type { Brush, BrushShape, Cell, RampEdge, SketchChanges } from './ops'
-export {
-  cliffKey,
-  cliffPaint,
-  countDormant,
-  parseCliffKey,
-  tintKey,
-  tintPaint,
-  topKey,
-  topPaint,
-} from './paint'
+export type { Brush, BrushShape, Cell, FaceRef, RampEdge, SketchChanges } from './ops'
+export { FACE_BOTTOM, FACE_TOP, countDormant, faceKey, facePaint, parseFaceKey, tintKey, tintPaint } from './paint'
 export type { DocumentReader } from './store'
 export { applyPatches, inversePatch, patchAddress } from './edits'
 export type { Patch, SketchField, SketchPatch, StrokeRecord, StructureMetaPatch } from './edits'
@@ -183,7 +177,6 @@ export {
   voxelTop,
 } from './terrain'
 export type { Bounds, Frame } from './terrain'
-export { MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST, autotileMask } from './autotile'
 export { CHUNK_SIZE, allChunkKeys, chunkBounds, chunkKey, parseChunkKey, parseStructureChunkKey, structureChunkKey } from './chunks'
 export type { ChunkBounds } from './chunks'
 export { snapTo, type SnapAnchor, type SnapMode } from './snap'

@@ -50,6 +50,7 @@ export interface AtlasTile {
 export interface CompositeReport {
   /** The distinct terrains at the corner, highest priority last, then "edge" when nothing is among them. */
   combo: string
+  /** The first tile baked for it; the same combination in another arrangement of corners bakes another. */
   tile: number
 }
 
@@ -60,7 +61,10 @@ export class TerrainAtlas {
   private rows = 0
   private next = 0
   private buffer: Uint8ClampedArray<ArrayBuffer>
-  private byKey = new Map<string, AtlasTile>()
+  /** Corners answered so far, keyed by the four interned terrain ids packed into one number. */
+  private byCorner = new Map<number, AtlasTile>()
+  /** Terrain keys interned to small ids; 0 is nothing. */
+  private ids = new Map<TerrainKey, number>()
   private sheetTiles = new Map<string, number>() // `<sheet>:<index>` -> atlas tile
   private readonly sets = new Map<string, LoadedSet>()
   private composites: CompositeReport[] = []
@@ -93,12 +97,24 @@ export class TerrainAtlas {
 
   /** The tile for a corner: exact when a set has it, else a composite baked on first sight. */
   tileFor(keys: CornerKeys): AtlasTile {
-    const cacheKey = keys.map((k) => k ?? '').join('|')
-    const cached = this.byKey.get(cacheKey)
+    // Four ids of at most 2^12 each pack into 48 bits: one number, no string per corner on the meshing path.
+    const packed = ((this.id(keys[0]) * 4096 + this.id(keys[1])) * 4096 + this.id(keys[2])) * 4096 + this.id(keys[3])
+    const cached = this.byCorner.get(packed)
     if (cached) return cached
     const answer = this.resolve(keys)
-    this.byKey.set(cacheKey, answer)
+    this.byCorner.set(packed, answer)
     return answer
+  }
+
+  private id(key: TerrainKey | null): number {
+    if (key === null) return 0
+    let id = this.ids.get(key)
+    if (id === undefined) {
+      id = this.ids.size + 1
+      if (id >= 4096) throw new Error('The atlas addresses at most 4095 terrains.')
+      this.ids.set(key, id)
+    }
+    return id
   }
 
   /** UV rectangle [u0, v0, u1, v1] of quadrant `q` (0 NW, 1 NE, 2 SW, 3 SE) of a tile, or the whole tile for -1; v from the bottom the way GL samples. */
@@ -118,9 +134,11 @@ export class TerrainAtlas {
     return [u0, v0, u1, v1]
   }
 
-  /** Every composite baked so far: the artist's list of transitions to draw. */
+  /** Every transition composed so far, each named once however many arrangements of it were baked: the artist's list of tiles to draw. */
   compositeReport(): readonly CompositeReport[] {
-    return this.composites
+    const seen = new Map<string, CompositeReport>()
+    for (const c of this.composites) if (!seen.has(c.combo)) seen.set(c.combo, c)
+    return [...seen.values()]
   }
 
   private resolve(keys: CornerKeys): AtlasTile {

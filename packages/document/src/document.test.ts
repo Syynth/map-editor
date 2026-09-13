@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import { autotileMask, MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST } from './autotile'
 import { applyPatches, History, inversePatch, patchAddress, type Patch, type StrokeRecord } from './edits'
 import { createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
 import { childrenOf, descendantsOf, outlineOf, type VoxelStructure } from './structure'
@@ -17,7 +16,7 @@ import {
   deleteSketchPoint,
   fillCells,
   flatten,
-  paintTop,
+  paintFace,
   placeStructureOnto,
   raise,
   rampRun,
@@ -28,10 +27,10 @@ import {
   setSketch,
   updateObject,
 } from './ops'
-import { cliffKey, countDormant, topKey } from './paint'
+import { FACE_TOP, countDormant, faceKey, parseFaceKey } from './paint'
 import { EditorStore } from './store'
 import { frameOf, groundHeight, structureAt } from './terrain'
-import { columnHeights, fillColumn, materialAt, rampDirAt, rampShape, topHeight, voxelIndex } from './voxels'
+import { columnHeights, columnTopAt, faceExposed, fillColumn, materialAt, rampDirAt, rampShape, topHeight, voxelIndex } from './voxels'
 
 function objectAt(id: string, x: number, z: number): MapObject {
   return {
@@ -116,7 +115,7 @@ describe('patch addresses and inverses', () => {
     expect(patchAddress({ t: 'voxel', id: 'g', field: 'material', index: 7, value: 1 })).toBe(patchAddress({ t: 'voxel', id: 'g', field: 'material', index: 7, value: 9 }))
     expect(patchAddress({ t: 'voxel', id: 'g', field: 'material', index: 7, value: 1 })).not.toBe(patchAddress({ t: 'voxel', id: 'g', field: 'shape', index: 7, value: 1 }))
     expect(patchAddress({ t: 'voxel', id: 'g', field: 'material', index: 7, value: 1 })).not.toBe(patchAddress({ t: 'voxel', id: 'g', field: 'water', index: 7, value: 1 }))
-    expect(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'top', key: '1,2', value: 3 })).not.toBe(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'cliff', key: '1,2', value: 3 }))
+    expect(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'faces', key: '1,2', value: 3 })).not.toBe(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'tint', key: '1,2', value: 3 }))
     expect(patchAddress({ t: 'object', id: 'a', value: undefined })).toBe('object:a')
     expect(patchAddress({ t: 'doc', field: 'camera', value: null })).toBe('doc:camera')
   })
@@ -131,7 +130,8 @@ describe('patch addresses and inverses', () => {
     expect(materialAt(ground(doc), 1, 1)).toBe(6)
     // Same answer as the applier, which is what makes the two paths agree.
     expect(applyPatches(doc, [patch])).toEqual([before])
-    expect(inversePatch(doc, { t: 'voxelPaint', id: ground(doc).id, layer: 'top', key: '0,0', value: 1 })).toEqual({ t: 'voxelPaint', id: ground(doc).id, layer: 'top', key: '0,0', value: undefined })
+    const face = faceKey(0, 0, 0, FACE_TOP)
+    expect(inversePatch(doc, { t: 'voxelPaint', id: ground(doc).id, layer: 'faces', key: face, value: 1 })).toEqual({ t: 'voxelPaint', id: ground(doc).id, layer: 'faces', key: face, value: undefined })
   })
 })
 
@@ -371,31 +371,20 @@ describe('paint survives sculpt', () => {
 
   it('reports dormant paint as a diagnostic', () => {
     const doc = createMap(4, 4)
-    ground(doc).paint.top[topKey(1, 1)] = 3
-    ground(doc).paint.cliff[cliffKey(9, 9, 0, 0)] = 4
-    const counts = countDormant(ground(doc).paint, (kind) => kind === 'top')
-    expect(counts.top).toBe(0)
-    expect(counts.cliff).toBe(1)
-  })
-})
-
-describe('autotile', () => {
-  it('connects to matching neighbours at the same height', () => {
-    const doc = createMap(5, 5)
-    expect(autotileMask(ground(doc), 2, 2)).toBe(MASK_NORTH | MASK_EAST | MASK_SOUTH | MASK_WEST)
-  })
-
-  it('breaks the connection across a height change', () => {
-    const doc = createMap(5, 5)
-    setHeight(doc, 3, 2, 6)
-    const mask = autotileMask(ground(doc), 2, 2)
-    expect(mask & MASK_EAST).toBe(0)
-    expect(mask & MASK_WEST).toBe(MASK_WEST)
-  })
-
-  it('treats the map border as connected so it does not ring the level in edge tiles', () => {
-    const doc = createMap(5, 5)
-    expect(autotileMask(ground(doc), 0, 0)).toBe(15)
+    const g = ground(doc)
+    // An override on a face that is drawn — the top of the one-cube column at (1, 1) — and one on a face
+    // no voxel has, off the volume. Only the second is dormant.
+    g.paint.faces[faceKey(1, 1, 0, FACE_TOP)] = 3
+    g.paint.faces[faceKey(9, 9, 0, 0)] = 4
+    const exists = (key: string) => {
+      const { x, z, y, dir } = parseFaceKey(key)
+      return faceExposed(g, x, z, y, dir)
+    }
+    expect(countDormant(g.paint, exists)).toBe(1)
+    // Lower the column to nothing and its top face goes too: the override stays, dormant now.
+    setHeight(doc, 1, 1, 0)
+    expect(countDormant(g.paint, exists)).toBe(2)
+    expect(g.paint.faces[faceKey(1, 1, 0, FACE_TOP)]).toBe(3)
   })
 })
 
@@ -527,13 +516,16 @@ describe('io', () => {
   it('round-trips a document', () => {
     const store = new EditorStore(createMap(6, 6, 'Test Map'))
     store.apply('Raise', raise(store.reader.doc, ground(store.reader.doc), [[1, 1]], 3))
-    store.apply('Paint', paintTop(ground(store.reader.doc), [[1, 1]], 7))
+    // The top face of the column's top voxel, drawn with material 4 (path) instead of its own.
+    const top = columnTopAt(ground(store.reader.doc), 1, 1)
+    store.apply('Paint', paintFace(ground(store.reader.doc), [{ x: 1, z: 1, y: top, dir: FACE_TOP }], 4))
 
     const restored = deserialize(serialize(store.reader.doc))
     expect(restored.name).toBe('Test Map')
     expect(ground(restored).voxels).toEqual(ground(store.reader.doc).voxels)
     expect(columnHeights(ground(restored))).toEqual(columnHeights(ground(store.reader.doc)))
-    expect(ground(restored).paint.top).toEqual(ground(store.reader.doc).paint.top)
+    expect(ground(restored).paint.faces).toEqual(ground(store.reader.doc).paint.faces)
+    expect(ground(restored).paint.faces[faceKey(1, 1, top, FACE_TOP)]).toBe(4)
     expect(restored.formatVersion).toBe(3)
   })
 
@@ -590,9 +582,10 @@ describe('io', () => {
 
   it('preserves dormant paint across a save and load', () => {
     const doc = createMap(4, 4)
-    ground(doc).paint.cliff[cliffKey(1, 1, 0, 30)] = 5
+    // The east side of a voxel fifteen layers up a column that is one cube tall: no such face is drawn.
+    ground(doc).paint.faces[faceKey(1, 1, 15, 0)] = 5
     const restored = deserialize(serialize(doc))
-    expect(ground(restored).paint.cliff[cliffKey(1, 1, 0, 30)]).toBe(5)
+    expect(ground(restored).paint.faces[faceKey(1, 1, 15, 0)]).toBe(5)
   })
 })
 

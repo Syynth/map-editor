@@ -12,18 +12,17 @@
  */
 
 import {
+  AIR,
   SURFACE_CLIFF,
   SURFACE_TOP,
-  autotileMask,
   brushCells,
   clearRampRun,
-  cliffPaint,
+  facePaint,
   fillCells,
   flatten,
   materialAt,
-  paintCliff,
+  paintFace,
   paintTint,
-  paintTop,
   raise,
   rampRun,
   rampRunLength,
@@ -32,19 +31,19 @@ import {
   setWater,
   tintPaint,
   topHeight,
-  topPaint,
+  voxelAt,
   type Brush,
   type Cell,
+  type FaceRef,
   type Patch,
   type ReadonlyMapDoc,
   type ReadonlyVoxel,
   type SurfaceAddress,
 } from '@papercut/document'
-import { defaultTopTile, sheetLayoutFor } from '@papercut/geometry'
 
 export type TerrainMode = 'sculpt' | 'paint'
 export type SculptVerb = 'raise' | 'flatten' | 'ramp' | 'water'
-export type PaintVerb = 'tile' | 'material' | 'tint'
+export type PaintVerb = 'material' | 'tint'
 export type StrokeShape = 'brush' | 'rect' | 'fill'
 
 /**
@@ -62,7 +61,6 @@ export interface TerrainParams {
   readonly strokeShape: StrokeShape
   readonly brush: Brush
   readonly material: number
-  readonly tile: number
   readonly tint: number
   /** Cells past a boundary before a sculpt stroke moves to the next cell; the prototype's dial. */
   readonly sculptDeadZone: number
@@ -73,11 +71,10 @@ export interface TerrainParams {
 export const TERRAIN_DEFAULTS: TerrainParams = {
   terrainMode: 'sculpt',
   sculptVerb: 'raise',
-  paintVerb: 'tile',
+  paintVerb: 'material',
   strokeShape: 'brush',
   brush: { size: 1, shape: 'square' },
   material: 0,
-  tile: 0,
   tint: 0xffffff,
   sculptDeadZone: 0.2,
 }
@@ -127,18 +124,24 @@ export function terrainLabel(params: TerrainParams, modifiers: TerrainModifiers)
   }
   switch (params.paintVerb) {
     case 'material':
-      return 'Set material'
+      return modifiers.shift ? 'Clear face' : 'Set material'
     case 'tint':
       return modifiers.shift ? 'Clear tint' : 'Tint'
-    case 'tile':
-      return modifiers.shift ? 'Clear paint' : 'Paint'
   }
 }
 
-/** The tile the template would use at a cell with nothing painted over it. */
-export function templateTileAt(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, x: number, y: number): number {
-  const layout = sheetLayoutFor(doc)
-  return defaultTopTile(layout, materialAt(voxel, x, y), autotileMask(voxel, x, y))
+/** The face of a voxel a cliff-band address names: the band's layer, on that side. */
+function faceOf(address: SurfaceAddress, x: number, z: number): FaceRef {
+  return { x, z, y: Math.floor(address.level / 2), dir: address.dir }
+}
+
+/** The material a band is drawn with: its face override, else the voxel's own (the column's top, should the band sit in a slab's air). */
+function bandMaterial(voxel: ReadonlyVoxel, address: SurfaceAddress): number {
+  const face = faceOf(address, address.x, address.y)
+  const override = facePaint(voxel.paint, face.x, face.z, face.y, face.dir)
+  if (override !== undefined) return override
+  const material = voxelAt(voxel, face.x, face.z, face.y)
+  return material === AIR ? materialAt(voxel, address.x, address.y) : material
 }
 
 /**
@@ -146,19 +149,13 @@ export function templateTileAt(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, x: num
  * Answering with the change rather than making it keeps this pure: the caller
  * hands it to `deps.setParams`, which is an event at the tools actor.
  */
-export function eyedrop(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, params: TerrainParams, address: SurfaceAddress): Partial<TerrainParams> {
+export function eyedrop(voxel: ReadonlyVoxel, params: TerrainParams, address: SurfaceAddress): Partial<TerrainParams> {
   if (params.terrainMode === 'paint' && params.paintVerb === 'tint') {
     const tint = tintPaint(voxel.paint, address.x, address.y)
     return tint === undefined ? {} : { tint }
   }
-  if (params.terrainMode === 'paint' && params.paintVerb === 'material') {
-    return { material: materialAt(voxel, address.x, address.y) }
-  }
-  if (address.kind === SURFACE_CLIFF) {
-    const painted = cliffPaint(voxel.paint, address.x, address.y, address.dir, address.level)
-    return painted === undefined ? {} : { tile: painted }
-  }
-  return { tile: topPaint(voxel.paint, address.x, address.y) ?? templateTileAt(doc, voxel, address.x, address.y) }
+  // A band answers with what it is drawn with; a top with the column's top voxel.
+  return { material: address.kind === SURFACE_CLIFF ? bandMaterial(voxel, address) : materialAt(voxel, address.x, address.y) }
 }
 
 /**
@@ -202,24 +199,24 @@ export function sculptPatches(
   }
 }
 
-/** One paint tick, by the same rule. */
+/**
+ * One paint tick, by the same rule. The Material brush is one brush for
+ * every face (spec §4): on a top it sets the column's top voxel's material;
+ * on a cliff band it sets that face's override, and shift clears it back to
+ * the voxel's own. A brush wider than one cell walks the same level along
+ * the same face.
+ */
 export function paintPatches(voxel: ReadonlyVoxel, params: TerrainParams, address: SurfaceAddress, cells: Cell[], modifiers: TerrainModifiers): Patch[] {
   const erase = modifiers.shift
   switch (params.paintVerb) {
     case 'material':
-      return setMaterial(voxel, cells, params.material)
+      if (address.kind === SURFACE_CLIFF) {
+        const faces = cells.filter(([x, y]) => x === address.x || y === address.y).map(([x, y]) => faceOf(address, x, y))
+        return paintFace(voxel, faces, erase ? undefined : params.material)
+      }
+      if (address.kind === SURFACE_TOP) return erase ? [] : setMaterial(voxel, cells, params.material)
+      return []
     case 'tint':
       return paintTint(voxel, cells, erase ? undefined : params.tint)
-    case 'tile':
-      if (address.kind === SURFACE_CLIFF) {
-        // Paint the band that was clicked. A brush wider than one cell walks
-        // the same level along the same face.
-        const faces = cells
-          .filter(([x, y]) => x === address.x || y === address.y)
-          .map(([x, y]) => ({ x, y, dir: address.dir, level: address.level }))
-        return paintCliff(voxel, faces, erase ? undefined : params.tile)
-      }
-      if (address.kind === SURFACE_TOP) return paintTop(voxel, cells, erase ? undefined : params.tile)
-      return []
   }
 }

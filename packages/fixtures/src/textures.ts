@@ -23,25 +23,7 @@
  * with `pnpm bake`) stands in for this module.
  */
 
-import {
-  BLOCK_COLUMNS,
-  BLOCK_ROWS,
-  CLIFF_ROW,
-  CLIFF_BOTTOM,
-  CLIFF_MIDDLE,
-  CLIFF_TOP,
-  RAMP_COLUMN,
-} from '@papercut/geometry'
-import {
-  MASK_EAST,
-  MASK_NORTH,
-  MASK_SOUTH,
-  MASK_WEST,
-  type DeepReadonly,
-  type MaterialDef,
-  type RgbaImage,
-  type SpriteAsset,
-} from '@papercut/document'
+import type { RgbaImage, SpriteAsset } from '@papercut/document'
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0
@@ -51,15 +33,6 @@ function mulberry32(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
-}
-
-function shade(color: number, amount: number): string {
-  const r = (color >> 16) & 0xff
-  const g = (color >> 8) & 0xff
-  const b = color & 0xff
-  const mix = (channel: number) =>
-    Math.max(0, Math.min(255, Math.round(amount >= 0 ? channel + (255 - channel) * amount : channel * (1 + amount))))
-  return `rgb(${mix(r)},${mix(g)},${mix(b)})`
 }
 
 function makeCanvas(width: number, height: number): HTMLCanvasElement {
@@ -77,115 +50,6 @@ function makeCanvas(width: number, height: number): HTMLCanvasElement {
 function readPixels(ctx: CanvasRenderingContext2D, width: number, height: number): RgbaImage {
   const { data } = ctx.getImageData(0, 0, width, height)
   return { width, height, data }
-}
-
-function speckle(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  size: number,
-  color: number,
-  rng: () => number,
-  density = 0.16,
-): void {
-  const count = Math.floor(size * size * density)
-  for (let i = 0; i < count; i++) {
-    const px = x + Math.floor(rng() * size)
-    const py = y + Math.floor(rng() * size)
-    ctx.fillStyle = shade(color, rng() > 0.5 ? 0.12 : -0.12)
-    ctx.fillRect(px, py, 1, 1)
-  }
-}
-
-/**
- * The terrain template sheet. Layout is documented in
- * packages/geometry/src/template.ts; this only draws into it.
- */
-export function generateTerrainSheet(
-  materials: readonly DeepReadonly<MaterialDef>[],
-  density: number,
-): RgbaImage {
-  const canvas = makeCanvas(materials.length * BLOCK_COLUMNS * density, BLOCK_ROWS * density)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('2D canvas unavailable')
-  ctx.imageSmoothingEnabled = false
-
-  materials.forEach((material, index) => {
-    const rng = mulberry32(0x9e37 + index * 977)
-    const color = material.color
-    const blockX = index * BLOCK_COLUMNS * density
-
-    // --- rows 0..3: the 16 autotile variants -------------------------------
-    for (let mask = 0; mask < 16; mask++) {
-      const x = blockX + (mask & 3) * density
-      const y = (mask >> 2) * density
-
-      ctx.fillStyle = shade(color, 0)
-      ctx.fillRect(x, y, density, density)
-      speckle(ctx, x, y, density, color, rng)
-
-      // A rim on every side that is NOT connected. This is the guide layer.
-      const rim = Math.max(1, Math.round(density / 8))
-      ctx.fillStyle = shade(color, 0.3)
-      if ((mask & MASK_NORTH) === 0) ctx.fillRect(x, y, density, rim)
-      if ((mask & MASK_WEST) === 0) ctx.fillRect(x, y, rim, density)
-      ctx.fillStyle = shade(color, -0.3)
-      if ((mask & MASK_SOUTH) === 0) ctx.fillRect(x, y + density - rim, density, rim)
-      if ((mask & MASK_EAST) === 0) ctx.fillRect(x + density - rim, y, rim, density)
-    }
-
-    // --- row 4: cliff bands and the ramp -----------------------------------
-    const cliffY = CLIFF_ROW * density
-    const rock = shade(color, -0.45)
-
-    const drawBand = (column: number, top: number, bottom: number) => {
-      const x = blockX + column * density
-      const gradient = ctx.createLinearGradient(0, cliffY, 0, cliffY + density)
-      gradient.addColorStop(0, shade(color, top))
-      gradient.addColorStop(1, shade(color, bottom))
-      ctx.fillStyle = gradient
-      ctx.fillRect(x, cliffY, density, density)
-      // Vertical striations read as rock strata at any resolution.
-      for (let i = 0; i < Math.max(2, density / 4); i++) {
-        const sx = x + Math.floor(rng() * density)
-        ctx.fillStyle = shade(color, rng() > 0.5 ? -0.6 : -0.2)
-        ctx.fillRect(sx, cliffY + Math.floor(rng() * density * 0.3), 1, Math.floor(density * 0.7))
-      }
-    }
-
-    drawBand(CLIFF_TOP, -0.15, -0.4)
-    drawBand(CLIFF_MIDDLE, -0.4, -0.5)
-    drawBand(CLIFF_BOTTOM, -0.5, -0.7)
-
-    // A lip along the top of the top band, so the cliff edge reads clearly.
-    const lip = Math.max(1, Math.round(density / 8))
-    ctx.fillStyle = shade(color, 0.25)
-    ctx.fillRect(blockX + CLIFF_TOP * density, cliffY, density, lip)
-
-    // Rubble at the foot of the bottom band.
-    for (let i = 0; i < density / 2; i++) {
-      ctx.fillStyle = rock
-      ctx.fillRect(
-        blockX + CLIFF_BOTTOM * density + Math.floor(rng() * density),
-        cliffY + density - 1 - Math.floor(rng() * (density / 4)),
-        1,
-        1,
-      )
-    }
-
-    // Ramp: the flat material with a tread pattern so slopes read as walkable.
-    const rampX = blockX + RAMP_COLUMN * density
-    ctx.fillStyle = shade(color, -0.08)
-    ctx.fillRect(rampX, cliffY, density, density)
-    speckle(ctx, rampX, cliffY, density, color, rng)
-    const step = Math.max(2, Math.round(density / 4))
-    ctx.fillStyle = shade(color, -0.28)
-    for (let ty = 0; ty < density; ty += step) {
-      ctx.fillRect(rampX, cliffY + ty, density, 1)
-    }
-  })
-
-  return readPixels(ctx, canvas.width, canvas.height)
 }
 
 type Painter = (ctx: CanvasRenderingContext2D, w: number, h: number, rng: () => number, facing: number) => void

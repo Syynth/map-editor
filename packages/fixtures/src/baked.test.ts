@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import { BLOCK_COLUMNS, BLOCK_ROWS } from '@papercut/geometry'
 import manifest from '../baked/manifest.json'
 import { createSampleMap } from './sample'
 import { spriteFootprints } from './textures'
@@ -11,7 +10,7 @@ import { spriteFootprints } from './textures'
  * art against today's layout. Nothing here can redraw the pixels (that takes
  * a canvas — see `scripts/bake-fixtures.mjs`), so the check is everything
  * that determines them short of the painting itself: the density, the
- * materials, the sheet's layout-derived size, and each sprite's footprint and
+ * materials, and each sprite's footprint and
  * facing count. Change any of those and this fails until `pnpm bake` is
  * re-run. `tests/baked-fixtures.test.ts` covers the files themselves.
  */
@@ -21,11 +20,6 @@ describe('the checked-in bake', () => {
   it('was baked from the sample map as it is now', () => {
     expect(manifest.texelDensity).toBe(doc.texelDensity)
     expect(manifest.materials).toEqual(doc.materials.map(({ name, color }) => ({ name, color })))
-    expect(manifest.sheet).toEqual({
-      file: 'sheet.png',
-      width: doc.materials.length * BLOCK_COLUMNS * doc.texelDensity,
-      height: BLOCK_ROWS * doc.texelDensity,
-    })
   })
 
   it('carries every sprite the library defines, at its current footprint', () => {
