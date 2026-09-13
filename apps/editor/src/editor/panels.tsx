@@ -24,7 +24,9 @@ import {
   type Atmosphere,
   type CameraRig,
   type DeepReadonly,
+  type Placement,
   type ReadonlyMapDoc,
+  type ReadonlyStructure,
   type MapObject,
   type RgbaImage,
 } from '@map-editor/document'
@@ -105,6 +107,66 @@ export function TilePalette({
 }
 
 // --- the selected object ------------------------------------------------------
+
+/**
+ * A structure's own properties: its name, its kind, and where it sits in its
+ * parent — the placement the Select tool drags and the arrows nudge. The
+ * root has no parent, so its placement is not offered.
+ */
+export function StructureProperties({
+  doc,
+  structure,
+  deleteKbd,
+  onChange,
+  onDelete,
+}: {
+  doc: ReadonlyMapDoc
+  structure: ReadonlyStructure
+  deleteKbd?: string
+  onChange: (changes: { name?: string; placement?: Placement }) => void
+  onDelete: () => void
+}) {
+  const parent = structure.parent ? doc.structures[structure.parent] : null
+  const place = (changes: Partial<Placement>) => onChange({ placement: { ...structure.placement, ...changes } })
+  return (
+    <>
+      <Field label="Name">
+        <TextInput value={structure.name} onChange={(name) => (name.trim() ? onChange({ name }) : undefined)} />
+      </Field>
+      <Row label="Kind" value={structure.kind === 'voxel' ? `voxel volume · ${structure.size.width} × ${structure.size.height}` : `sketch · ${structure.points.length} points · ${structure.layers} layers`} />
+      {parent ? (
+        <>
+          <Row label="On" value={parent.name} />
+          <Field label="Placement" hint={`cells from ${parent.name}'s origin`}>
+            <Actions>
+              <NumberInput value={structure.placement.x} step={structure.kind === 'voxel' ? 1 : 0.5} onChange={(x) => place({ x })} />
+              <NumberInput value={structure.placement.z} step={structure.kind === 'voxel' ? 1 : 0.5} onChange={(z) => place({ z })} />
+            </Actions>
+          </Field>
+          <Field label="Facing">
+            <Segmented
+              value={structure.placement.yaw}
+              onChange={(yaw) => place({ yaw })}
+              options={[
+                { value: 0, label: '0°' },
+                { value: 1, label: '90°' },
+                { value: 2, label: '180°' },
+                { value: 3, label: '270°' },
+              ]}
+            />
+          </Field>
+        </>
+      ) : (
+        <Row label="On" value="the level itself" muted />
+      )}
+      {parent ? (
+        <Actions>
+          <Action title="Delete" kbd={deleteKbd} tone="danger" onClick={onDelete} />
+        </Actions>
+      ) : null}
+    </>
+  )
+}
 
 export function ObjectProperties({
   object,

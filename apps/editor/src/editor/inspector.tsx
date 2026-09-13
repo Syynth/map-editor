@@ -9,7 +9,7 @@
  * exception — the gear on the rail opens and closes them together.
  */
 
-import type { Atmosphere, CameraRig, DeepReadonly, MapObject, ReadonlyMapDoc, RgbaImage } from '@map-editor/document'
+import type { Atmosphere, CameraRig, DeepReadonly, MapObject, Placement, ReadonlyMapDoc, RgbaImage } from '@map-editor/document'
 import type { Selection } from '@map-editor/editor-host'
 import type { EditorParams } from './params'
 import type { Platform } from '@map-editor/registry'
@@ -23,6 +23,7 @@ import {
   FacingProperties,
   ObjectProperties,
   OutlinerList,
+  StructureProperties,
   TilePalette,
   useCoverageFlags,
 } from './panels'
@@ -45,6 +46,7 @@ export function Inspector({
   onSelect,
   onObject,
   onObjectChange,
+  onStructure,
   onDelete,
   onRig,
   onAtmosphere,
@@ -69,6 +71,8 @@ export function Inspector({
   onObject: (changes: Partial<MapObject>) => void
   /** A change to any object by id. */
   onObjectChange: (id: string, changes: Partial<MapObject>) => void
+  /** A change to a structure's name or placement, by id. */
+  onStructure: (id: string, changes: { name?: string; placement?: Placement }) => void
   onDelete: () => void
   onRig: (changes: Partial<CameraRig>) => void
   onAtmosphere: (changes: Partial<Atmosphere>) => void
@@ -76,6 +80,7 @@ export function Inspector({
   message: string | null
 }) {
   const flags = useCoverageFlags()
+  const structure = selection?.kind === 'structure' ? doc.structures[selection.id] ?? null : null
   const isTerrain = params.tool === 'terrain'
   const tilePicker = isTerrain && params.terrainMode === 'paint' && params.paintVerb === 'tile'
 
@@ -83,11 +88,13 @@ export function Inspector({
     <>
       <InspectorHead>{TITLES[params.tool] ?? params.tool}</InspectorHead>
 
-      <Section title="Selection" summary={selected ? selected.name : 'empty'} accent={selected !== null} defaultOpen>
+      <Section title="Selection" summary={selected ? selected.name : structure ? structure.name : 'empty'} accent={selected !== null || structure !== null} defaultOpen>
         {selected ? (
           <ObjectProperties object={selected} deleteKbd={deleteKbd} onChange={onObject} onDelete={onDelete} />
+        ) : structure ? (
+          <StructureProperties doc={doc} structure={structure} deleteKbd={deleteKbd} onChange={(changes) => onStructure(structure.id, changes)} onDelete={onDelete} />
         ) : (
-          <Note>Nothing selected. Click an object with Select, or place one with Objects.</Note>
+          <Note>Nothing selected. Click anything with Select: an object, a sketch, the ground.</Note>
         )}
       </Section>
 

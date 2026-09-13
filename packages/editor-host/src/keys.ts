@@ -67,6 +67,13 @@ const CORE_BINDINGS: readonly KeyBinding[] = [
 
   { chord: 'delete', command: 'selection.delete' },
   { chord: 'backspace', command: 'selection.delete' },
+
+  // The arrows nudge the selection a cell along the world's axes (2026-09-12
+  // ruling, "Select tool"); `selection.nudge` gates itself on having one.
+  { chord: 'arrowleft', command: 'selection.nudge', args: { dx: -1, dz: 0 } },
+  { chord: 'arrowright', command: 'selection.nudge', args: { dx: 1, dz: 0 } },
+  { chord: 'arrowup', command: 'selection.nudge', args: { dx: 0, dz: -1 } },
+  { chord: 'arrowdown', command: 'selection.nudge', args: { dx: 0, dz: 1 } },
 ]
 
 for (const binding of CORE_BINDINGS) keymap.declare(CORE_KEYMAP_OWNER, { ...binding, weight: 'core' })

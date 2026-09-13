@@ -60,7 +60,7 @@ export function SketchBar({ doc, params, set, platform, dispatch, selection }: S
         options={[
           { value: 'grid', label: 'Grid', title: 'Whole cells' },
           { value: 'half', label: '½', title: 'Half cells' },
-          { value: 'free', label: 'Free', title: 'No snapping — shift does this too' },
+          { value: 'free', label: 'Free', title: 'No snapping — holding ctrl (⌘ on a Mac) does this too' },
         ]}
       />
       {drawing ? (

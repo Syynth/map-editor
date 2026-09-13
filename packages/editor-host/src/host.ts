@@ -67,10 +67,15 @@
 import {
   DOCUMENT_OWNER,
   documentKeys,
+  frameOf,
+  groundedPosition,
+  structureOf,
+  toLocal,
   type Cell,
   type DocumentActorLogic,
   type DocumentReader,
   type DocumentSource,
+  type Frame,
   type Patch,
   type ReadonlyMapDoc,
 } from '@map-editor/document'
@@ -170,6 +175,23 @@ commands.declare(HOST_OWNER, {
   id: 'selection.delete',
   title: 'Delete Selection',
   category: 'Selection',
+  when: and(viewKeys.hasSelection.is(true), gestureKeys.stroking.is(false)),
+})
+/**
+ * "Move what is selected by a cell" (ruling of 2026-09-12, "Select tool": the
+ * arrow keys nudge the selection) expands the same way: to the id-addressed
+ * command the selection's kind answers to — an object's position, a
+ * structure's placement, a sketch point — with the step applied to what the
+ * document holds at the moment of the dispatch. World axes: `dx` is east,
+ * `dz` south, in whole cells.
+ */
+const nudgeArgs = z.object({ dx: z.int().min(-64).max(64), dz: z.int().min(-64).max(64) }).strict()
+export type NudgeArgs = z.infer<typeof nudgeArgs>
+commands.declare(HOST_OWNER, {
+  id: 'selection.nudge',
+  title: 'Nudge Selection',
+  category: 'Selection',
+  args: nudgeArgs,
   when: and(viewKeys.hasSelection.is(true), gestureKeys.stroking.is(false)),
 })
 
@@ -429,6 +451,40 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
 }
 
 /** What deleting the selection means, by what it is: the commands that do it, then the selection that remains. */
+function nudgeSteps(doc: ReadonlyMapDoc, selection: Selection | null, { dx, dz }: NudgeArgs): readonly { readonly id: string; readonly args?: unknown }[] {
+  switch (selection?.kind) {
+    case 'object': {
+      const object = doc.objects[selection.id]
+      if (!object || object.locked) return []
+      const position = groundedPosition(doc, object.position[0] + dx, object.position[2] + dz)
+      return [{ id: 'objects.update', args: { id: selection.id, changes: { position, anchorCell: object.anchorCell ? [Math.floor(position[0]), Math.floor(position[2])] : null } } }]
+    }
+    case 'structure': {
+      const structure = doc.structures[selection.id]
+      // The root has no parent to move within.
+      if (!structure || structure.parent === null) return []
+      const [lx, lz] = toLocalDelta(frameOf(doc, structure.parent), dx, dz)
+      return [{ id: 'structure.place', args: { id: selection.id, placement: { ...structure.placement, x: structure.placement.x + lx, z: structure.placement.z + lz } } }]
+    }
+    case 'sketchPoint': {
+      const sketch = structureOf(doc, selection.structure, 'sketch')
+      const point = sketch?.points[selection.index]
+      if (!sketch || !point) return []
+      const [lx, lz] = toLocalDelta(frameOf(doc, sketch.id), dx, dz)
+      return [{ id: 'sketch.point.update', args: { id: selection.structure, index: selection.index, changes: { x: point.x + lx, z: point.z + lz } } }]
+    }
+    default:
+      return []
+  }
+}
+
+/** A world-axis step as the frame sees it: rotated by the frame's yaw, not shifted by its origin. */
+function toLocalDelta(frame: Frame, dx: number, dz: number): [number, number] {
+  const [x0, z0] = toLocal(frame, frame.x, frame.z)
+  const [x1, z1] = toLocal(frame, frame.x + dx, frame.z + dz)
+  return [x1 - x0, z1 - z0]
+}
+
 function deleteSteps(selection: Selection | null): readonly { readonly id: string; readonly args?: unknown }[] {
   switch (selection?.kind) {
     case 'object':
@@ -615,6 +671,7 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
    */
   function expand(id: string, args: unknown): readonly { readonly id: string; readonly args?: unknown }[] | null {
     if (id === 'commands.run') return (args as { commands: { id: string; args?: unknown }[] }).commands
+    if (id === 'selection.nudge') return nudgeSteps(reader.doc, children.view.getSnapshot().context.selection, args as NudgeArgs)
     if (id !== 'selection.delete') return null
     return deleteSteps(children.view.getSnapshot().context.selection)
   }

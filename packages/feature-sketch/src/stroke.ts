@@ -4,7 +4,7 @@
  * Draw mode: a press puts a point down. The first press of an outline makes
  * the sketch — standing on whatever structure was pressed — and every press
  * after adds a point in that sketch's own frame, snapped as the parameters
- * say. Pressing the first point again, once there are three, closes the
+ * say (Ctrl — Cmd on a Mac — frees one press, as it frees every drag). Pressing the first point again, once there are three, closes the
  * outline. Nothing drags while drawing.
  *
  * Edit mode: a press near a point of any closed sketch selects that point
@@ -90,7 +90,7 @@ function drawStroke(deps: FeatureDeps): SketchStrokeHandler {
       if (!world) return []
       const doc = deps.doc()
       const params = deps.params()
-      const snap = sample.modifiers.shift ? 'free' : params.sketchSnap
+      const snap = sample.modifiers.ctrl ? 'free' : params.sketchSnap
       const open = params.drawing !== null ? structureOf(doc, params.drawing, 'sketch') : undefined
 
       if (!open || open.closed) {
@@ -163,7 +163,7 @@ function editStroke(deps: FeatureDeps): SketchStrokeHandler {
       const world = pointOf(sample)
       if (!target || !world) return []
       const doc = deps.doc()
-      const snap = sample.modifiers.shift ? 'free' : deps.params().sketchSnap
+      const snap = sample.modifiers.ctrl ? 'free' : deps.params().sketchSnap
       if (target.kind === 'point') return updateSketchPoint(doc, target.sketch, target.index, localSnapped(doc, target.sketch, world, snap))
       const sketch = structureOf(doc, target.sketch, 'sketch')
       if (!sketch) return []

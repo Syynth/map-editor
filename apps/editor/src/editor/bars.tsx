@@ -12,11 +12,11 @@
 import type { Selection } from '@map-editor/editor-host'
 import type { EditorParams } from './params'
 import { useHost } from '@map-editor/editor-host'
-import type { ReadonlyMapDoc, MapObject, DeepReadonly } from '@map-editor/document'
+import type { ReadonlyMapDoc, SnapMode } from '@map-editor/document'
 import { SPRITE_NAMES } from '@map-editor/fixtures/textures'
 import type { TerrainPanelProps } from '@map-editor/feature-terrain'
 import { always, chordFor, evaluate, panels, tools, type PanelSlot, type Platform } from '@map-editor/registry'
-import { BarDivider, BarGroup, BarLabel, BarValue, Chip, Verb, type IconName } from '@map-editor/ui'
+import { BarDivider, BarGroup, BarLabel, BarValue, Chip, Segmented, Verb, type IconName } from '@map-editor/ui'
 import type { ComponentType } from 'react'
 
 /**
@@ -74,26 +74,67 @@ export function FeaturePanels({
 /** The glyphs the fixture sprites have; the rest get a monogram chip. */
 const SPRITE_ICONS: Partial<Record<string, IconName>> = { tree: 'tree', bush: 'bush', rock: 'rock', lamp: 'lamp', sign: 'sign' }
 
+/** What the selection is, in words: the object's or structure's name, or which point of which sketch. */
+export function describeSelection(doc: ReadonlyMapDoc, selection: Selection | null): string | null {
+  switch (selection?.kind) {
+    case 'object':
+      return doc.objects[selection.id]?.name ?? null
+    case 'structure':
+      return doc.structures[selection.id]?.name ?? null
+    case 'sketchPoint':
+      return doc.structures[selection.structure] ? `point ${selection.index + 1} of ${doc.structures[selection.structure]?.name}` : null
+    default:
+      return null
+  }
+}
+
+/** The snap setting, as both host tools offer it (ruling of 2026-09-12, "Select tool"). */
+export function SnapControl({ value, onChange }: { value: SnapMode; onChange: (snap: SnapMode) => void }) {
+  return (
+    <>
+      <BarLabel>Snap</BarLabel>
+      <Segmented
+        value={value}
+        onChange={onChange}
+        options={[
+          { value: 'grid', label: 'Grid', title: 'Whole cells' },
+          { value: 'half', label: '½', title: 'Half cells' },
+          { value: 'free', label: 'Free', title: 'No snapping — holding ctrl (⌘ on a Mac) does this too' },
+        ]}
+      />
+    </>
+  )
+}
+
 export function SelectBar({
-  selected,
+  doc,
+  selection,
+  params,
+  set,
   platform,
   onDelete,
   onClear,
 }: {
-  selected: DeepReadonly<MapObject> | null
+  doc: ReadonlyMapDoc
+  selection: Selection | null
+  params: EditorParams
+  set: (changes: Partial<EditorParams>) => void
   platform: Platform
   onDelete: () => void
   onClear: () => void
 }) {
+  const named = describeSelection(doc, selection)
   return (
     <>
       <BarLabel>Selection</BarLabel>
-      <BarValue>{selected ? selected.name : 'nothing'}</BarValue>
+      <BarValue>{named ?? 'nothing'}</BarValue>
       <BarDivider />
       <BarGroup>
-        <Verb icon="trash" title="Delete the selection" kbd={chordFor('selection.delete', undefined, platform)} disabled={!selected} onClick={onDelete} />
-        <Verb icon="clear" title="Clear the selection" disabled={!selected} onClick={onClear} />
+        <Verb icon="trash" title="Delete the selection" kbd={chordFor('selection.delete', undefined, platform)} disabled={named === null} onClick={onDelete} />
+        <Verb icon="clear" title="Clear the selection" disabled={named === null} onClick={onClear} />
       </BarGroup>
+      <BarDivider />
+      <SnapControl value={params.snap} onChange={(snap) => set({ snap })} />
       <BarDivider />
       {/* The region half of Select — marquee, expand, contract, invert — is
           designed (docs/design/select-first.html) and waits on a typed
@@ -121,6 +162,8 @@ export function ObjectBar({ params, set }: { params: EditorParams; set: (changes
       </BarGroup>
       <BarDivider />
       <BarValue>{params.spriteName}</BarValue>
+      <BarDivider />
+      <SnapControl value={params.snap} onChange={(snap) => set({ snap })} />
     </>
   )
 }
