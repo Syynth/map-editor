@@ -188,6 +188,9 @@ export interface SketchOverlay {
   readonly selected: number | null
 }
 
+/** How solid the view cube is drawn while the pointer is elsewhere. */
+const CUBE_REST_OPACITY = 0.4
+
 const DEFAULT_OPTIONS: ViewportOptions = {
   brushPreview: [],
   showGrid: true,
@@ -280,6 +283,9 @@ export class Viewport {
   /** The view cube in the corner, and the press it holds while the pointer is down on it. */
   private cube = new ViewCube()
   private cubePress: { piece: CubePiece | null; x: number; y: number; moved: boolean } | null = null
+  /** The pointer is over the cube. With a press held, the cube is drawn solid; otherwise it fades back. */
+  private cubeHot = false
+  private cubeOpacity = CUBE_REST_OPACITY
   private renderPass: RenderPass
   private disposed = false
   /**
@@ -903,6 +909,7 @@ export class Viewport {
 
     // Over the cube, the cube lights up and the level under it does not.
     const onCube = gesture === 'none' ? this.cubePointAt(event) : null
+    this.cubeHot = onCube !== null
     this.cube.highlight(onCube ? (this.cube.pieceAt(onCube[0], onCube[1])?.id ?? null) : null)
     this.canvas.style.cursor = onCube && this.cube.pieceAt(onCube[0], onCube[1])?.view ? 'pointer' : ''
     if (onCube) {
@@ -963,7 +970,7 @@ export class Viewport {
 
   /** The cube's corner in CSS pixels from the canvas's top-left: top right, clear of the layer slider's column. */
   private cubeRect(): { x: number; y: number; size: number } {
-    const size = Math.min(110, Math.max(64, Math.round(this.canvas.clientHeight * 0.16)))
+    const size = Math.min(84, Math.max(56, Math.round(this.canvas.clientHeight * 0.12)))
     return { x: this.canvas.clientWidth - size - Viewport.CUBE_MARGIN_RIGHT, y: Viewport.CUBE_MARGIN_TOP, size }
   }
 
@@ -975,11 +982,15 @@ export class Viewport {
    * scissored viewport, the depth cleared so the level never pokes through.
    * Not while playing — the game has no cube.
    */
-  private renderCube(): void {
+  private renderCube(dt: number): void {
     if (this.playing) return
     const { x, y, size } = this.cubeRect()
     const height = this.canvas.clientHeight || 1
     this.cube.orient(this.orbit.yaw, this.orbit.pitch)
+    // Solid while the pointer is on it or holds it; faded back otherwise, eased so it neither pops nor lags.
+    const wanted = this.cubeHot || this.cubePress ? 1 : CUBE_REST_OPACITY
+    this.cubeOpacity += (wanted - this.cubeOpacity) * Math.min(1, dt * 12)
+    this.cube.setOpacity(this.cubeOpacity)
     const renderer = this.renderer
     renderer.autoClear = false
     renderer.setScissorTest(true)
@@ -1053,9 +1064,16 @@ export class Viewport {
 
   private onContextMenu = (event: Event): void => event.preventDefault()
 
+  private onPointerLeave = (): void => {
+    this.cubeHot = false
+    this.cube.highlight(null)
+    this.canvas.style.cursor = ''
+  }
+
   private attachEvents(): void {
     this.canvas.addEventListener('pointerdown', this.onPointerDown)
     this.canvas.addEventListener('pointermove', this.onPointerMove)
+    this.canvas.addEventListener('pointerleave', this.onPointerLeave)
     window.addEventListener('pointerup', this.onPointerUp)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('contextmenu', this.onContextMenu)
@@ -1065,6 +1083,7 @@ export class Viewport {
   private detachEvents(): void {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
+    this.canvas.removeEventListener('pointerleave', this.onPointerLeave)
     window.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onContextMenu)
@@ -1173,7 +1192,7 @@ export class Viewport {
     if (profile) this.gpuTimer?.begin()
     if (this.bypassComposer) this.renderer.render(this.scene.scene, this.camera)
     else this.composer.render()
-    this.renderCube()
+    this.renderCube(dt)
     if (profile) {
       this.gpuTimer?.end()
       this.gpuTimer?.poll(this.recordGpu)
