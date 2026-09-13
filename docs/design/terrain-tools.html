@@ -161,7 +161,7 @@
     <span class="brand">papercut</span>
     <span class="crumb">/ <b>Meadow Crossing</b></span>
     <span class="grow"></span>
-    <span class="hint">Terrain tools, 2026-09-13. The viewport is a live paint demo on a generated 16 px sheet; the setup screen below the frame is a static mockup.</span>
+    <span class="hint">Terrain tools, 2026-09-13. The viewport paints with authored transition tiles from a generated 16 px sheet; the setup screen below the frame is a static mockup.</span>
     <span class="grow"></span>
     <button class="btn" id="labels">Icons only ▾</button>
   </header>
@@ -177,18 +177,20 @@
     </div>
   </div>
   <aside class="insp" id="insp"></aside>
-  <footer class="status"><div class="hints" id="hints"></div><div class="right"><span class="num" id="dormant">3 dormant</span><span>Layer 0–5</span></div></footer>
+  <footer class="status"><div class="hints" id="hints"></div><div class="right"><span class="num" id="missing" title="">every pair authored</span><span>Layer 0–5</span></div></footer>
 </div>
 <div class="tip" id="tip"></div>
 
 <section class="notes">
   <h2>What changed, and why it looks like this</h2>
-  <p class="lede">Five decisions logged on 2026-09-13, plus the Water ruling from the day before, worked into the frame from <code>select-first.html</code>. Every tile in the viewport is sampled from the 16 px sheet drawn below, through the same corner-tag lookup the editor would use. Paint with the five fills and the path; switch to the face view and paint the cliff.</p>
+  <p class="lede">Five decisions logged on 2026-09-13, plus the Water ruling from the day before, worked into the frame from <code>select-first.html</code>. Every tile in the viewport is one authored tile from the 16 px sheet drawn below, chosen by the terrains at all four corners and placed whole. Paint with the six materials; switch to the face view and paint the cliff; paint cobble onto grass to see what an unauthored pair looks like.</p>
   <dl>
-    <dt>Materials, not tiles</dt><dd>The Paint bar's first verb is Material. What you paint is a library entry; the tile at every cell corner is derived from which of the four cells around that corner hold it. Fills are dual-grid sets of sixteen whole tiles; the path is an edge set of sixteen, chosen by which of the four sides continue it. Both kinds sit in one list.</dd>
-    <dt>Quarters</dt><dd>Each cell is drawn as four quarters, each sampling the offset tile at its own corner. On flat ground that is pixel-identical to drawing the offset tiles whole, which is the cheap path the mesher takes wherever the four cells are coplanar. At a cliff the split lands on the height change. The cliff-top cell draws its rim; the cell at the foot treats a taller neighbour of the same material as connected and draws none.</dd>
-    <dt>Priority is order</dt><dd>Drag a fill up or down the Materials list and it draws over or under its neighbours at a shared corner. At a corner holding two fills, the lower one's full tile goes under the higher one's masked tile. The path is an overlay and always draws over the fills.</dd>
-    <dt>Walls paint the same way</dt><dd>Face view shows one row's south-facing cliff as the grid it is: run along the face, whole-tile levels up. The Material brush on a band sets that band's voxel material; <span class="kbd">⇧</span> clears it back to the column's voxels. The top of the face and the ground are edges, so a wall material gets its lip and its base trim from the same sixteen tiles.</dd>
+    <dt>Materials, not tiles</dt><dd>The Paint bar's first verb is Material. What you paint is a material per cell; the tile drawn at every cell corner is looked up from the four cells around that corner. A tile on the sheet is authored as the transition itself, half grass and half path, and carries a tag per corner saying which terrain is there. The renderer asks for the tile tagged exactly like the corner and places it whole.</dd>
+    <dt>Pairs are the cost</dt><dd>Every pair of terrains that can touch needs its own set of sixteen. The sheet below authors eight pairs. Paint a pair that is not authored and the demo falls back to each terrain's own edge set, so both sides get a rim, and marks the corner magenta; the status bar counts the missing pairs. That count is the artist's to-do list, and the setup screen is where it gets worked off.</dd>
+    <dt>Edge sets</dt><dd>Each terrain also has a set of sixteen where the other corners are nothing: the tile at the top of a cliff, or the edge of the volume. Those are the only tiles with transparent quadrants, and the quadrant that belongs to the lower cell is never drawn from them, because that cell draws its own corner from its own point of view.</dd>
+    <dt>Quarters</dt><dd>Each cell is drawn as four quarters, each the quadrant of the offset tile at its own corner. On flat ground that is pixel-identical to drawing the offset tiles whole, which is what the mesher does wherever the four cells are coplanar. At a cliff the split lands on the height change. The cliff-top cell sees the lower cell as nothing and draws its rim; the cell at the foot sees a taller neighbour of the same material as continuing and draws none, and a taller neighbour of another material as that material, so a sand floor meets a grass cliff with the sand-to-grass tile.</dd>
+    <dt>Priority is order</dt><dd>With authored pairs the list order no longer decides who draws over whom at a corner; the tile does. It still decides two things: which terrain is treated as the shape when a pair is authored from a template, and which terrain wins when three meet at one corner and the demo has to pick two.</dd>
+    <dt>Walls paint the same way</dt><dd>Face view shows one row's south-facing cliff as the grid it is: run along the face, whole-tile levels up. The Material brush on a band sets that band's voxel material; <span class="kbd">⇧</span> clears it back to the column's voxels. Above the top band and below the bottom is nothing, so a wall material takes its lip and its base from its edge set, and stone meets cobble with the stone-to-cobble tile.</dd>
     <dt>Built on voxels</dt><dd>The document becomes cubes, with a half slab, the 45° ramp and the half ramp as voxel shapes, and one material per voxel. Heights in the demo are whole cubes and Strength here rounds up to whole layers; the bar keeps half-tiles as logged.</dd>
     <dt>Ramp by drag</dt><dd>With Ramp up, press on a cliff face and drag back onto the high side; the run grows one cell per cell of drag and the preview shows the 45° cut. A run that does not meet the drop is refused. Click any cell of a ramp to remove the whole run. Not in the demo.</dd>
     <dt>Strength and height</dt><dd>Raise and Smooth carry a Strength. Flatten shows the Height it will set, sampled at the press and editable in place. Every one of these is a scrub field: drag sideways, click to type, arrow keys to nudge, <span class="kbd">⇧</span> for coarse steps.</dd>
@@ -197,10 +199,10 @@
   </dl>
 
   <h3>Terrain set setup, between RPG Maker and Tiled</h3>
-  <p class="lede">Static mockup. Underneath is Tiled's model: every tile on a sheet carries a tag per corner (fills) or per side (paths), and a material's sixteen variants are looked up from those tags, so any tileset can be wired by tagging. On top is RPG Maker's: a template stamp that fills the tags from position, so art drawn to the template block is wired in one click and never tagged by hand. Below, the sheet the demo paints from, with its tags shown.</p>
+  <p class="lede">Static mockup. Underneath is Tiled's model: every tile on a sheet carries a tag per corner, and the tile for a corner is the one tagged like it, so any tileset can be wired by tagging. On top is RPG Maker's: a template stamp that fills the tags of a 4×4 block from position, given the two terrains it transitions between, so art drawn to the template is wired in one click. Below, the sheet the demo paints from, with its tags shown.</p>
   <div class="setup">
     <div class="sh">
-      <div class="bar"><span class="lbl">Sheet</span><span class="num" style="color:var(--ink)">ground.png</span><span class="hint">12 × 8 tiles · 16 px</span><span class="grow"></span><span class="seg"><button class="on" style="width:auto;padding:0 8px" title="Fill one 4×4 block's corner tags from position">Place template</button><button style="width:auto;padding:0 8px" title="Toggle the selected material on one corner of one tile">Tag corners</button><button style="width:auto;padding:0 8px" title="Toggle the selected path on one side of one tile">Tag sides</button><button style="width:auto;padding:0 8px">Erase</button></span></div>
+      <div class="bar"><span class="lbl">Sheet</span><span class="num" style="color:var(--ink)">ground.png</span><span class="hint">16 × 16 tiles · 16 px</span><span class="grow"></span><span class="seg"><button class="on" style="width:auto;padding:0 8px" title="Fill one 4×4 block's corner tags from position, for a pair of terrains">Place template</button><button style="width:auto;padding:0 8px" title="Set the selected terrain on one corner of one tile">Tag corner</button><button style="width:auto;padding:0 8px">Erase</button></span></div>
       <canvas id="sheetview"></canvas>
       <div class="hint" id="sheetlegend"></div>
     </div>
@@ -215,28 +217,30 @@
 <script>
   // =====================================================================
   // The sheet: 16 px tiles, generated once. Position means nothing to the
-  // renderer; the TAGS do. The template stamp is what fills tags from
-  // position, which is the RPG Maker half of the setup story.
+  // renderer; the TAGS do. A tile is authored as the transition it shows —
+  // half grass, half path — and tagged with the terrain at each corner.
   // =====================================================================
-  const TPX = 16, SC = 12, SR = 8
+  const TPX = 16, SC = 16, SR = 16, VOID = 'void'
   const sheet = document.createElement('canvas'); sheet.width = SC * TPX; sheet.height = SR * TPX
   const sg = sheet.getContext('2d')
-  const cornerTags = Array.from({ length: SC * SR }, () => [null, null, null, null]) // NW NE SW SE
-  const sideTags = Array.from({ length: SC * SR }, () => [null, null, null, null])   // N E S W
+  const cornerTags = Array.from({ length: SC * SR }, () => null) // [NW, NE, SW, SE] terrain ids, VOID for nothing; null = untagged
   const tIndex = (c, r) => r * SC + c
   const MATS = [
-    { id: 'stone', name: 'Stone', kind: 'fill', color: '#7d8494', dark: '#555b6b', light: '#9aa1b1', block: [0, 4], role: 'wall' },
-    { id: 'cobble', name: 'Cobble', kind: 'fill', color: '#8f7f70', dark: '#5f5248', light: '#a8988a', block: [4, 4], role: 'wall' },
-    { id: 'dirt', name: 'Dirt', kind: 'fill', color: '#8a6a45', dark: '#5f4830', light: '#a58358', block: [4, 0], role: 'any' },
-    { id: 'grass', name: 'Grass', kind: 'fill', color: '#4f8a46', dark: '#33612d', light: '#6aa65c', block: [0, 0], role: 'top' },
-    { id: 'sand', name: 'Sand', kind: 'fill', color: '#c9b27f', dark: '#9a8659', light: '#e0cd9c', block: [8, 0], role: 'top' },
-    { id: 'path', name: 'Path', kind: 'path', color: '#b08f5e', dark: '#7f6540', light: '#c9a973', block: [8, 4], role: 'top' },
+    { id: 'stone', name: 'Stone', color: '#7d8494', dark: '#555b6b', light: '#9aa1b1', role: 'wall' },
+    { id: 'cobble', name: 'Cobble', color: '#8f7f70', dark: '#5f5248', light: '#a8988a', role: 'wall' },
+    { id: 'dirt', name: 'Dirt', color: '#8a6a45', dark: '#5f4830', light: '#a58358', role: 'any' },
+    { id: 'sand', name: 'Sand', color: '#c9b27f', dark: '#9a8659', light: '#e0cd9c', role: 'top' },
+    { id: 'grass', name: 'Grass', color: '#4f8a46', dark: '#33612d', light: '#6aa65c', role: 'top' },
+    { id: 'path', name: 'Path', color: '#b08f5e', dark: '#7f6540', light: '#c9a973', role: 'top' },
   ]
   const matOf = (id) => MATS.find((m) => m.id === id)
+  /** The authored transitions: [under, over]. Every other pair is unauthored, on purpose, so the demo shows what that costs. */
+  const PAIRS = [['dirt', 'grass'], ['sand', 'grass'], ['grass', 'path'], ['dirt', 'path'], ['sand', 'path'], ['dirt', 'sand'], ['stone', 'cobble'], ['stone', 'dirt']]
+  const BLOCKS = [] // { c, r, a, b } — a = VOID for an edge set
   function rng(seed) { let s = (seed * 2654435761) >>> 0 || 1; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32 }
-  const QUADS = [[1, 0, 0], [2, 1, 0], [4, 0, 1], [8, 1, 1]] // bit, qx, qy
+  const QUADS = [[1, 0, 0], [2, 1, 0], [4, 0, 1], [8, 1, 1]] // bit, qx, qy for NW NE SW SE
 
-  /** One quadrant of an offset tile: fill, rounded when alone, a rim where the material ends, a notch at an inside corner. */
+  /** One quadrant of a tile: the over-terrain's fill, rounded when alone, a rim where it ends, a notch of the under-terrain at an inside corner. */
   function paintQuadrant(g, px, py, s, myBit, bits, m, underColor) {
     const r = s * 0.55, inset = Math.max(0.6, s * 0.06)
     const horiz = { 8: 4, 4: 8, 2: 1, 1: 2 }[myBit], vert = { 8: 2, 2: 8, 4: 1, 1: 4 }[myBit], diag = { 8: 1, 1: 8, 4: 2, 2: 4 }[myBit]
@@ -262,81 +266,89 @@
     for (let n = 0; n < 14; n++) { const px = Math.floor(r() * TPX), py = Math.floor(r() * TPX); if (!inside(px, py)) continue; g.fillStyle = r() < 0.5 ? m.light : m.dark; g.globalAlpha = 0.55; g.fillRect(x + px, y + py, 1, 1); g.globalAlpha = 1 }
     if (m.role === 'wall') { g.fillStyle = m.dark; g.globalAlpha = .45; for (let yy = 3; yy < TPX; yy += 5) { const off = ((yy / 5) | 0) % 2 ? 4 : 0; for (let xx = off; xx < TPX; xx += 8) if (inside(xx, yy)) g.fillRect(x + xx, y + yy, 5, 1) } g.globalAlpha = 1 }
   }
-  /** A fill's 16 dual variants, drawn into a 4×4 block in mask order, and tagged. */
-  function stampFill(m) {
-    const [c0, r0] = m.block
+  /**
+   * The template stamp: a 4×4 block of sixteen tiles for the pair (a under, b over),
+   * in mask order — corner k holds b when bit k is set, a otherwise. a = VOID makes
+   * the terrain's edge set, whose a-quadrants are transparent. This draws the
+   * placeholder art AND fills the tags; an artist's sheet only gets the tags.
+   */
+  function stampPair(a, b, c0, r0) {
+    BLOCKS.push({ c: c0, r: r0, a, b })
+    const mb = matOf(b), ma = a === VOID ? null : matOf(a)
     for (let mask = 0; mask < 16; mask++) {
       const c = c0 + (mask & 3), r = r0 + (mask >> 2), x = c * TPX, y = r * TPX
       sg.clearRect(x, y, TPX, TPX)
+      if (ma) { sg.fillStyle = ma.color; sg.fillRect(x, y, TPX, TPX); speckle(sg, x, y, ma, tIndex(c, r) + 3, (px, py) => !(mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0])) }
       for (const [bit, qx, qy] of QUADS) {
         if (!(mask & bit)) continue
         sg.save(); sg.beginPath(); sg.rect(x + qx * 8, y + qy * 8, 8, 8); sg.clip()
-        paintQuadrant(sg, x + qx * 8, y + qy * 8, 8, bit, mask, m, null)
+        paintQuadrant(sg, x + qx * 8, y + qy * 8, 8, bit, mask, mb, ma ? ma.color : null)
         sg.restore()
       }
-      speckle(sg, x, y, m, tIndex(c, r) + 7, (px, py) => mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0])
-      cornerTags[tIndex(c, r)] = QUADS.map(([bit]) => (mask & bit ? m.id : null))
+      speckle(sg, x, y, mb, tIndex(c, r) + 7, (px, py) => mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0])
+      cornerTags[tIndex(c, r)] = QUADS.map(([bit]) => (mask & bit ? b : a))
     }
   }
-  /** A path's 16 edge variants: N=1 E=2 S=4 W=8, a border on every side that does not continue. */
-  function stampPath(m) {
-    const [c0, r0] = m.block
-    for (let mask = 0; mask < 16; mask++) {
-      const c = c0 + (mask & 3), r = r0 + (mask >> 2), x = c * TPX, y = r * TPX
-      sg.clearRect(x, y, TPX, TPX)
-      const n = mask & 1, e = mask & 2, s = mask & 4, w = mask & 8
-      sg.fillStyle = m.color
-      const ix = w ? 0 : 2, iy = n ? 0 : 2, iw = TPX - ix - (e ? 0 : 2), ih = TPX - iy - (s ? 0 : 2)
-      sg.beginPath(); sg.roundRect(x + ix, y + iy, iw, ih, [n || w ? 0 : 4, n || e ? 0 : 4, s || e ? 0 : 4, s || w ? 0 : 4]); sg.fill()
-      sg.strokeStyle = m.dark; sg.lineWidth = 1.5; sg.stroke()
-      speckle(sg, x, y, m, tIndex(c, r) + 91, (px, py) => px >= ix + 2 && px < ix + iw - 2 && py >= iy + 2 && py < iy + ih - 2)
-      sideTags[tIndex(c, r)] = [n ? m.id : null, e ? m.id : null, s ? m.id : null, w ? m.id : null]
-    }
-  }
-  for (const m of MATS) (m.kind === 'path' ? stampPath : stampFill)(m)
+  ;(function layOut() {
+    let n = 0
+    const place = (a, b) => { stampPair(a, b, (n % 4) * 4, Math.floor(n / 4) * 4); n++ }
+    for (const m of MATS) place(VOID, m.id)
+    for (const [a, b] of PAIRS) place(a, b)
+  })()
 
-  /** Variant lookup, from tags — the renderer's only view of the sheet. */
-  const variantCache = new Map()
-  function variants(id) {
-    if (variantCache.has(id)) return variantCache.get(id)
-    const m = matOf(id), tags = m.kind === 'path' ? sideTags : cornerTags, table = new Array(16).fill(null)
-    for (let mask = 0; mask < 16; mask++) {
-      let best = null, bestScore = -1
-      for (let i = 0; i < tags.length; i++) {
-        let ok = true, score = 0
-        for (let k = 0; k < 4; k++) { const want = !!(mask & (1 << k)); const has = tags[i][k] === id; if (want !== has) { ok = false; break } if (!has && tags[i][k] === null) score++ }
-        if (ok && score > bestScore) { best = i; bestScore = score }
-      }
-      table[mask] = best
-    }
-    variantCache.set(id, table); return table
+  /** THE lookup: the tile tagged exactly like this corner, or nothing. */
+  const exactCache = new Map()
+  function exactTile(tids) {
+    const key = tids.join('|')
+    if (exactCache.has(key)) return exactCache.get(key)
+    let found = null
+    for (let i = 0; i < cornerTags.length; i++) { const t = cornerTags[i]; if (t && t[0] === tids[0] && t[1] === tids[1] && t[2] === tids[2] && t[3] === tids[3]) { found = i; break } }
+    exactCache.set(key, found); return found
+  }
+  const prio = (id) => (id === VOID ? -1 : S.order.indexOf(id))
+  /**
+   * The tile for corner `tids` seen from quadrant `myK`: the exact tile when
+   * the pair is authored; with three terrains at one corner the two highest
+   * in the list stand in for the rest; with a pair nobody drew, my terrain's
+   * own edge set — both sides get a rim — and the corner is flagged.
+   */
+  function quarterTile(tids, myK) {
+    let tile = exactTile(tids)
+    if (tile !== null) return { tile, status: 'exact' }
+    const distinct = [...new Set(tids.filter((t) => t !== VOID))].sort((a, b) => prio(b) - prio(a))
+    const B = distinct[0], A = distinct[1] ?? VOID
+    const mapped = tids.map((t) => (t === B ? B : A))
+    tile = exactTile(mapped)
+    if (tile !== null) return { tile, status: 'approx' }
+    const mine = tids[myK]
+    return { tile: exactTile(tids.map((t) => (t === mine ? mine : VOID))), status: 'missing', pair: [A === VOID ? distinct[1] : A, B].filter(Boolean).sort().join('·') }
   }
   const tileXY = (i) => [(i % SC) * TPX, Math.floor(i / SC) * TPX]
   const tileUrlCache = new Map()
-  function tileUrl(id) { // a material's full tile, for chips and swatches
+  function tileUrl(id) {
     if (tileUrlCache.has(id)) return tileUrlCache.get(id)
-    const c = document.createElement('canvas'); c.width = c.height = TPX; const [x, y] = tileXY(variants(id)[15]); c.getContext('2d').drawImage(sheet, x, y, TPX, TPX, 0, 0, TPX, TPX)
+    const c = document.createElement('canvas'); c.width = c.height = TPX; const [x, y] = tileXY(exactTile([id, id, id, id])); c.getContext('2d').drawImage(sheet, x, y, TPX, TPX, 0, 0, TPX, TPX)
     const u = c.toDataURL(); tileUrlCache.set(id, u); return u
   }
+  const authoredPairs = () => BLOCKS.filter((b) => b.a !== VOID).map((b) => [b.a, b.b].sort().join('·'))
+  const partnersOf = (id) => BLOCKS.filter((b) => b.a !== VOID && (b.a === id || b.b === id)).map((b) => (b.a === id ? b.b : b.a))
 
   // =====================================================================
   // State
   // =====================================================================
   const S = {
     tool: 'terrain', labels: false, quarters: true, face: false, faceRow: 6,
-    terrain: { mode: 'paint', verb: 'raise', paintVerb: 'material', stroke: 'brush', shape: 'square', size: 1, strength: 2, height: 2, deadZone: 0.2, material: 'dirt', stamp: 21 },
+    terrain: { mode: 'paint', verb: 'raise', paintVerb: 'material', stroke: 'brush', shape: 'square', size: 1, strength: 2, height: 2, deadZone: 0.2, material: 'path', stamp: 21 },
     water: { mode: 'fill', level: 1, stroke: 'brush', size: 3 },
-    order: ['stone', 'cobble', 'dirt', 'grass', 'sand'], // fills; library order IS draw priority, later over earlier
+    order: ['stone', 'cobble', 'dirt', 'sand', 'grass', 'path'], // library order: later is the "over" terrain when a template is placed, and wins a three-way corner
   }
-  const prio = (id) => S.order.indexOf(id)
   const get = (path) => path.split('.').reduce((o, k) => o[k], S)
   const set = (path, v) => { const p = path.split('.'); const k = p.pop(); p.reduce((o, k) => o[k], S)[k] = v }
 
-  // the level: heights in cubes, the top voxel's material, the material of the voxels below, the path overlay, band overrides, water
   const W = 16, H = 10
   const idx = (x, y) => y * W + x, inb = (x, y) => x >= 0 && y >= 0 && x < W && y < H
-  const hgt = new Array(W * H).fill(0), mat = new Array(W * H).fill('grass'), wall = new Array(W * H).fill('stone'), path = new Array(W * H).fill(false), wat = new Array(W * H).fill(-1)
-  const bandOv = new Map() // `${x},${y},${level}` -> fill id, for the south face
+  const hgt = new Array(W * H).fill(0), mat = new Array(W * H).fill('grass'), wall = new Array(W * H).fill('stone'), wat = new Array(W * H).fill(-1)
+  const bandOv = new Map() // `${x},${y},${level}` -> material, for a band on the south face
   ;(function seed() {
     for (let y = 2; y < 7; y++) for (let x = 3; x < 9; x++) hgt[idx(x, y)] = 2
     for (let y = 3; y < 5; y++) for (let x = 5; x < 8; x++) hgt[idx(x, y)] = 3
@@ -344,9 +356,9 @@
     for (let y = 4; y < 8; y++) for (let x = 11; x < 15; x++) mat[idx(x, y)] = 'sand'
     for (let y = 5; y < 7; y++) for (let x = 12; x < 14; x++) wat[idx(x, y)] = 1
     mat[idx(6, 3)] = 'dirt'; mat[idx(1, 1)] = 'dirt'; mat[idx(2, 1)] = 'dirt'; mat[idx(1, 2)] = 'dirt'
-    for (let x = 0; x < 11; x++) path[idx(x, 8)] = true
-    for (let y = 5; y < 9; y++) path[idx(9, y)] = true
-    path[idx(10, 5)] = true; path[idx(11, 5)] = true
+    for (let x = 0; x < 11; x++) mat[idx(x, 8)] = 'path'
+    for (let y = 5; y < 9; y++) mat[idx(9, y)] = 'path'
+    mat[idx(10, 5)] = 'path'; mat[idx(11, 5)] = 'path'
     bandOv.set('4,6,1', 'cobble'); bandOv.set('5,6,1', 'cobble')
   })()
 
@@ -386,7 +398,7 @@
     `<span class="scrub" data-scrub="${p}" data-min="${min}" data-max="${max}" data-step="${step}" tabindex="0" data-tip="${label}: drag to change, click to type, ⇧ for coarse steps" data-key=""><span class="sl">${label}</span><span class="sv">${fmt(get(p))}</span>${unit ? `<span class="un">${unit}</span>` : ''}</span>`
   const lbl = (t) => `<span class="lbl">${t}</span>`
   const strokeBits = (b) => [lbl('Stroke'), seg(b + '.stroke', [['brush', 'Brush stroke'], ['rect', 'Rectangle — press to release'], ['fill', 'Flood fill the area under the press']]), seg(b + '.shape', [['square', 'Square brush'], ['circle', 'Round brush']]), scrub(b + '.size', 'Size', { min: 1, max: 12 })]
-  const matChip = (id, on) => { const m = matOf(id); return `<button class="chip ${on ? 'on' : ''}" data-set="terrain.material" data-val="${id}" data-tip="${m.name} · ${m.kind}" data-key=""><i class="sw" style="background-image:url(${tileUrl(id)})"></i></button>` }
+  const matChip = (id) => { const m = matOf(id); return `<button class="chip" data-set="terrain.material" data-val="${id}" data-tip="${m.name} · transitions to ${partnersOf(id).map((p) => matOf(p).name).join(', ') || 'nothing yet'}" data-key=""><i class="sw" style="background-image:url(${tileUrl(id)})"></i></button>` }
 
   const BAR = {
     terrain: () => {
@@ -396,11 +408,11 @@
         if (t.verb === 'ramp') out.push(`<span class="hint">Press a cliff face, drag back onto the high side. Click a ramp to remove it.</span>`)
         else { out.push(...strokeBits('terrain')); out.push(t.verb === 'flatten' ? scrub('terrain.height', 'Height', { min: 0, max: 40, unit: '½' }) : scrub('terrain.strength', 'Strength', { min: 1, max: 8, unit: '½' })) }
       } else {
-        out.push(verbs('terrain.paintVerb', [['material', 'Material — autotiles tops, cliff bands and paths', 'Q'], ['stamp', 'Stamp a single sheet tile (escape hatch)', 'W'], ['tint', 'Tint', 'E']]), '<span class="vsep"></span>')
+        out.push(verbs('terrain.paintVerb', [['material', 'Material — the tile at every corner follows from the four cells around it', 'Q'], ['stamp', 'Stamp a single sheet tile (escape hatch)', 'W'], ['tint', 'Tint', 'E']]), '<span class="vsep"></span>')
         if (t.paintVerb === 'material') {
           const m = matOf(t.material)
           out.push(`<button class="chip active" id="pick" data-tip="Active material — click to choose, ⌥ click a surface to eyedrop" data-key="⌥"><i class="sw" style="background-image:url(${tileUrl(m.id)})"></i><span class="nm">${m.name}</span><span class="car"></span></button>`)
-          out.push([...S.order.slice().reverse(), 'path'].filter((id) => id !== t.material).map((id) => matChip(id, false)).join(''))
+          out.push(S.order.slice().reverse().filter((id) => id !== t.material).map(matChip).join(''))
         } else if (t.paintVerb === 'stamp') out.push(`<button class="chip active" id="pick" data-tip="Stamp tile — picker is the old sheet palette, marked for redesign" data-key=""><i class="sw" style="background-image:url(${tileUrl('cobble')})"></i><span class="nm num">tile ${t.stamp}</span><span class="car"></span></button>`)
         else out.push(`<button class="chip active" data-tip="Tint colour" data-key=""><i class="sw" style="background:#c9884a"></i><span class="nm num">#C9884A</span><span class="car"></span></button>`)
         out.push('<span class="vsep"></span>', ...strokeBits('terrain'))
@@ -416,17 +428,17 @@
   const acts = (list) => `<div class="acts">${list.map(([t, k, c]) => `<button class="act ${c ?? ''}">${t}${k ? kbd(k) : ''}</button>`).join('')}</div>`
   function useCounts() {
     const c = {}; for (const m of MATS) c[m.id] = 0
-    for (let i = 0; i < W * H; i++) { c[mat[i]]++; c[wall[i]] += hgt[i]; if (path[i]) c.path++ }
+    for (let i = 0; i < W * H; i++) { c[mat[i]]++; c[wall[i]] += hgt[i] }
     for (const v of bandOv.values()) c[v]++
     return c
   }
   function materialsSection() {
     const counts = useCounts()
-    const rowFor = (id) => { const m = matOf(id); return `<button class="mat ${S.terrain.material === id ? 'on' : ''}" draggable="${m.kind === 'fill'}" data-mat="${id}" data-set="terrain.material" data-val="${id}"><span class="grip">${m.kind === 'fill' ? '⋮⋮' : ''}</span><i class="sw" style="background-image:url(${tileUrl(id)})"></i><span>${m.name}</span><span class="role">${m.kind === 'path' ? 'path' : m.role}</span><span class="n">${counts[id]}</span></button>` }
-    const rows = S.order.slice().reverse().map(rowFor).join('') + `<div class="hint" style="padding:6px 8px 2px">Overlays</div>` + rowFor('path')
-    const m = matOf(S.terrain.material)
-    const detail = `<div class="hint" style="margin-top:6px">Fills: top of the list draws over what is below it at a shared corner; drag to reorder. Overlays always draw on top.</div>`
-      + `<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;margin-top:4px"><div class="set16" id="set16"></div><div style="display:grid;gap:4px">${row('Sheet', 'ground.png', true)}${row('Block', `${m.block[0]},${m.block[1]} · 4×4`)}${row('Kind', m.kind === 'path' ? 'path · sides' : 'fill · corners')}${row('Variants', '16 / 16')}${row('Role', m.role)}</div></div>`
+    const rows = S.order.slice().reverse().map((id) => { const m = matOf(id); return `<button class="mat ${S.terrain.material === id ? 'on' : ''}" draggable="true" data-mat="${id}" data-set="terrain.material" data-val="${id}"><span class="grip">⋮⋮</span><i class="sw" style="background-image:url(${tileUrl(id)})"></i><span>${m.name}</span><span class="role">${m.role}</span><span class="n">${counts[id]}</span></button>` }).join('')
+    const m = matOf(S.terrain.material), partners = partnersOf(m.id)
+    const detail = `<div class="hint" style="margin-top:6px">Drag to reorder: a later material is the shape when a template is placed, and wins a three-way corner.</div>`
+      + `<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;margin-top:4px"><div class="set16" id="set16"></div><div style="display:grid;gap:4px">${row('Sheet', 'ground.png', true)}${row('Edge set', '16 / 16')}${row('Role', m.role)}<div class="row"><span>Transitions</span></div><div class="acts" style="padding:0">${partners.map((p) => `<button class="chip" data-tip="${m.name} · ${matOf(p).name}: 16 / 16" data-key="" data-set="terrain.material" data-val="${p}"><i class="sw" style="background-image:url(${tileUrl(p)})"></i></button>`).join('')}${MATS.filter((o) => o.id !== m.id && !partners.includes(o.id)).map((o) => `<button class="chip" style="opacity:.35;border-style:dashed" data-tip="${m.name} · ${o.name}: not authored" data-key="" data-set="terrain.material" data-val="${o.id}"><i class="sw" style="background-image:url(${tileUrl(o.id)})"></i></button>`).join('')}</div></div></div>`
+      + `<div class="hint">Solid chips are authored pairs; dashed ones are not. Showing the edge set on the left; click a partner to see its pair.</div>`
       + acts([['Rename'], ['Duplicate'], ['Edit terrain set…'], ['Delete', '', 'danger']])
     return section('Materials', `<div class="list">${rows}<button class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></button></div>` + detail, { sum: `${MATS.length} · ${m.name}` })
   }
@@ -436,7 +448,7 @@
       const t = S.terrain
       if (t.mode === 'sculpt') return section('Brush', `<div style="display:grid;gap:6px">${scrub('terrain.size', 'Size', { min: 1, max: 12 })}${t.verb === 'flatten' ? scrub('terrain.height', 'Height', { min: 0, max: 40, unit: '½' }) : scrub('terrain.strength', 'Strength', { min: 1, max: 8, unit: '½' })}${scrub('terrain.deadZone', 'Dead zone', { min: 0, max: 0.5, step: 0.05, fmt: (v) => v.toFixed(2) })}</div><div class="hint">${t.verb === 'ramp' ? 'A ramp is always 45°: one tile down per cell of run. A half-length piece finishes an odd half-tile drop.' : t.verb === 'flatten' ? 'Height is sampled at the press; edit it here or in the bar to flatten to a chosen level.' : 'Strength is half-tiles per pass; the demo rounds up to whole cubes. ⇧ inverts Raise; ⌥ click eyedrops a height into Flatten.'}</div>`, { sum: t.verb[0].toUpperCase() + t.verb.slice(1) }) + levelSection()
       let s = materialsSection()
-      if (t.paintVerb === 'stamp') s += section('Stamp', `<div class="sheet">ground.png · 12 × 8 tiles</div>${row('Selected', 'tile ' + t.stamp)}<div class="hint">Escape hatch: stamps a raw tile over the derived one. The picker is the old sheet palette and is marked for redesign.</div>`, { sum: 'tile ' + t.stamp })
+      if (t.paintVerb === 'stamp') s += section('Stamp', `<div class="sheet">ground.png · 16 × 16 tiles</div>${row('Selected', 'tile ' + t.stamp)}<div class="hint">Escape hatch: stamps a raw tile over the derived one. The picker is the old sheet palette and is marked for redesign.</div>`, { sum: 'tile ' + t.stamp })
       if (t.paintVerb === 'tint') s += section('Tint', row('Colour', '#C9884A') + `<div class="hint">Per cell, baked into vertex colour with the ambient occlusion. ⇧ clears.</div>`)
       return s + levelSection()
     },
@@ -445,7 +457,7 @@
   }
   const TOOLS = [{ id: 'select', title: 'Select', key: 'V' }, { id: 'terrain', title: 'Terrain', key: 'T' }, { id: 'water', title: 'Water', key: 'A', tag: 'new' }, { id: 'objects', title: 'Objects', key: 'O' }, { id: 'buildings', title: 'Buildings', key: 'B', soon: true }, { id: 'fences', title: 'Fences', key: 'F', soon: true }]
   const HINTS = {
-    terrain: () => { const t = S.terrain; if (t.mode === 'sculpt') return t.verb === 'ramp' ? [['press + drag', 'set the run'], ['click ramp', 'remove'], ['⇧ click', 'remove']] : [['drag', t.verb], ['⇧ drag', 'lower'], ['⌥ click', 'eyedrop height'], ['[ ]', 'size']]; return [['drag', 'paint ' + (t.paintVerb === 'material' ? matOf(t.material).name : t.paintVerb)], ['⇧ drag', S.face ? 'clear band override' : 'clear to grass / remove path'], ['⌥ click', 'eyedrop'], ['[ ]', 'size']] },
+    terrain: () => { const t = S.terrain; if (t.mode === 'sculpt') return t.verb === 'ramp' ? [['press + drag', 'set the run'], ['click ramp', 'remove'], ['⇧ click', 'remove']] : [['drag', t.verb], ['⇧ drag', 'lower'], ['⌥ click', 'eyedrop height'], ['[ ]', 'size']]; return [['drag', 'paint ' + (t.paintVerb === 'material' ? matOf(t.material).name : t.paintVerb)], ['⇧ drag', S.face ? 'clear band override' : 'clear to grass'], ['⌥ click', 'eyedrop'], ['[ ]', 'size']] },
     water: () => [['drag', S.water.mode + ' to level ' + S.water.level], ['⌥ click', 'pick level'], ['[ ]', 'size']], select: () => [], objects: () => [], buildings: () => [], fences: () => [],
   }
   function render() {
@@ -476,14 +488,14 @@
     if (pop.classList.contains('show')) return pop.classList.remove('show')
     pop.style.left = (btn.getBoundingClientRect().left - document.getElementById('view').getBoundingClientRect().left) + 'px'
     const counts = useCounts()
-    pop.innerHTML = `<p class="ph"><span>Materials</span><span>fills, then overlays</span></p><div class="grid">${[...S.order.slice().reverse(), 'path'].map((id) => { const m = matOf(id); return `<button class="cell ${S.terrain.material === id ? 'on' : ''}" style="background-image:url(${tileUrl(id)})" data-set="terrain.material" data-val="${id}" data-tip="${m.name} · ${m.kind}" data-key=""><i>${counts[id]}</i></button>` }).join('')}<button class="cell" style="background:var(--panel2);color:var(--ink3);font-size:18px" data-tip="New material…" data-key="⌘N">+</button></div>`
+    pop.innerHTML = `<p class="ph"><span>Materials</span><span>drag the list to reorder</span></p><div class="grid">${S.order.slice().reverse().map((id) => { const m = matOf(id); return `<button class="cell ${S.terrain.material === id ? 'on' : ''}" style="background-image:url(${tileUrl(id)})" data-set="terrain.material" data-val="${id}" data-tip="${m.name}" data-key=""><i>${counts[id]}</i></button>` }).join('')}<button class="cell" style="background:var(--panel2);color:var(--ink3);font-size:18px" data-tip="New material…" data-key="⌘N">+</button></div>`
     pop.classList.add('show')
   }
   let dragging = null
   document.addEventListener('dragstart', (e) => { const m = e.target.closest('[data-mat]'); if (m) dragging = m.dataset.mat })
   document.addEventListener('dragover', (e) => { if (e.target.closest('[data-mat]')) e.preventDefault() })
   document.addEventListener('drop', (e) => {
-    const m = e.target.closest('[data-mat]'); if (!m || !dragging || dragging === m.dataset.mat || !S.order.includes(m.dataset.mat)) return
+    const m = e.target.closest('[data-mat]'); if (!m || !dragging || dragging === m.dataset.mat) return
     e.preventDefault(); S.order.splice(S.order.indexOf(dragging), 1); S.order.splice(S.order.indexOf(m.dataset.mat) + (e.offsetY > m.offsetHeight / 2 ? 0 : 1), 0, dragging); dragging = null; render()
   })
   let sc = null
@@ -514,45 +526,36 @@
   document.addEventListener('mouseout', (e) => { if (e.target.closest('[data-tip]')) tip.classList.remove('show') })
 
   // =====================================================================
-  // Rendering: every quarter is a blit from the sheet through the tag lookup
+  // Rendering: every quarter is one quadrant of the tile tagged like its corner
   // =====================================================================
   const cv = document.getElementById('cv'), ctx = cv.getContext('2d')
   let cell = 40, ox = 0, oy = 0, hover = null, painting = false, anchorH = 0
-  const QBIT = [8, 4, 2, 1] // quarter q (NW NE SW SE of the cell) is this quadrant of the offset tile at its corner
-  function blitQuadrant(g, tile, bit, dx, dy, ds) {
-    if (tile === null) { g.fillStyle = '#d23fb0'; g.fillRect(dx, dy, ds, ds); g.fillStyle = '#000'; g.fillRect(dx + ds / 4, dy + ds / 4, ds / 2, ds / 2); return }
-    const [x, y] = tileXY(tile), [, qx, qy] = QUADS.find(([b]) => b === bit)
+  const QK = [3, 2, 1, 0] // quarter q (NW NE SW SE of the cell) is corner index k (SE SW NE NW) of the offset tile at that corner
+  let missingPairs = new Set()
+  function drawCorner(g, dx, dy, ds, q, tids) {
+    const myK = QK[q], { tile, status, pair } = quarterTile(tids, myK)
+    const [x, y] = tileXY(tile), [, qx, qy] = QUADS[myK]
     g.drawImage(sheet, x + qx * 8, y + qy * 8, 8, 8, dx, dy, ds, ds)
+    if (status === 'missing') { missingPairs.add(pair); g.fillStyle = '#e04fc0'; const cx = qx ? dx : dx + ds - 4, cy = qy ? dy : dy + ds - 4; g.fillRect(cx, cy, 4, 4) }
+    else if (status === 'approx') { g.fillStyle = 'rgba(233,162,59,.7)'; const cx = qx ? dx : dx + ds - 3, cy = qy ? dy : dy + ds - 3; g.fillRect(cx, cy, 3, 3) }
   }
-  /** Draw one quarter given the materials present at its corner and their quadrant masks. */
-  function drawCornerQuarter(g, dx, dy, ds, myBit, masks) {
-    const present = Object.keys(masks).sort((a, b) => prio(a) - prio(b))
-    blitQuadrant(g, variants(present[0])[15], myBit, dx, dy, ds)
-    for (const m of present) { const bits = masks[m]; if (!(bits & myBit) || bits === 15) continue; blitQuadrant(g, variants(m)[bits], myBit, dx, dy, ds) }
-  }
-  // TOP VIEW. From THIS cell's point of view a neighbour joins the corner when it is not lower; a taller
-  // same-material neighbour counts as continuing (no rim at the foot of a cliff), a lower one never does.
-  function topMasks(x, y, cx, cy) {
-    const h = hgt[idx(x, y)], masks = {}
-    for (const [bit, qx, qy] of QUADS) {
+  // TOP VIEW. From THIS cell's point of view: a lower neighbour is nothing (the cliff top draws its rim from
+  // its edge set); a taller one is its own material, or "continuing" when it is the same material; off the
+  // volume continues.
+  function topCorner(x, y, cx, cy) {
+    const h = hgt[idx(x, y)], me = mat[idx(x, y)]
+    return QUADS.map(([, qx, qy]) => {
       const nx = cx - 1 + qx, ny = cy - 1 + qy
-      const m = inb(nx, ny) ? mat[idx(nx, ny)] : mat[idx(x, y)], hh = inb(nx, ny) ? hgt[idx(nx, ny)] : h
-      if (hh < h) continue
-      masks[m] = (masks[m] ?? 0) | bit
-    }
-    return masks
-  }
-  function pathMask(x, y) {
-    const h = hgt[idx(x, y)]; let m = 0
-    for (const [bit, dx, dy] of [[1, 0, -1], [2, 1, 0], [4, 0, 1], [8, -1, 0]]) { const nx = x + dx, ny = y + dy; if (inb(nx, ny) && path[idx(nx, ny)] && hgt[idx(nx, ny)] === h) m |= bit }
-    return m
+      if (!inb(nx, ny)) return me
+      const hh = hgt[idx(nx, ny)]
+      return hh < h ? VOID : mat[idx(nx, ny)]
+    })
   }
   function drawTop(r) {
     cell = Math.floor(Math.min((r.width - 40) / W, (r.height - 60) / H)); ox = Math.floor((r.width - W * cell) / 2); oy = Math.floor((r.height - H * cell) / 2) + 8
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const px = ox + x * cell, py = oy + y * cell, s = cell / 2
-      for (let q = 0; q < 4; q++) drawCornerQuarter(ctx, px + (q % 2) * s, py + (q > 1 ? s : 0), s, QBIT[q], topMasks(x, y, x + (q % 2), y + (q > 1 ? 1 : 0)))
-      if (path[idx(x, y)]) { const [tx, ty] = tileXY(variants('path')[pathMask(x, y)]); ctx.drawImage(sheet, tx, ty, TPX, TPX, px, py, cell, cell) }
+      for (let q = 0; q < 4; q++) drawCorner(ctx, px + (q % 2) * s, py + (q > 1 ? s : 0), s, q, topCorner(x, y, x + (q % 2), y + (q > 1 ? 1 : 0)))
     }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = idx(x, y), h = hgt[i], px = ox + x * cell, py = oy + y * cell
@@ -567,22 +570,19 @@
     grid(ox, oy, W, H, cell)
     if (hover) { const size = S.tool === 'water' ? S.water.size : S.terrain.size, r0 = Math.floor((size - 1) / 2); ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 1.5; ctx.strokeRect(ox + (hover[0] - r0) * cell + 1, oy + (hover[1] - r0) * cell + 1, size * cell - 2, size * cell - 2) }
   }
-  // FACE VIEW: the south faces of one row, as a grid of (run, level). Above the top band is the top surface,
-  // below the bottom is ground: both are edges. Off the volume continues.
+  // FACE VIEW: the south faces of one row as a grid of (run, level). Above the top band and below the
+  // bottom is nothing; off the volume continues.
   const y0 = () => S.faceRow
   const lowOf = (x) => inb(x, y0() + 1) ? hgt[idx(x, y0() + 1)] : 0
   const highOf = (x) => inb(x, y0()) ? hgt[idx(x, y0())] : 0
   const bandExists = (x, L) => x >= 0 && x < W && L >= lowOf(x) && L < highOf(x)
   const bandMat = (x, L) => bandOv.get(`${x},${y0()},${L}`) ?? wall[idx(x, y0())]
-  function faceMasks(x, L, cx, cL) { // quadrants around corner (cx, cL): NW=(cx-1,cL) NE=(cx,cL) SW=(cx-1,cL-1) SE=(cx,cL-1)
-    const masks = {}
-    for (const [bit, qx, qy] of QUADS) {
+  function faceCorner(x, L, cx, cL) { // quadrants around corner (cx, cL): NW=(cx-1,cL) NE=(cx,cL) SW=(cx-1,cL-1) SE=(cx,cL-1)
+    return QUADS.map(([, qx, qy]) => {
       const bx = cx - 1 + qx, bL = qy ? cL - 1 : cL
-      if (bx < 0 || bx >= W) { const m = bandMat(x, L); masks[m] = (masks[m] ?? 0) | bit; continue }
-      if (!bandExists(bx, bL)) continue
-      const m = bandMat(bx, bL); masks[m] = (masks[m] ?? 0) | bit
-    }
-    return masks
+      if (bx < 0 || bx >= W) return bandMat(x, L)
+      return bandExists(bx, bL) ? bandMat(bx, bL) : VOID
+    })
   }
   let fx = 0, fy = 0, maxL = 1
   function drawFace(r) {
@@ -594,7 +594,7 @@
       ctx.fillStyle = matOf(mat[idx(x, y0())]).color; ctx.globalAlpha = .5; ctx.fillRect(px, fy - highOf(x) * cell - 6, cell, 6); ctx.globalAlpha = 1
       for (let L = lowOf(x); L < highOf(x); L++) {
         const py = fy - (L + 1) * cell, s = cell / 2
-        for (let q = 0; q < 4; q++) drawCornerQuarter(ctx, px + (q % 2) * s, py + (q > 1 ? s : 0), s, QBIT[q], faceMasks(x, L, x + (q % 2), q > 1 ? L : L + 1))
+        for (let q = 0; q < 4; q++) drawCorner(ctx, px + (q % 2) * s, py + (q > 1 ? s : 0), s, q, faceCorner(x, L, x + (q % 2), q > 1 ? L : L + 1))
         if (bandOv.has(`${x},${y0()},${L}`)) { ctx.strokeStyle = 'rgba(233,162,59,.5)'; ctx.setLineDash([3, 3]); ctx.strokeRect(px + 1.5, py + 1.5, cell - 3, cell - 3); ctx.setLineDash([]) }
       }
     }
@@ -614,7 +614,12 @@
     const r = cv.parentElement.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio
     ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); ctx.imageSmoothingEnabled = false
     ctx.fillStyle = '#0f1115'; ctx.fillRect(0, 0, r.width, r.height)
+    missingPairs = new Set()
     if (S.face) drawFace(r); else drawTop(r)
+    const mp = document.getElementById('missing')
+    mp.textContent = missingPairs.size ? `${missingPairs.size} unauthored pair${missingPairs.size > 1 ? 's' : ''}` : 'every pair authored'
+    mp.style.color = missingPairs.size ? 'var(--warn)' : 'var(--ok)'
+    mp.title = [...missingPairs].map((p) => p.split('·').map((id) => matOf(id)?.name ?? id).join(' · ')).join(', ')
   }
 
   // ---------- painting and sculpting in the demo ----------
@@ -629,24 +634,17 @@
     if (S.face) {
       if (S.tool !== 'terrain' || t.mode !== 'paint' || t.paintVerb !== 'material') return
       if (e.altKey) { if (bandExists(c[0], c[1])) { t.material = bandMat(c[0], c[1]); render() } return }
-      const m = matOf(t.material); if (m.kind !== 'fill') return
       for (const [x, L] of brushCells(c)) { if (!bandExists(x, L)) continue; const k = `${x},${y0()},${L}`; if (e.shiftKey) bandOv.delete(k); else bandOv.set(k, t.material) }
       return
     }
     if (S.tool === 'water') { for (const [x, y] of brushCells(c)) { if (!inb(x, y)) continue; const i = idx(x, y); if (S.water.mode === 'drain') wat[i] = -1; else if (S.water.level > hgt[i]) wat[i] = S.water.level } return }
     if (S.tool !== 'terrain') return
-    if (e.altKey) { const i = idx(c[0], c[1]); if (t.mode === 'paint') t.material = path[i] ? 'path' : mat[i]; else t.height = hgt[i] * 2; render(); return }
+    if (e.altKey) { const i = idx(c[0], c[1]); if (t.mode === 'paint') t.material = mat[i]; else t.height = hgt[i] * 2; render(); return }
     const step = Math.max(1, Math.round(t.strength / 2))
     for (const [x, y] of brushCells(c)) {
       if (!inb(x, y)) continue
       const i = idx(x, y)
-      if (t.mode === 'paint') {
-        if (t.paintVerb !== 'material') continue
-        const m = matOf(t.material)
-        if (m.kind === 'path') path[i] = !e.shiftKey
-        else if (e.shiftKey) { mat[i] = 'grass'; path[i] = false } else mat[i] = t.material
-        continue
-      }
+      if (t.mode === 'paint') { if (t.paintVerb === 'material') mat[i] = e.shiftKey ? 'grass' : t.material; continue }
       if (t.verb === 'raise') hgt[i] = Math.max(0, Math.min(5, hgt[i] + (e.shiftKey ? -step : step)))
       else if (t.verb === 'flatten') hgt[i] = anchorH
       else if (t.verb === 'smooth') { let s = 0, n = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (inb(x + dx, y + dy)) { s += hgt[idx(x + dx, y + dy)]; n++ } hgt[i] += Math.max(-step, Math.min(step, Math.round(s / n) - hgt[i])) }
@@ -657,7 +655,7 @@
   cv.addEventListener('pointermove', (e) => {
     const c = cellAt(e); hover = c
     const u = document.getElementById('under')
-    if (c) { if (S.face) u.textContent = bandExists(c[0], c[1]) ? `cliff (${c[0]}, ${y0()}) S level ${c[1]} · ${matOf(bandMat(c[0], c[1])).name}${bandOv.has(`${c[0]},${y0()},${c[1]}`) ? ' (override)' : ''}` : `— no face at (${c[0]}, level ${c[1]})`; else { const i = idx(c[0], c[1]); u.textContent = `top (${c[0]}, ${c[1]}) · ${matOf(mat[i]).name}${path[i] ? ' + path' : ''} · h ${hgt[i]}${wat[i] > hgt[i] ? ' · water ' + wat[i] : ''}` } }
+    if (c) { if (S.face) u.textContent = bandExists(c[0], c[1]) ? `cliff (${c[0]}, ${y0()}) S level ${c[1]} · ${matOf(bandMat(c[0], c[1])).name}${bandOv.has(`${c[0]},${y0()},${c[1]}`) ? ' (override)' : ''}` : `— no face at (${c[0]}, level ${c[1]})`; else { const i = idx(c[0], c[1]); u.textContent = `top (${c[0]}, ${c[1]}) · ${matOf(mat[i]).name} · h ${hgt[i]}${wat[i] > hgt[i] ? ' · water ' + wat[i] : ''}` } }
     if (painting && c && (S.terrain.mode === 'paint' || S.tool === 'water')) apply(c, e)
     draw()
   })
@@ -665,19 +663,24 @@
   cv.addEventListener('pointerleave', () => { hover = null; draw() })
   addEventListener('resize', () => { draw(); drawSheetView() })
 
-  // the active material's 16 variants, straight from the sheet
+  // the active material's edge set, straight from the sheet
   function drawSet16() {
     const host = document.getElementById('set16'); if (!host) return
     host.innerHTML = ''
-    const table = variants(S.terrain.material)
-    for (let mask = 0; mask < 16; mask++) { const c = document.createElement('canvas'); c.width = c.height = TPX; host.appendChild(c); if (table[mask] !== null) { const [x, y] = tileXY(table[mask]); c.getContext('2d').drawImage(sheet, x, y, TPX, TPX, 0, 0, TPX, TPX) } c.title = `mask ${mask.toString(2).padStart(4, '0')}` }
+    const id = S.terrain.material
+    for (let mask = 0; mask < 16; mask++) {
+      const c = document.createElement('canvas'); c.width = c.height = TPX; host.appendChild(c)
+      const tile = exactTile(QUADS.map(([bit]) => (mask & bit ? id : VOID)))
+      if (tile !== null) { const [x, y] = tileXY(tile); c.getContext('2d').drawImage(sheet, x, y, TPX, TPX, 0, 0, TPX, TPX) }
+      c.title = `edge set · mask ${mask.toString(2).padStart(4, '0')}`
+    }
   }
 
   // =====================================================================
-  // The static setup mockup: the sheet with its tags, and the terrain-set panel
+  // The static setup mockup: the sheet with its corner tags, and the terrain-set panel
   // =====================================================================
   function drawSheetView() {
-    const c = document.getElementById('sheetview'), scale = 4
+    const c = document.getElementById('sheetview'), scale = 3
     c.width = SC * TPX * scale; c.height = SR * TPX * scale
     const g = c.getContext('2d'); g.imageSmoothingEnabled = false
     g.fillStyle = '#1f232c'; g.fillRect(0, 0, c.width, c.height)
@@ -685,28 +688,33 @@
     g.drawImage(sheet, 0, 0, c.width, c.height)
     const T = TPX * scale
     for (let i = 0; i < SC * SR; i++) {
+      const tags = cornerTags[i]; if (!tags) continue
       const x = (i % SC) * T, y = Math.floor(i / SC) * T
-      cornerTags[i].forEach((tid, k) => { if (!tid) return; const [, qx, qy] = QUADS[k]; g.fillStyle = matOf(tid).light; g.beginPath(); const cx = x + qx * T, cy = y + qy * T; g.moveTo(cx, cy); g.lineTo(cx + (qx ? -10 : 10), cy); g.lineTo(cx, cy + (qy ? -10 : 10)); g.closePath(); g.fill() })
-      sideTags[i].forEach((tid, k) => { if (!tid) return; g.fillStyle = matOf(tid).light; const [sx, sy, sw, sh] = [[x + T / 2 - 6, y, 12, 3], [x + T - 3, y + T / 2 - 6, 3, 12], [x + T / 2 - 6, y + T - 3, 12, 3], [x, y + T / 2 - 6, 3, 12]][k]; g.fillRect(sx, sy, sw, sh) })
+      tags.forEach((tid, k) => { if (tid === VOID) return; const [, qx, qy] = QUADS[k]; g.fillStyle = matOf(tid).light; g.beginPath(); const cx = x + qx * T, cy = y + qy * T; g.moveTo(cx, cy); g.lineTo(cx + (qx ? -8 : 8), cy); g.lineTo(cx, cy + (qy ? -8 : 8)); g.closePath(); g.fill() })
     }
     g.strokeStyle = 'rgba(255,255,255,.1)'; g.beginPath(); for (let x = 0; x <= SC; x++) { g.moveTo(x * T + .5, 0); g.lineTo(x * T + .5, c.height) } for (let y = 0; y <= SR; y++) { g.moveTo(0, y * T + .5); g.lineTo(c.width, y * T + .5) } g.stroke()
-    // the template stamp about to be placed: a 4×4 outline where the pointer is
-    g.strokeStyle = '#e9a23b'; g.lineWidth = 2; g.setLineDash([6, 4]); g.strokeRect(8 * T + 1, 4 * T + 1, 4 * T - 2, 4 * T - 2); g.setLineDash([])
-    g.fillStyle = '#e9a23b'; g.font = '600 12px IBM Plex Sans, sans-serif'; g.fillText('template 4×4 · path', 8 * T + 6, 4 * T - 6)
-    document.getElementById('sheetlegend').innerHTML = `Corner triangles are corner tags (fills); side ticks are side tags (the path). ` + MATS.map((m) => `<span class="tag"><i style="background:${m.light}"></i>${m.name}</span>`).join(' · ')
-    document.getElementById('setuplist').innerHTML = section('Materials', `<div class="list">${MATS.slice().reverse().map((m) => `<div class="mat ${m.id === 'path' ? 'on' : ''}"><span class="grip">${m.kind === 'fill' ? '⋮⋮' : ''}</span><i class="sw" style="background-image:url(${tileUrl(m.id)})"></i><span>${m.name}</span><span class="role">${m.kind}</span><span class="n">16/16</span></div>`).join('')}<div class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></div></div>`, { sum: '6' })
-      + section('Path', `${row('Kind', 'path · sides')}${row('Template', 'Edge 4×4 ▾')}${row('Block', '8,4')}${row('Variants', '16 / 16')}<div class="hint">Place template fills every side tag from the tile's position in the block. Tag sides fixes a tileset that was not drawn to the template, one side at a time; Tag corners does the same for fills. A material with fewer than 16 variants paints, and its missing variants show as magenta in the viewport.</div>`)
-      + section('Preview', `<canvas id="setpreview" style="width:100%;image-rendering:pixelated;border-radius:3px"></canvas><div class="hint">A fixed patch of the material over the fill below it in the list, redrawn as tags change.</div>`)
-    // the preview: a small patch of path over grass, straight from the lookup
+    // block labels, and the template stamp about to be placed on the empty block
+    g.font = '600 11px IBM Plex Sans, sans-serif'
+    for (const b of BLOCKS) { g.fillStyle = 'rgba(15,17,21,.8)'; const label = b.a === VOID ? `${matOf(b.b).name} · edge` : `${matOf(b.a).name} · ${matOf(b.b).name}`; const w = g.measureText(label).width + 8; g.fillRect(b.c * T + 2, b.r * T + 2, w, 15); g.fillStyle = '#e8eaf0'; g.fillText(label, b.c * T + 6, b.r * T + 13) }
+    g.strokeStyle = '#e9a23b'; g.lineWidth = 2; g.setLineDash([6, 4]); g.strokeRect(8 * T + 1, 12 * T + 1, 4 * T - 2, 4 * T - 2); g.setLineDash([])
+    g.fillStyle = '#e9a23b'; g.fillText('place template · cobble → grass', 8 * T + 6, 12 * T + 13)
+    document.getElementById('sheetlegend').innerHTML = `A triangle in a tile's corner is that corner's tag; no triangle is nothing (an edge). ` + MATS.map((m) => `<span class="tag"><i style="background:${m.light}"></i>${m.name}</span>`).join(' · ')
+    const pairs = authoredPairs()
+    const allPairs = []; for (let i = 0; i < MATS.length; i++) for (let j = i + 1; j < MATS.length; j++) allPairs.push([MATS[i].id, MATS[j].id].sort().join('·'))
+    const unauthored = allPairs.filter((p) => !pairs.includes(p))
+    document.getElementById('setuplist').innerHTML = section('Materials', `<div class="list">${S.order.slice().reverse().map((m) => matOf(m)).map((m) => `<div class="mat ${m.id === 'grass' ? 'on' : ''}"><span class="grip">⋮⋮</span><i class="sw" style="background-image:url(${tileUrl(m.id)})"></i><span>${m.name}</span><span class="role">${m.role}</span><span class="n">${partnersOf(m.id).length}/${MATS.length - 1}</span></div>`).join('')}<div class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></div></div><div class="hint">The count is how many of a material's possible transitions are authored.</div>`, { sum: `${MATS.length}` })
+      + section('Transitions', `<div class="row"><span>Authored</span><span class="v">${pairs.length}</span></div><div class="acts" style="padding:0">${pairs.map((p) => `<span class="chip" style="width:auto;padding:0 8px;gap:4px;font-size:11.5px">${p.split('·').map((id) => `<i class="sw" style="background-image:url(${tileUrl(id)})"></i>`).join('')}</span>`).join('')}</div><div class="row"><span>Not authored</span><span class="v" style="color:var(--warn)">${unauthored.length}</span></div><div class="acts" style="padding:0">${unauthored.map((p) => `<span class="chip" style="width:auto;padding:0 8px;gap:4px;opacity:.5;border-style:dashed">${p.split('·').map((id) => `<i class="sw" style="background-image:url(${tileUrl(id)})"></i>`).join('')}</span>`).join('')}</div><div class="hint">Place template asks for the two terrains and fills a 4×4 block's corner tags from position; the second terrain is the shape. Tag corner fixes a sheet that was not drawn to the template, one corner at a time. A pair that is not authored still paints: both sides fall back to their edge sets and the viewport marks the corner.</div>`)
+      + section('Preview', `<canvas id="setpreview" style="width:100%;image-rendering:pixelated;border-radius:3px"></canvas><div class="hint">A fixed patch of the selected pair, redrawn as tags change.</div>`)
     const p = document.getElementById('setpreview'), pw = 8, ph = 3; p.width = pw * TPX; p.height = ph * TPX
     const pg = p.getContext('2d'); pg.imageSmoothingEnabled = false
     const on = [[0, 1], [1, 1], [2, 1], [3, 1], [3, 0], [3, 2], [4, 1], [5, 1], [6, 1], [6, 0], [7, 1]]
     const has = (x, y) => on.some(([a, b]) => a === x && b === y)
-    for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) {
-      const [gx, gy] = tileXY(variants('grass')[15]); pg.drawImage(sheet, gx, gy, TPX, TPX, x * TPX, y * TPX, TPX, TPX)
-      if (!has(x, y)) continue
-      let m = 0; if (has(x, y - 1)) m |= 1; if (has(x + 1, y)) m |= 2; if (has(x, y + 1)) m |= 4; if (has(x - 1, y)) m |= 8
-      const [tx, ty] = tileXY(variants('path')[m]); pg.drawImage(sheet, tx, ty, TPX, TPX, x * TPX, y * TPX, TPX, TPX)
+    const at = (x, y) => (x < 0 || y < 0 || x >= pw || y >= ph ? 'grass' : has(x, y) ? 'path' : 'grass')
+    for (let y = 0; y < ph; y++) for (let x = 0; x < pw; x++) for (const [q, qx, qy] of [[0, 0, 0], [1, 1, 0], [2, 0, 1], [3, 1, 1]]) {
+      const cx = x + qx, cy = y + qy, tids = QUADS.map(([, ax, ay]) => at(cx - 1 + ax, cy - 1 + ay))
+      const tile = exactTile(tids); if (tile === null) continue
+      const [tx, ty] = tileXY(tile), [, sx, sy] = QUADS[QK[q]]
+      pg.drawImage(sheet, tx + sx * 8, ty + sy * 8, 8, 8, x * TPX + qx * 8, y * TPX + qy * 8, 8, 8)
     }
   }
 
