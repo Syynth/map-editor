@@ -14,7 +14,6 @@ import * as THREE from 'three'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 
 import {
@@ -52,41 +51,6 @@ import {
 import type { RgbaImage, SpriteAsset } from '@papercut/document'
 
 /** Tilt-shift: a cheap vertical-gradient blur, the HD-2D miniature look. */
-const TiltShiftShader = {
-  uniforms: {
-    tDiffuse: { value: null as THREE.Texture | null },
-    amount: { value: 0.3 },
-    focus: { value: 0.55 },
-  },
-  vertexShader: /* glsl */ `
-    varying vec2 vUv;
-    void main() {
-      vUv = uv;
-      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-    }
-  `,
-  fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse;
-    uniform float amount;
-    uniform float focus;
-    varying vec2 vUv;
-    void main() {
-      float d = abs(vUv.y - focus);
-      float blur = smoothstep(0.10, 0.5, d) * amount;
-      if (blur < 0.001) { gl_FragColor = texture2D(tDiffuse, vUv); return; }
-      vec4 sum = vec4(0.0);
-      float total = 0.0;
-      for (int i = -4; i <= 4; i++) {
-        float w = 1.0 - abs(float(i)) / 5.0;
-        vec2 offset = vec2(float(i) * blur * 0.005, float(i) * blur * 0.005);
-        sum += texture2D(tDiffuse, vUv + offset) * w;
-        total += w;
-      }
-      gl_FragColor = sum / total;
-    }
-  `,
-}
-
 export interface PointerModifiers {
   shift: boolean
   alt: boolean
@@ -258,7 +222,6 @@ export class Viewport {
   private renderer: THREE.WebGLRenderer
   private composer: EffectComposer
   private bloom: UnrealBloomPass
-  private tiltShift: ShaderPass
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera
   private scene: RuntimeScene
   private picker = new Picker()
@@ -349,14 +312,11 @@ export class Viewport {
       0.85,
     )
     this.composer.addPass(this.bloom)
-    this.tiltShift = new ShaderPass(TiltShiftShader)
-    this.composer.addPass(this.tiltShift)
     this.composer.addPass(new OutputPass())
 
     this.softwareRenderer = isSoftwareRenderer(this.renderer)
     if (this.softwareRenderer) {
       this.bloom.enabled = false
-      this.tiltShift.enabled = false
     }
 
     // --- overlays ---------------------------------------------------------
@@ -517,9 +477,8 @@ export class Viewport {
     this.overlay.visible = false
   }
 
-  setPassForProbe(name: 'bloom' | 'tiltShift', enabled: boolean): void {
+  setPassForProbe(name: 'bloom', enabled: boolean): void {
     if (name === 'bloom') this.bloom.enabled = enabled
-    else this.tiltShift.enabled = enabled
   }
 
   /** Adopt the document's rig as the current view, for the "preview" button. */
@@ -954,7 +913,6 @@ export class Viewport {
 
     if (!this.softwareRenderer) {
       this.bloom.strength = doc.atmosphere.bloom
-      this.tiltShift.uniforms.amount.value = doc.atmosphere.tiltShift
     }
 
     if (this.bypassComposer) this.renderer.render(this.scene.scene, this.camera)

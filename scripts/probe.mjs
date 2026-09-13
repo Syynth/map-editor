@@ -99,23 +99,13 @@ console.log(`\nsoftware renderer detected: ${software}\n`)
 
 // Post-processing switches itself off on a software renderer, so turn it back
 // on here — measuring it is the whole point of this script.
-await page.evaluate(() => {
-  window.__viewport.setPassForProbe('bloom', true)
-  window.__viewport.setPassForProbe('tiltShift', true)
-})
+await page.evaluate(() => window.__viewport.setPassForProbe('bloom', true))
 await sleep(2200)
 await report('composer, all passes')
 
 await page.evaluate(() => window.__viewport.setPassForProbe('bloom', false))
 await sleep(2200)
 await report('composer, bloom off')
-
-await page.evaluate(() => {
-  window.__viewport.setPassForProbe('bloom', true)
-  window.__viewport.setPassForProbe('tiltShift', false)
-})
-await sleep(2200)
-await report('composer, tilt-shift off')
 
 await page.evaluate(() => {
   window.__viewport.bypassComposer = true
