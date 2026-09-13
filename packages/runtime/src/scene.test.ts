@@ -1,8 +1,8 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { HALF, allChunkKeys, createMap, createSketch, frameOf, type RgbaImage, type SpriteAsset } from '@papercut/document'
-import { CUT_TINT, GHOST_TINT } from './layers'
+import { HALF, SURFACE_SKETCH_CAP, SURFACE_TOP, allChunkKeys, cellIndex, createMap, createSketch, type RgbaImage, type SpriteAsset, type VoxelStructure } from '@papercut/document'
+import { Picker } from './picking'
 import { rgbaTexture } from './billboard'
 import { RuntimeScene } from './scene'
 
@@ -73,10 +73,13 @@ function staleMesh(key: string): THREE.Object3D {
   return object
 }
 
-describe('the layer view slices a sketch', () => {
-  function withIsland(layers: number) {
+describe('the layer view is a section cut: nothing is rebuilt', () => {
+  /** A 6 × 6 map with one raised column and a square island on the ground. */
+  function level() {
     const doc = createMap(6, 6)
-    const island = createSketch('ground', 'Island', { x: 1, z: 1, yaw: 0 })
+    const g = doc.structures.ground as VoxelStructure
+    g.terrain.height[cellIndex(g.size, 4, 4)] = 12
+    const island = createSketch('ground', 'Island', { x: 0, z: 0, yaw: 0 })
     island.points = [
       { x: 0, z: 0, smooth: false },
       { x: 3, z: 0, smooth: false },
@@ -84,49 +87,75 @@ describe('the layer view slices a sketch', () => {
       { x: 0, z: 3, smooth: false },
     ]
     island.closed = true
-    island.layers = layers
+    island.layers = 6
     doc.structures[island.id] = island
     doc.structureOrder.push(island.id)
     const runtime = new RuntimeScene(doc, { sheet: solid(16, 5, [0, 255, 0, 255]), sprites, textures: {} })
-    const parts = () => runtime.terrainMeshes().filter((mesh) => mesh.userData.structureId === island.id)
-    const part = (name: string) => parts().find((mesh) => mesh.userData.part === name)
-    return { runtime, base: frameOf(doc, island.id).y, parts, part }
-  }
-  const ys = (mesh: THREE.Mesh) => Array.from(mesh.geometry.getAttribute('position').array).filter((_, i) => i % 3 === 1)
-  const firstColour = (mesh: THREE.Mesh) => {
-    const c = mesh.geometry.getAttribute('color').array
-    return ((Math.round(c[0] * 255) << 16) | (Math.round(c[1] * 255) << 8) | Math.round(c[2] * 255)) >>> 0
+    runtime.rebuildAll()
+    return { doc, runtime, island, ground: g }
   }
 
-  it('at its full height a sketch is whole and untinted', () => {
-    const { runtime, part } = withIsland(4)
-    runtime.rebuildAll()
-    // Parts are meshed in the sketch's own frame; the group lifts them to its base.
-    expect(Math.max(...ys(part('cap') as THREE.Mesh))).toBeCloseTo(4 * HALF)
-    expect(firstColour(part('cap') as THREE.Mesh)).toBe(0xffffff)
+  it('moves the plane and shows the caps, and leaves every mesh it drew exactly as it was', () => {
+    const { runtime, island } = level()
+    const before = runtime.terrainMeshes()
+    const disposed: THREE.BufferGeometry[] = []
+    for (const mesh of before) mesh.geometry.addEventListener('dispose', () => disposed.push(mesh.geometry))
+    const solidMaterial = before.find((mesh) => mesh.userData.surface === 'solid')?.material as THREE.Material
+    expect(solidMaterial.clippingPlanes).toEqual([runtime.section.plane])
+    const caps = () => runtime.scene.getObjectsByProperty('name', '').filter((node) => node.userData.surface === 'section')
+    // One cap for the voxel volume, one for the island; hidden while the whole level is drawn, and never a terrain mesh.
+    expect(caps().map((cap) => cap.userData.structureId as string).sort()).toEqual(['ground', island.id].sort())
+    expect(caps().every((cap) => !cap.visible)).toBe(true)
+    expect(before.some((mesh) => mesh.userData.surface === 'section')).toBe(false)
+
+    runtime.setLayerRange({ lo: 2, hi: 6 })
+    expect(runtime.terrainMeshes()).toEqual(before)
+    expect(disposed).toEqual([])
+    expect(runtime.section.ceiling).toBe(6 * HALF)
+    expect(runtime.section.plane.constant).toBeCloseTo(6 * HALF, 2)
+    expect(caps().every((cap) => cap.visible)).toBe(true)
+
+    runtime.setLayerRange({ lo: 0, hi: 3 })
+    expect(runtime.terrainMeshes()).toEqual(before)
+    expect(disposed).toEqual([])
+
+    runtime.setLayerRange(null)
+    expect(runtime.section.ceiling).toBeNull()
+    expect(caps().every((cap) => !cap.visible)).toBe(true)
   })
 
-  it('a ceiling through the sketch slices it there and tints the cut face', () => {
-    const { runtime, base, part } = withIsland(4)
-    const baseLayers = Math.round(base / HALF)
-    runtime.setLayerRange({ lo: 0, hi: baseLayers + 2 })
-    runtime.rebuildAll()
-    expect(Math.max(...ys(part('cap') as THREE.Mesh))).toBeCloseTo(2 * HALF)
-    expect(Math.max(...ys(part('wallBody') as THREE.Mesh))).toBeCloseTo(2 * HALF)
-    expect(firstColour(part('cap') as THREE.Mesh)).toBe(CUT_TINT)
-    expect(firstColour(part('wallBody') as THREE.Mesh)).toBe(0xffffff)
+  it('finds the cap a pick lands on: the top of whatever the ceiling passes through, the highest standing one first', () => {
+    const { runtime, island, ground } = level()
+    const base = ground.terrain.height[0]
+    expect(runtime.capAt(4.5, 4.5)).toBeNull()
+
+    runtime.setLayerRange({ lo: 0, hi: base + 2 })
+    // The raised column reaches past the ceiling: its top is the cap there.
+    expect(runtime.capAt(4.5, 4.5)).toMatchObject({ structure: 'ground', kind: SURFACE_TOP, x: 4, y: 4 })
+    // Flat ground below the ceiling is not cut.
+    expect(runtime.capAt(5.5, 1.5)).toBeNull()
+    // The island stands on the ground and its cap is above the ceiling: the island, not the ground under it.
+    expect(runtime.capAt(1.5, 1.5)).toMatchObject({ structure: island.id, kind: SURFACE_SKETCH_CAP })
   })
 
-  it('a ceiling under the sketch hides it; a floor above it ghosts it', () => {
-    const { runtime, base, parts, part } = withIsland(4)
-    const baseLayers = Math.round(base / HALF)
-    runtime.setLayerRange({ lo: 0, hi: baseLayers })
-    runtime.rebuildAll()
-    expect(parts()).toEqual([])
-    runtime.setLayerRange({ lo: baseLayers + 5, hi: baseLayers + 9 })
-    runtime.rebuildAll()
-    expect(firstColour(part('cap') as THREE.Mesh)).toBe(GHOST_TINT)
-    expect(firstColour(part('wallBody') as THREE.Mesh)).toBe(GHOST_TINT)
+  it('a pick straight down into a cut lands on the ceiling, on the cap', () => {
+    const { runtime, ground } = level()
+    const base = ground.terrain.height[0]
+    runtime.setLayerRange({ lo: 0, hi: base + 2 })
+    runtime.scene.updateMatrixWorld(true)
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 500)
+    camera.position.set(4.5, 40, 4.5)
+    camera.lookAt(4.5, 0, 4.5)
+    camera.updateMatrixWorld(true)
+    const pick = new Picker().pick(runtime, camera, 0, 0)
+    expect(pick.surface).toMatchObject({ structure: 'ground', kind: SURFACE_TOP, x: 4, y: 4 })
+    expect(pick.point?.y).toBeCloseTo((base + 2) * HALF)
+
+    // With no range, the same ray lands on the column's own top.
+    runtime.setLayerRange(null)
+    const whole = new Picker().pick(runtime, camera, 0, 0)
+    expect(whole.surface).toMatchObject({ kind: SURFACE_TOP, x: 4, y: 4 })
+    expect(whole.point?.y).toBeCloseTo(12 * HALF)
   })
 })
 

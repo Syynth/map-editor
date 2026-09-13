@@ -285,6 +285,8 @@ export class Viewport {
     this.renderer.shadowMap.type = THREE.PCFShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.0
+    // The layer view is a clipping plane on the scene's materials (`runtime`'s `section.ts`).
+    this.renderer.localClippingEnabled = true
 
     this.scene = new RuntimeScene(reader.doc, assets)
     this.scene.rebuildAll()
@@ -363,6 +365,8 @@ export class Viewport {
 
     this.overlay.add(this.brushMesh, this.hoverMesh, this.selectionBox, this.sketchLine, this.sketchPoints, this.sketchSelected)
     this.overlay.add(this.grid.group)
+    // Grid lines above the ceiling go with the terrain they outline.
+    this.grid.clipWith(this.scene.section.plane)
     this.scene.scene.add(this.overlay)
     this.grid.rebuildAll(reader.doc)
 
@@ -378,13 +382,9 @@ export class Viewport {
     const wasLayers = this.options.layers
     this.options = { ...this.options, ...options }
     if (this.playing !== wasPlaying) this.togglePlay(this.options.play)
-    // The range changes what every chunk looks like, so it is a full rebuild
-    // — the one other thing besides a document swap that is.
+    // The range is a section cut on the GPU: a plane and a uniform, nothing rebuilt.
     const layers = this.options.layers
-    if (layers?.lo !== wasLayers?.lo || layers?.hi !== wasLayers?.hi) {
-      this.scene.setLayerRange(layers)
-      this.scene.rebuildAll()
-    }
+    if (layers?.lo !== wasLayers?.lo || layers?.hi !== wasLayers?.hi) this.scene.setLayerRange(layers)
   }
 
   /** A session is running. The flag this replaced was a second copy of the same fact. */

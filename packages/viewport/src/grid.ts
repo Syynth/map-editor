@@ -95,6 +95,11 @@ export class TerrainGrid {
     }
   }
 
+  /** Clip the lines with the scene's layer view plane, so none float where the terrain was cut away. */
+  clipWith(plane: THREE.Plane): void {
+    this.material.clippingPlanes = [plane]
+  }
+
   /** How many line buffers the grid holds, per volume: for a test to see what a change touched. */
   chunkCount(id: string): number {
     return this.volumes.get(id)?.chunks.size ?? 0
