@@ -42,6 +42,7 @@ import {
   applyRig,
   clampToBounds,
   createCamera,
+  panToHold,
   sampleYawEnvelope,
   updateCameraProjection,
   withinBounds,
@@ -235,6 +236,13 @@ export class Viewport {
   private picker = new Picker()
   /** World height of the current left press's hit — the plane `StrokePick.plane` is measured on. */
   private strokePlaneY: number | null = null
+  /**
+   * What a right press grabbed: the world point under the cursor, on the
+   * horizontal plane a pan slides along. Null while no pan holds anything, or
+   * when the press had nothing under it — a pan then falls back to sliding by
+   * pixels, since there is no point to keep.
+   */
+  private panGrab: THREE.Vector3 | null = null
   private reader: DocumentReader
 
   private orbit = { yaw: 45, pitch: 35, distance: 26, target: new THREE.Vector3() }
@@ -830,6 +838,7 @@ export class Viewport {
     const pick = event.button === 0 ? this.pickAt(event) : null
     const handleY = pick?.handle ? this.options.sketch?.points[pick.handle.index]?.[1] : undefined
     this.strokePlaneY = handleY ?? pick?.point?.y ?? null
+    this.panGrab = event.button === 2 ? this.grabAt(event) : null
     this.handlers.onPointerDown({
       x: event.clientX,
       y: event.clientY,
@@ -853,10 +862,7 @@ export class Viewport {
       return
     }
     if (gesture === 'pan') {
-      const yaw = this.orbit.yaw * (Math.PI / 180)
-      const scale = this.orbit.distance * 0.0016
-      this.orbit.target.x -= (Math.cos(yaw) * dx - Math.sin(yaw) * dy) * scale
-      this.orbit.target.z += (Math.sin(yaw) * dx + Math.cos(yaw) * dy) * scale
+      this.pan(event, dx, dy)
       return
     }
     // Still undeclared: no hover either, exactly as before — an alt press
@@ -877,7 +883,48 @@ export class Viewport {
     if (this.canvas.hasPointerCapture(event.pointerId)) {
       this.canvas.releasePointerCapture(event.pointerId)
     }
+    this.panGrab = null
     this.handlers.onPointerUp({ x: event.clientX, y: event.clientY })
+  }
+
+  /**
+   * The point a right press takes hold of: whatever surface is under the
+   * cursor, objects included, or — over the sky — the point on the plane at
+   * the orbit target's height. Null only when the ray misses that plane too
+   * (looking up, the plane behind the camera).
+   */
+  private grabAt(event: PointerEvent): THREE.Vector3 | null {
+    const [x, y] = this.ndc(event)
+    const hit = this.picker.pick(this.scene, this.camera, x, y).point
+    if (hit) return hit.clone()
+    return this.picker.pickPlane(this.camera, x, y, this.orbit.target.y)
+  }
+
+  /**
+   * A pan holds the pixel that was pressed under the cursor: the ray through
+   * this event's cursor is cast onto the plane of the grabbed point, and the
+   * rig slides by the difference (`panToHold`). The camera is placed at once,
+   * not left for the next frame, so a second move landing in the same frame
+   * casts from where the rig now is rather than where it was.
+   *
+   * The ray misses the plane when the cursor is above the horizon; that event
+   * slides by pixels instead, scaled by distance, so the pan never freezes.
+   */
+  private pan(event: PointerEvent, dx: number, dy: number): void {
+    if (this.panGrab) {
+      const [x, y] = this.ndc(event)
+      const under = this.picker.pickPlane(this.camera, x, y, this.panGrab.y)
+      if (under) {
+        panToHold(this.orbit, this.panGrab, under)
+        applyRig(this.camera, this.orbit)
+        this.camera.updateMatrixWorld()
+        return
+      }
+    }
+    const yaw = this.orbit.yaw * (Math.PI / 180)
+    const scale = this.orbit.distance * 0.0016
+    this.orbit.target.x -= (Math.cos(yaw) * dx - Math.sin(yaw) * dy) * scale
+    this.orbit.target.z += (Math.sin(yaw) * dx + Math.cos(yaw) * dy) * scale
   }
 
   private onWheel = (event: WheelEvent): void => {
