@@ -141,8 +141,8 @@ function faceAxes(piece: CubePiece): [THREE.Vector3, THREE.Vector3] {
   return [new THREE.Vector3(z, 0, -x), new THREE.Vector3(0, 1, 0)]
 }
 
-/** What a face is called, from the game's front: the camera's default yaw of zero sits on +z. */
-export const FACE_LABELS: Readonly<Record<string, string>> = { '+y': 'TOP', '+z': 'FRONT', '-z': 'BACK', '+x': 'RIGHT', '-x': 'LEFT' }
+/** Each face is named by its axis, the way the rig and the document count: the camera's default yaw of zero sits on +z. */
+export const FACE_LABELS: Readonly<Record<string, string>> = { '+x': 'X+', '-x': 'X-', '+y': 'Y+', '-y': 'Y-', '+z': 'Z+', '-z': 'Z-' }
 
 const CHAMFER = 0.22
 /** The cube's own camera sits this far out; the frustum below is sized so the cube fills its corner with a margin. */
@@ -173,8 +173,8 @@ export class ViewCube {
   constructor(private colours: CubeColours = DEFAULT_COLOURS) {
     this.pieces = cubePieces()
     for (const piece of this.pieces) {
-      const material = new THREE.MeshBasicMaterial({ color: this.baseColour(piece), toneMapped: false })
-      const label = piece.kind === 'face' && piece.view ? FACE_LABELS[piece.id] : undefined
+      const material = new THREE.MeshBasicMaterial({ color: this.baseColour(piece), toneMapped: false, transparent: true })
+      const label = piece.kind === 'face' ? FACE_LABELS[piece.id] : undefined
       if (label !== undefined) {
         const texture = this.labelTexture(label)
         if (texture) {
@@ -190,7 +190,7 @@ export class ViewCube {
     // Chamfers are drawn as lines too, so the silhouette reads at a glance.
     this.outline = new THREE.LineSegments(
       new THREE.EdgesGeometry(mergedGeometry(this.pieces.map((piece) => pieceGeometry(piece, CHAMFER))), 15),
-      new THREE.LineBasicMaterial({ color: 0x4a505c, toneMapped: false }),
+      new THREE.LineBasicMaterial({ color: 0x4a505c, toneMapped: false, transparent: true }),
     )
     this.scene.add(this.outline)
     this.orient(0, 0)
@@ -214,6 +214,12 @@ export class ViewCube {
     const hits = this.raycaster.intersectObjects([...this.meshes.values()], false)
     const id = hits[0]?.object.userData.piece as string | undefined
     return id === undefined ? null : (this.pieces.find((piece) => piece.id === id) ?? null)
+  }
+
+  /** How solid the whole cube is drawn: it sits back until the pointer comes to it. */
+  setOpacity(opacity: number): void {
+    for (const mesh of this.meshes.values()) mesh.material.opacity = opacity
+    this.outline.material.opacity = opacity
   }
 
   /** Light up one piece, or none. */
