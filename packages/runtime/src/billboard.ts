@@ -61,6 +61,34 @@ export function rgbaTexture(image: RgbaImage, nearest: boolean): THREE.DataTextu
 }
 
 /**
+ * Free the GPU texture made for `image`, if one was, and forget it. The cache
+ * above is keyed by the image object, so when a caller replaces an image with
+ * a new one — a regenerated sheet, a new sprite set — the old texture falls
+ * out of the cache in JS while three still holds its upload on the GPU; only
+ * `dispose()` gives that back. Whoever replaces images calls this for the
+ * ones it let go. A texture still attached to a material when released is
+ * uploaded again the next time it draws, so an early release costs a frame's
+ * upload, never a wrong picture.
+ */
+export function releaseTexture(image: RgbaImage): void {
+  const texture = textureCache.get(image)
+  if (!texture) return
+  textureCache.delete(image)
+  texture.dispose()
+}
+
+/** Release every image in `previous` that `next` does not also hold. */
+export function releaseReplaced(previous: Iterable<RgbaImage>, next: Iterable<RgbaImage>): void {
+  const kept = new Set(next)
+  for (const image of previous) if (!kept.has(image)) releaseTexture(image)
+}
+
+/** Every image a sprite set draws with. */
+export function spriteImages(sprites: Readonly<Record<string, SpriteAsset>>): RgbaImage[] {
+  return Object.values(sprites).flatMap((asset) => asset.facings)
+}
+
+/**
  * Resolve `auto` against the rig, per brief section 8: a camera that barely
  * rotates can use a cheap fixed plane; one that orbits needs a billboard.
  */
