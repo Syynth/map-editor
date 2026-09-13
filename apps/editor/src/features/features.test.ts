@@ -217,9 +217,9 @@ describe('the tool contract, which a declaration cannot carry', () => {
     // handed it — so a `tools.set` between the press and the tick is seen.
     expect(dispatch('terrain.params', { brush: { size: 3, shape: 'square' } })).toEqual({ ok: true })
     const patches = handler?.begin({ pick: { surface: top, point: null, objectId: null }, modifiers: { shift: false, alt: false, ctrl: false } })
-    // Nine cells, each a half-tile up from a whole cube: the new top voxel's
-    // material and its shape, per cell.
-    expect(patches).toHaveLength(18)
+    // Nine cells, each one cube up (the default strength) from a whole cube:
+    // the new top voxel's material, per cell; its shape is already a block.
+    expect(patches).toHaveLength(9)
     expect(new Set(patches?.map((patch) => (patch.t === 'voxel' ? patch.index % (8 * 8) : -1))).size).toBe(9)
 
     // And it applied nothing: a handler answers with patches, and the stroke
@@ -284,7 +284,8 @@ function raiseOnce(host: Host, x: number, y: number, by = 1): void {
 describe('a terrain stroke, from the pointer to the document', () => {
   it('a left drag sculpts on every tick and lands as one undo entry, one patch per address', () => {
     const { host, dispatch } = live
-    dispatch('terrain.params', { brush: { size: 3, shape: 'square' } })
+    // One half-tile per pass, so each cell reads as +1 below; the tool's default strength is a whole cube.
+    dispatch('terrain.params', { brush: { size: 3, shape: 'square' }, strength: 1 })
     const doc = host.reader.doc
     const before = columnHeights(ground(doc))
     const arrays = { material: ground(doc).voxels.material.slice(), shape: ground(doc).voxels.shape.slice(), water: ground(doc).water.slice() }
@@ -334,6 +335,7 @@ describe('a terrain stroke, from the pointer to the document', () => {
     // the store refused it and the stroke's compaction map holds only patches
     // the stroke itself produced.
     const { host, dispatch } = live
+    dispatch('terrain.params', { strength: 1 })
     const doc = host.reader.doc
     const height = (x: number, y: number) => topHeight(ground(doc), x, y)
     const before = columnHeights(ground(doc))
@@ -370,7 +372,7 @@ describe('a terrain stroke, from the pointer to the document', () => {
     expect(host.input.strokeOrigin()).toEqual([2, 2])
 
     host.input.pointerUp({ x: 40, y: 40 })
-    for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) expect(height(x, y)).toBe(before[cellIndex(ground(doc).size, x, y)] + 1)
+    for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) expect(height(x, y)).toBe(before[cellIndex(ground(doc).size, x, y)] + 2)
     expect(height(5, 5)).toBe(before[cellIndex(ground(doc).size, 5, 5)])
     expect(height(1, 1)).toBe(before[cellIndex(ground(doc).size, 1, 1)])
 
@@ -394,7 +396,7 @@ describe('a terrain stroke, from the pointer to the document', () => {
     host.input.pointerDown(pressAt(2, 2))
     host.input.pointerUp({ x: 20, y: 20 })
 
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) expect(height(x, y)).toBe(before[cellIndex(ground(doc).size, x, y)] + 1)
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) expect(height(x, y)).toBe(before[cellIndex(ground(doc).size, x, y)] + 2)
     expect(height(5, 5)).toBe(before[cellIndex(ground(doc).size, 5, 5)])
     expect(dispatch('undo')).toEqual({ ok: true })
     expect(columnHeights(ground(doc))).toEqual(before)

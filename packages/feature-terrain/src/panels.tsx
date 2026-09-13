@@ -7,10 +7,12 @@
  *
  * Two slots (2026-09-12 frame): the BAR is the tool's mode switch, verbs and
  * parameters in one icon-only row — mode first, because it changes what a
- * drag means, then the verb, then the stroke shape and the brush — and the
- * INSPECTOR holds what needs more room than a row: the sculpt dial while the
- * feel is settled, and the material or tint picker when painting. The tile
- * picker is not here: it needs the loaded sheet, which is the app's.
+ * drag means, then the verb, then the stroke shape, the brush and the
+ * numbers, every number a scrub field (ruling of 2026-09-13) — and the
+ * INSPECTOR holds what needs more room than a row: the sculpt numbers with
+ * the dial while the feel is settled, and the tint picker when tinting. The
+ * Materials section is the app's: it needs the loaded terrain sets for its
+ * swatches, which no feature holds.
  *
  * Panels take their state as PROPS rather than reading an actor: the tool
  * parameters live on the host's tools actor, and a feature may not import the
@@ -21,7 +23,7 @@
 
 import type { ReadonlyMapDoc } from '@papercut/document'
 import { chordFor, panels, type OwnerId, type Platform } from '@papercut/registry'
-import { BarDivider, BarLabel, BarSlider, ColorInput, Field, IconSegmented, Select, Slider } from '@papercut/ui'
+import { BarDivider, BarLabel, BarScrub, Chip, ColorInput, Field, IconSegmented, Note, Scrub, Verb } from '@papercut/ui'
 
 import { terrainKeys } from './keys'
 import type { TerrainParams } from './verbs'
@@ -35,41 +37,11 @@ export interface TerrainPanelProps {
   readonly platform: Platform
 }
 
-export function TerrainBar({ params, set, platform }: TerrainPanelProps) {
-  const modeKbd = chordFor('terrain.params', { terrainMode: params.terrainMode === 'sculpt' ? 'paint' : 'sculpt' }, platform)
+const cssColor = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
+
+function StrokeControls({ params, set, platform }: TerrainPanelProps) {
   return (
     <>
-      <IconSegmented
-        value={params.terrainMode}
-        onChange={(terrainMode) => set({ terrainMode })}
-        options={[
-          { value: 'sculpt', icon: 'sculpt', title: 'Sculpt', kbd: modeKbd },
-          { value: 'paint', icon: 'paint', title: 'Paint', kbd: modeKbd },
-        ]}
-      />
-      <BarDivider />
-      {params.terrainMode === 'sculpt' ? (
-        <IconSegmented
-          value={params.sculptVerb}
-          onChange={(sculptVerb) => set({ sculptVerb })}
-          options={[
-            { value: 'raise', icon: 'raise', title: 'Raise — shift lowers' },
-            { value: 'flatten', icon: 'flatten', title: 'Flatten to the height under the press' },
-            { value: 'ramp', icon: 'ramp', title: 'Ramp — click a cliff face to cut one, a ramp to remove it' },
-            { value: 'water', icon: 'water', title: 'Water — shift removes it' },
-          ]}
-        />
-      ) : (
-        <IconSegmented
-          value={params.paintVerb}
-          onChange={(paintVerb) => set({ paintVerb })}
-          options={[
-            { value: 'material', icon: 'material', title: 'Material — a top takes it, a cliff band is painted with it, ⇧ clears a band' },
-            { value: 'tint', icon: 'tint', title: 'Tint' },
-          ]}
-        />
-      )}
-      <BarDivider />
       <BarLabel>Stroke</BarLabel>
       <IconSegmented
         value={params.strokeShape}
@@ -88,9 +60,9 @@ export function TerrainBar({ params, set, platform }: TerrainPanelProps) {
           { value: 'circle', icon: 'circle', title: 'Round brush' },
         ]}
       />
-      <BarLabel>Size</BarLabel>
-      <BarSlider
-        title="Brush size"
+      <BarScrub
+        label="Size"
+        title="Brush size: drag to change, click to type"
         kbd={[chordFor('terrain.brush.resize', { by: -1 }, platform), chordFor('terrain.brush.resize', { by: 1 }, platform)].filter(Boolean).join(' ')}
         value={params.brush.size}
         min={1}
@@ -101,35 +73,116 @@ export function TerrainBar({ params, set, platform }: TerrainPanelProps) {
   )
 }
 
-/**
- * The sculpt stroke's dial, while the feel is being settled (tentative
- * ruling of 2026-09-12): how far past a cell boundary the pointer goes
- * before the stroke moves on. Leaves with the number, once it is chosen.
- */
-export function TerrainSculptPanel({ params, set }: TerrainPanelProps) {
+/** The number a sculpt verb takes: half-tiles per pass for Raise and Smooth, the height Flatten sets, nothing for Ramp. */
+function SculptNumber({ params, set }: TerrainPanelProps) {
+  if (params.sculptVerb === 'flatten') {
+    return (
+      <>
+        <BarScrub label="Height" title="The height Flatten sets, in half-tiles: sampled where you press, or typed and pinned" unit="½" value={params.height} min={0} max={40} onChange={(height) => set({ height, heightPinned: true })} />
+        <Verb
+          icon={params.heightPinned ? 'lock' : 'unlock'}
+          title={params.heightPinned ? 'Height is pinned — click to sample it at each press again' : 'Height follows the press — click to pin the value'}
+          active={params.heightPinned}
+          onClick={() => set({ heightPinned: !params.heightPinned })}
+        />
+      </>
+    )
+  }
+  if (params.sculptVerb === 'raise' || params.sculptVerb === 'smooth') {
+    return <BarScrub label="Strength" title="Half-tiles per pass" unit="½" value={params.strength} min={1} max={8} onChange={(strength) => set({ strength })} />
+  }
+  return null
+}
+
+export function TerrainBar(props: TerrainPanelProps) {
+  const { params, set, platform } = props
+  const modeKbd = chordFor('terrain.params', { terrainMode: params.terrainMode === 'sculpt' ? 'paint' : 'sculpt' }, platform)
+  const ramp = params.rampRun
   return (
-    <Field label="Dead zone" hint="Cells past a boundary before the stroke moves to the next cell — 0 is the exact boundary">
-      <Slider value={params.sculptDeadZone} min={0} max={0.5} step={0.05} onChange={(sculptDeadZone) => set({ sculptDeadZone })} format={(v) => v.toFixed(2)} />
-    </Field>
+    <>
+      <IconSegmented
+        value={params.terrainMode}
+        onChange={(terrainMode) => set({ terrainMode })}
+        options={[
+          { value: 'sculpt', icon: 'sculpt', title: 'Sculpt', kbd: modeKbd },
+          { value: 'paint', icon: 'paint', title: 'Paint', kbd: modeKbd },
+        ]}
+      />
+      <BarDivider />
+      {params.terrainMode === 'sculpt' ? (
+        <>
+          <IconSegmented
+            value={params.sculptVerb}
+            onChange={(sculptVerb) => set({ sculptVerb })}
+            options={[
+              { value: 'raise', icon: 'raise', title: 'Raise — ⇧ lowers' },
+              { value: 'flatten', icon: 'flatten', title: 'Flatten to a height' },
+              { value: 'smooth', icon: 'smooth', title: 'Smooth toward the neighbours' },
+              { value: 'ramp', icon: 'ramp', title: 'Ramp — press a cliff face and drag back to set the run; click a ramp to remove it' },
+              { value: 'water', icon: 'water', title: 'Water — shift removes it (interim, until the Water tool)' },
+            ]}
+          />
+          <BarDivider />
+          {params.sculptVerb === 'ramp' ? (
+            <BarLabel>{ramp ? `Run ${ramp.run} of ${ramp.needed}` : 'Press a cliff face, drag back'}</BarLabel>
+          ) : (
+            <>
+              <StrokeControls {...props} />
+              <SculptNumber {...props} />
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <IconSegmented
+            value={params.paintVerb}
+            onChange={(paintVerb) => set({ paintVerb })}
+            options={[
+              { value: 'material', icon: 'material', title: 'Material — a top takes it, a cliff band is painted with it, ⇧ clears a band' },
+              { value: 'tint', icon: 'tint', title: 'Tint' },
+            ]}
+          />
+          <BarDivider />
+          {params.paintVerb === 'material'
+            ? props.doc.materials.map((material, index) => (
+                <Chip key={material.id} title={`${material.name} · ${material.role}`} swatch={cssColor(material.color)} active={index === params.material} onClick={() => set({ material: index })} />
+              ))
+            : null}
+          <BarDivider />
+          <StrokeControls {...props} />
+        </>
+      )}
+    </>
   )
 }
 
-export function TerrainPaintPanel({ doc, params, set }: TerrainPanelProps) {
+/** The sculpt numbers with room to read, plus the stroke's dial while the feel is settled (tentative ruling of 2026-09-12). */
+export function TerrainSculptPanel({ params, set }: TerrainPanelProps) {
+  return (
+    <>
+      <Scrub label="Size" value={params.brush.size} min={1} max={12} onChange={(size) => set({ brush: { ...params.brush, size } })} />
+      {params.sculptVerb === 'flatten' ? (
+        <Scrub label="Height" unit="½" value={params.height} min={0} max={40} onChange={(height) => set({ height, heightPinned: true })} />
+      ) : params.sculptVerb === 'ramp' ? null : (
+        <Scrub label="Strength" unit="½" value={params.strength} min={1} max={8} onChange={(strength) => set({ strength })} />
+      )}
+      <Scrub label="Dead zone" value={params.sculptDeadZone} min={0} max={0.5} step={0.05} onChange={(sculptDeadZone) => set({ sculptDeadZone })} format={(v) => v.toFixed(2)} />
+      <Note>
+        {params.sculptVerb === 'ramp'
+          ? 'A ramp is always 45°: one tile down per cell of run. Press a cliff face and drag back onto the high side until the run meets the drop; a half ramp finishes an odd half-tile. Click a ramp to remove its run.'
+          : params.sculptVerb === 'flatten'
+            ? 'Height is sampled where you press; type or drag it to pin a value, and unpin to sample again.'
+            : 'Strength is half-tiles per pass: 2 is one cube. ⇧ inverts Raise; ⌥ click picks a material or height up.'}
+      </Note>
+    </>
+  )
+}
+
+export function TerrainPaintPanel({ params, set }: TerrainPanelProps) {
   if (params.paintVerb === 'tint') {
     return (
       <Field label="Tint">
         <ColorInput value={params.tint} onChange={(tint) => set({ tint })} />
-      </Field>
-    )
-  }
-  if (params.paintVerb === 'material') {
-    return (
-      <Field label="Material">
-        <Select
-          value={String(params.material)}
-          onChange={(value) => set({ material: Number(value) })}
-          options={doc.materials.map((material, index) => ({ value: String(index), label: material.name }))}
-        />
       </Field>
     )
   }

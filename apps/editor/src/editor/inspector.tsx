@@ -15,10 +15,13 @@ import type { Atmosphere, CameraRig, DeepReadonly, MapObject, Placement, Readonl
 import { useDocument, useHost, useToolsSelector, useViewSelector, type Selection } from '@papercut/editor-host'
 import { mergeParams, type EditorParams } from './params'
 import { chordFor, type Platform } from '@papercut/registry'
-import { FileButton, InspectorHead, Note, Row, Section } from '@papercut/ui'
+import { FileButton, InspectorHead, Note, Section } from '@papercut/ui'
 
 import { useArt } from './art'
 import { run, setParams } from './commands'
+import type { LoadedSet } from '@papercut/geometry'
+
+import { MaterialsSection } from './materials'
 import { loadTerrainSetFiles } from './sheet'
 
 import { FeaturePanels } from './bars'
@@ -74,6 +77,7 @@ export function InspectorRegion({ platform }: { platform: Platform }) {
       deleteKbd={chordFor('selection.delete', undefined, platform)}
       levelOpen={levelOpen}
       onLevelToggle={(open) => run(host, 'view.set', { levelOpen: open })}
+      terrain={art.terrain}
       terrainWarning={art.terrainWarning}
       onLoadTerrain={(files) => void onLoadTerrain(files)}
       onSelect={(id) => {
@@ -107,6 +111,7 @@ export function Inspector({
   deleteKbd,
   levelOpen,
   onLevelToggle,
+  terrain,
   terrainWarning,
   onLoadTerrain,
   onSelect,
@@ -127,6 +132,8 @@ export function Inspector({
   deleteKbd?: string
   levelOpen: boolean
   onLevelToggle: (open: boolean) => void
+  /** The terrain sets the map draws from, for the material swatches. */
+  terrain: readonly LoadedSet[]
   terrainWarning: string | null
   onLoadTerrain: (files: File[]) => void
   /** Select an object by id, from the outliner or the coverage list. */
@@ -168,18 +175,17 @@ export function Inspector({
       ) : null}
 
       {isTerrain ? (
-        <Section title="Brush" summary={`${params.brush.size} · ${params.brush.shape}`}>
-          <Row label="Size" value={`${params.brush.size} cells`} />
-          <Row label="Shape" value={params.brush.shape} />
+        <Section title={params.terrainMode === 'sculpt' ? 'Sculpt' : 'Paint'} summary={`${params.brush.size} · ${params.brush.shape}`}>
           <FeaturePanels slot="inspector" tool={params.tool} doc={doc} params={params} platform={platform} selection={selection} />
         </Section>
       ) : null}
+      {isTerrain ? <MaterialsSection doc={doc} active={params.material} sets={terrain} /> : null}
 
       {/* The terrain set is the app's: an artist loads a sheet and its sidecar
           here, and the generated fallback comes from the composition root
           (#47). The Materials section the spec describes (§4) replaces this. */}
-      {isTerrain && params.terrainMode === 'paint' ? (
-        <Section title="Terrain set" summary={doc.materials[params.material]?.top.sheet ?? '—'}>
+      {isTerrain ? (
+        <Section title="Terrain set" summary={doc.materials[params.material]?.top.sheet ?? '—'} defaultOpen={false}>
           <Note>Every material draws from a terrain set: a sheet and the sidecar that tags its tiles. Pick both files together.</Note>
           <FileButton icon="open" title="Load sheet + sidecar" accept="image/png,image/*,.json,application/json" multiple onFiles={onLoadTerrain} />
           {terrainWarning ? <Note tone="warn">{terrainWarning}</Note> : null}

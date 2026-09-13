@@ -68,12 +68,20 @@ const tintArgs = z.object({ structure, cells, tint: z.int().min(0).max(0xffffff)
 const terrainParams = z
   .object({
     terrainMode: z.enum(['sculpt', 'paint']).exactOptional(),
-    sculptVerb: z.enum(['raise', 'flatten', 'ramp', 'water']).exactOptional(),
+    sculptVerb: z.enum(['raise', 'flatten', 'smooth', 'ramp', 'water']).exactOptional(),
     paintVerb: z.enum(['material', 'tint']).exactOptional(),
     strokeShape: z.enum(['brush', 'rect', 'fill']).exactOptional(),
     brush: z.object({ size: z.int().min(1).max(12), shape: z.enum(['square', 'circle']) }).exactOptional(),
     material: z.int().min(0).exactOptional(),
     tint: z.int().min(0).max(0xffffff).exactOptional(),
+    strength: z.int().min(1).max(8).exactOptional(),
+    height: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT).exactOptional(),
+    heightPinned: z.boolean().exactOptional(),
+    rampRun: z
+      .object({ edge: z.object({ x: z.int().min(0), z: z.int().min(0), dir: z.int().min(0).max(3) }).strict(), run: z.int().min(1), needed: z.int().min(1) })
+      .strict()
+      .nullable()
+      .exactOptional(),
     sculptDeadZone: z.number().min(0).max(0.5).exactOptional(),
   })
   .strict()

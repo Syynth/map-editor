@@ -72,6 +72,8 @@ export interface TerrainChunkMesh {
   key: string
   solid: MeshBuffers
   water: MeshBuffers | null
+  /** Where the atlas had to compose a tile nobody drew: one xyz per composited corner, for the editor to mark (spec §3). */
+  marks: Float32Array
 }
 
 /** Height treated as existing outside the map, so borders read as an island. */
@@ -441,9 +443,17 @@ export function meshTerrainChunk(voxel: ReadonlyVoxel, key: string, look: Terrai
   const water = new BufferBuilder()
   const { atlas } = look
   const cells = new Cells(voxel, look)
+  const marks: number[] = []
+  const marked = new Set<string>()
+  const mark = (x: number, y: number, z: number): void => {
+    const id = `${x},${y},${z}`
+    if (marked.has(id)) return
+    marked.add(id)
+    marks.push(x, y, z)
+  }
 
   if (!bounds) {
-    return { key, solid: solid.finish(), water: null }
+    return { key, solid: solid.finish(), water: null, marks: new Float32Array(0) }
   }
 
   for (let y = bounds.y0; y < bounds.y1; y++) {
@@ -459,7 +469,8 @@ export function meshTerrainChunk(voxel: ReadonlyVoxel, key: string, look: Terrai
         for (let q = 0; q < 4; q++) {
           const fx0 = (q % 2) * 0.5
           const fy0 = q > 1 ? 0.5 : 0
-          const { tile } = atlas.tileFor(topCorner(cells, voxel, x, y, x + (q % 2), y + (q > 1 ? 1 : 0)))
+          const { tile, composite } = atlas.tileFor(topCorner(cells, voxel, x, y, x + (q % 2), y + (q > 1 ? 1 : 0)))
+          if (composite) mark(x + (q % 2), bilinear(cornerH, q % 2, q > 1 ? 1 : 0) * HALF, y + (q > 1 ? 1 : 0))
           const [u0, v0, u1, v1] = atlas.uv(tile, QUADRANT_OF_QUARTER[q])
           // Corner order c00, c01, c11, c10 within the quarter. Sheets are authored top-down, so increasing map +Z walks down the sheet, which is decreasing v.
           solid.polygon(
@@ -508,7 +519,8 @@ export function meshTerrainChunk(voxel: ReadonlyVoxel, key: string, look: Terrai
             // The wall region cut to this quarter of this band, exactly: a slope crossing it is followed, not approximated.
             const piece = clipToRect(region, t0, t0 + 0.5, h0, h0 + 0.5)
             if (piece.length === 0) continue
-            const { tile } = atlas.tileFor(bandCorner(cells, voxel, x, y, dir, level, atEnd, atTop))
+            const { tile, composite } = atlas.tileFor(bandCorner(cells, voxel, x, y, dir, level, atEnd, atTop))
+            if (composite) mark(ox + u[0] * (atEnd ? 1 : 0), (atTop ? level + 1 : level) * HALF, oz + u[1] * (atEnd ? 1 : 0))
             const [u0, v0, u1, v1] = atlas.uv(tile, QUADRANT_OF_QUARTER[q])
             solid.polygon(
               piece.map(([t, h]) => [ox + u[0] * t, h * HALF, oz + u[1] * t] as const),
@@ -551,5 +563,6 @@ export function meshTerrainChunk(voxel: ReadonlyVoxel, key: string, look: Terrai
     key,
     solid: solid.finish(),
     water: water.isEmpty ? null : water.finish(),
+    marks: new Float32Array(marks),
   }
 }

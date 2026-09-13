@@ -16,6 +16,7 @@ import { SURFACE_CLIFF, countDormant, describeSurface, faceExposed, parseFaceKey
 import { sameSurface, useDocumentSelector, useHost, useToolsSelector, useViewSelector, useViewportSelector } from '@papercut/editor-host'
 import { Hint, StatusHints, StatusRight } from '@papercut/ui'
 
+import { run } from './commands'
 import { mergeParams, type EditorParams } from './params'
 
 /** The snap-off modifier as the status bar names it: Cmd on a Mac, Ctrl elsewhere (the viewport folds both into `ctrl`). */
@@ -135,9 +136,22 @@ function DormantPaint() {
 }
 
 /** Corners the atlas had to compose because no tile is authored for them: the artist's list of transitions to draw (spec §3). */
+/** Also the switch for the marks: click to see where on the map each composited corner is. */
 function MissingTransitions() {
+  const host = useHost()
   const missing = useViewportSelector((snapshot) => snapshot.context.stats.missingTransitions)
-  return <span title="Corner combinations composed from edge sets because nobody has drawn the transition; each is a tile to author">{missing} to author</span>
+  const shown = useViewSelector((snapshot) => snapshot.context.showMissing)
+  return (
+    <button
+      type="button"
+      className={`ui-status-toggle ${shown ? 'is-on' : ''}`}
+      title={`${missing} corner combinations composed from edge sets because nobody has drawn the transition; each is a tile to author. Click to ${shown ? 'hide' : 'show'} where they are.`}
+      aria-pressed={shown}
+      onClick={() => run(host, 'view.set', { showMissing: !shown })}
+    >
+      {missing} to author
+    </button>
+  )
 }
 
 function LayersReadout() {

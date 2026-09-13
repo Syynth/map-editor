@@ -150,6 +150,17 @@ describe('the document commands, routed to the document actor', () => {
     expect(host.reader.undoLabel()).toBe('Add object')
   })
 
+  it('replaces the material list whole, so a reorder is one entry', () => {
+    const { host, dispatch } = makeHost()
+    const before = host.reader.doc.materials
+    const reordered = [...before].reverse()
+    expect(dispatch('materials.set', { materials: reordered })).toEqual({ ok: true })
+    expect(host.reader.doc.materials.map((m) => m.id)).toEqual(reordered.map((m) => m.id))
+    expect(host.reader.undoLabel()).toBe('Materials')
+    // A material that names no terrain is not a material.
+    expect(dispatch('materials.set', { materials: [{ id: 'x', name: 'X', color: 0, role: 'any' }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+  })
+
   it('merges the camera rig and the atmosphere, one entry each', () => {
     const { host, dispatch } = makeHost()
     const fov = host.reader.doc.camera.fov

@@ -82,6 +82,6 @@ export const terrainFeature = provideFeature({
  * meant a second copy of the rule; the preview is terrain knowledge, so it
  * belongs to the terrain feature and an app reads it from here.
  */
-export { strokeCells } from './verbs'
+export { rampRunCells, strokeCells } from './verbs'
 export type { TerrainPanelProps } from './panels'
-export type { TerrainParams } from './verbs'
+export type { RampDrag, TerrainParams } from './verbs'

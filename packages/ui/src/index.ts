@@ -73,6 +73,9 @@ export {
 } from './frame'
 export type { IconOption } from './frame'
 
+export { BarScrub, Scrub } from './scrub'
+export type { ScrubProps } from './scrub'
+
 export { ICON_NAMES, Icon, isIconName } from './icons'
 export type { IconName } from './icons'
 

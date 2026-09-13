@@ -52,6 +52,11 @@ const defaults: TerrainParams = {
   brush: { size: 1, shape: 'square' },
   material: 0,
   tint: 0xffffff,
+  // One half-tile per pass here, so a raise reads as +1 throughout the file; the tool's default is a whole cube.
+  strength: 1,
+  height: 2,
+  heightPinned: false,
+  rampRun: null,
   sculptDeadZone: 0.2,
 }
 
@@ -200,10 +205,12 @@ describe('the terrain tool contract', () => {
     const { deps } = stub(doc, { sculptVerb: 'ramp' })
     const handler = terrainContract(deps).stroke(sample(cliff))
 
-    // The direction comes from the face; the `rampDir` parameter no longer
-    // steers anything. The run is as long as the drop needs, so the one cell
-    // is re-stood at its own height with its top voxel sloped north.
-    expect(handler?.begin(sample(cliff))).toEqual([{ t: 'voxel', id: 'ground', field: 'shape', index: voxelIndex(ground(doc), 2, 2, 1), value: rampShape(3) }])
+    // A ramp is a drag: the press starts the run (previewed through the
+    // parameters, applying nothing) and the release cuts it. A one-tile drop
+    // needs a run of one, which the press already is, so the one cell is
+    // re-stood at its own height with its top voxel sloped north.
+    expect(handler?.begin(sample(cliff))).toEqual([])
+    expect(handler?.end(sample(cliff))).toEqual([{ t: 'voxel', id: 'ground', field: 'shape', index: voxelIndex(ground(doc), 2, 2, 1), value: rampShape(3) }])
   })
 
   it('removes the run under a clicked ramp top', () => {
@@ -215,10 +222,10 @@ describe('the terrain tool contract', () => {
 
     // The heights stay and only the slope goes: a full ramp back to a block.
     expect(handler?.begin(sample(top(2, 2)))).toEqual([{ t: 'voxel', id: 'ground', field: 'shape', index: voxelIndex(ground(doc), 2, 2, 1), value: SHAPE_BLOCK }])
-    // And a flat top has no run to remove.
+    // And a flat top has no run to remove: the press declines, and falls through to a click.
     const flat = createMap(8, 8)
     expect(rampDirAt(ground(flat), 2, 2)).toBe(NO_RAMP)
-    expect(terrainContract(stub(flat, { sculptVerb: 'ramp' }).deps).stroke(sample(top(2, 2)))?.begin(sample(top(2, 2)))).toEqual([])
+    expect(terrainContract(stub(flat, { sculptVerb: 'ramp' }).deps).stroke(sample(top(2, 2)))).toBeUndefined()
   })
 
   it('declines a press that missed the terrain', () => {

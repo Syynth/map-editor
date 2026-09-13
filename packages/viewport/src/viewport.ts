@@ -159,6 +159,8 @@ export interface ViewportOptions {
   /** Cells the brush would affect, previewed under the cursor. */
   brushPreview: ReadonlyArray<readonly [number, number]>
   showGrid: boolean
+  /** Mark every corner the atlas had to compose: the transitions still to draw. */
+  showMissing: boolean
   /** Clamp the editor camera to what the game rig allows. */
   gameCamera: boolean
   /** How the free editor camera projects. Under `gameCamera` and in play the rig's own projection is used instead. */
@@ -195,6 +197,7 @@ const CUBE_REST_OPACITY = 0.4
 const DEFAULT_OPTIONS: ViewportOptions = {
   brushPreview: [],
   showGrid: true,
+  showMissing: false,
   gameCamera: false,
   projection: 'perspective',
   play: null,
@@ -410,11 +413,13 @@ export class Viewport {
   setOptions(options: Partial<ViewportOptions>): void {
     const wasPlaying = this.playing
     const wasLayers = this.options.layers
+    const wasShowMissing = this.options.showMissing
     this.options = { ...this.options, ...options }
     if (this.playing !== wasPlaying) this.togglePlay(this.options.play)
     // The range is a section cut on the GPU: a plane and a uniform, nothing rebuilt.
     const layers = this.options.layers
     if (layers?.lo !== wasLayers?.lo || layers?.hi !== wasLayers?.hi) this.scene.setLayerRange(layers)
+    if (this.options.showMissing !== wasShowMissing) this.scene.setShowMissing(this.options.showMissing)
   }
 
   /** A session is running. The flag this replaced was a second copy of the same fact. */

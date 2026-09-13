@@ -46,7 +46,7 @@ import {
 import { currentSketch, sketchPointHeight } from '@papercut/feature-sketch'
 // The brush preview draws the cells a terrain stroke will touch, so it calls the same function the stroke does. An app
 // is the only thing that may import a feature (#35), and this file is an app.
-import { strokeCells } from '@papercut/feature-terrain'
+import { rampRunCells, strokeCells } from '@papercut/feature-terrain'
 import { chordFor, type Platform } from '@papercut/registry'
 import { Kbd, LayerRange, Overlay, Pill } from '@papercut/ui'
 import { Viewport, type SketchOverlay } from '@papercut/viewport'
@@ -72,9 +72,13 @@ function firstVoxel(doc: ReadonlyMapDoc): ReadonlyVoxel | undefined {
 /** The cells a terrain stroke at `surface` would touch, read off the live tool parameters and any open stroke's origin. */
 function brushCellsAt(host: Host, surface: SurfaceAddress | null): BrushCells {
   const tools = host.children.tools.getSnapshot().context
-  if (!surface || tools.tool !== 'terrain' || isPlaying(host.actor.getSnapshot())) return NO_CELLS
+  if (tools.tool !== 'terrain' || isPlaying(host.actor.getSnapshot())) return NO_CELLS
+  const params = mergeParams(tools)
+  // A ramp being dragged out previews its run, wherever the pointer is.
+  if (params.rampRun) return rampRunCells(params.rampRun)
+  if (!surface) return NO_CELLS
   const voxel = structureOf(host.reader.doc, surface.structure, 'voxel') ?? firstVoxel(host.reader.doc)
-  return voxel ? strokeCells(voxel, mergeParams(tools), surface, host.input.strokeOrigin()) : NO_CELLS
+  return voxel ? strokeCells(voxel, params, surface, host.input.strokeOrigin()) : NO_CELLS
 }
 
 export function Stage({ platform }: { platform: Platform }) {
@@ -85,6 +89,7 @@ export function Stage({ platform }: { platform: Platform }) {
   const playing = useHostSelector(isPlaying)
   const tool = useToolsSelector((snapshot) => snapshot.context.tool)
   const showGrid = useViewSelector((snapshot) => snapshot.context.showGrid)
+  const showMissing = useViewSelector((snapshot) => snapshot.context.showMissing)
   const gameCamera = useViewSelector((snapshot) => snapshot.context.gameCamera)
   const projection = useViewSelector((snapshot) => snapshot.context.projection)
   const selection = useViewSelector((snapshot) => snapshot.context.selection)
@@ -125,10 +130,12 @@ export function Stage({ platform }: { platform: Platform }) {
     // The hover highlight and the brush preview, from the actor straight back into the viewport: shown under the
     // terrain tool, and the preview only while editing.
     const pushHover = (): void => {
-      const { hover, brushCells } = observed.getSnapshot().context
+      const { hover } = observed.getSnapshot().context
       const terrain = host.children.tools.getSnapshot().context.tool === 'terrain'
       const editing = !isPlaying(host.actor.getSnapshot())
-      viewport.setOptions({ hover: terrain ? hover : null, brushPreview: terrain && editing ? brushCells : NO_CELLS })
+      // Recomputed here rather than read back from the actor: a parameter change (a ramp drag growing its run, `]`
+      // widening the brush) moves the preview without the pointer moving.
+      viewport.setOptions({ hover: terrain ? hover : null, brushPreview: terrain && editing ? brushCellsAt(host, hover) : NO_CELLS })
     }
     const subscriptions = [
       observed.subscribe(pushHover),
@@ -156,8 +163,8 @@ export function Stage({ platform }: { platform: Platform }) {
   // where the character stands up, read at the transition.
   const play = useMemo(() => (playing ? host.playSession() : null), [host, playing])
   useEffect(() => {
-    viewportRef.current?.setOptions({ showGrid, gameCamera, projection, play, selection: selectionSubject(selection), layers })
-  }, [showGrid, gameCamera, projection, play, selection, layers])
+    viewportRef.current?.setOptions({ showGrid, showMissing, gameCamera, projection, play, selection: selectionSubject(selection), layers })
+  }, [showGrid, showMissing, gameCamera, projection, play, selection, layers])
 
   useEffect(() => {
     if (tool !== 'sketch') viewportRef.current?.setOptions({ sketch: null })

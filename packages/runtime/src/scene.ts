@@ -61,6 +61,8 @@ function buildGeometry(buffers: MeshBuffers): THREE.BufferGeometry {
 interface ChunkView {
   solid: THREE.Mesh
   water: THREE.Mesh | null
+  /** A dot on every corner the atlas composited, shown while the editor asks for them. */
+  marks: THREE.Points | null
   faceAddr: Int32Array
   waterFaceAddr: Int32Array | null
   triangleCount: number
@@ -81,6 +83,8 @@ interface StructureView {
  * over a preview drawn on the lake bed and the preview reads as under water.
  */
 export const WATER_RENDER_ORDER = 1000
+/** Above the water, above the caps: a mark is a note on the scene, not part of it. */
+const MARK_RENDER_ORDER = 1010
 
 export interface SceneStats {
   chunksBuilt: number
@@ -151,6 +155,9 @@ export class RuntimeScene {
   private views = new Map<string, ObjectView>()
   private terrainMaterial: THREE.MeshStandardMaterial
   private waterMaterial: THREE.MeshStandardMaterial
+  /** The composited-corner marks: drawn over everything, sized in pixels, magenta so they cannot be mistaken for art. */
+  private markMaterial = new THREE.PointsMaterial({ color: 0xe04fc0, size: 7, sizeAttenuation: false, depthTest: false, transparent: true })
+  private showMissing = false
   private surfaceMaterials = new Map<string, THREE.MeshStandardMaterial>()
   private sets: LoadedSet[]
   /** The look the chunks were meshed with: the atlas and what each material draws with. Replaced whole, never edited. */
@@ -319,6 +326,12 @@ export class RuntimeScene {
     this.section.set(range)
   }
 
+  /** Show or hide the marks on composited corners: the artist's map of which transitions to draw. */
+  setShowMissing(show: boolean): void {
+    this.showMissing = show
+    for (const view of this.structures.values()) for (const chunk of view.chunks.values()) if (chunk.marks) chunk.marks.visible = show
+  }
+
   /**
    * Under the layer view, what the cut shows at a world point: the top of the structure the ceiling passes through
    * there — the one standing highest, if several do — as the surface a pick lands on. `null` with no range set, or
@@ -412,6 +425,10 @@ export class RuntimeScene {
         view.group.remove(existing.water)
         existing.water.geometry.dispose()
       }
+      if (existing.marks) {
+        view.group.remove(existing.marks)
+        existing.marks.geometry.dispose()
+      }
       view.chunks.delete(key)
     }
     const { cx, cy } = parseStructureChunkKey(key)
@@ -436,7 +453,17 @@ export class RuntimeScene {
       water.userData.structureId = voxel.id
       view.group.add(water)
     }
-    view.chunks.set(key, { solid, water, faceAddr: mesh.solid.faceAddr, waterFaceAddr: mesh.water?.faceAddr ?? null, triangleCount: mesh.solid.triangleCount })
+    let marks: THREE.Points | null = null
+    if (mesh.marks.length > 0) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.BufferAttribute(mesh.marks, 3))
+      marks = new THREE.Points(geometry, this.markMaterial)
+      marks.visible = this.showMissing
+      marks.renderOrder = MARK_RENDER_ORDER
+      marks.raycast = () => undefined
+      view.group.add(marks)
+    }
+    view.chunks.set(key, { solid, water, marks, faceAddr: mesh.solid.faceAddr, waterFaceAddr: mesh.water?.faceAddr ?? null, triangleCount: mesh.solid.triangleCount })
   }
 
   private surfaceMaterial(textureName: string | null, band: boolean): THREE.MeshStandardMaterial {
@@ -681,6 +708,7 @@ export class RuntimeScene {
     this.views.clear()
     this.terrainMaterial.dispose()
     this.waterMaterial.dispose()
+    this.markMaterial.dispose()
     for (const material of this.surfaceMaterials.values()) material.dispose()
     this.sky.dispose()
     if (this.atlasImage) releaseTexture(this.atlasImage)

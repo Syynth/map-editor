@@ -13,19 +13,18 @@
 
 import {
   AIR,
+  DIR_VECTORS,
   SURFACE_CLIFF,
   SURFACE_TOP,
   brushCells,
-  clearRampRun,
   facePaint,
   fillCells,
   flatten,
   materialAt,
+  smooth,
   paintFace,
   paintTint,
   raise,
-  rampRun,
-  rampRunLength,
   rectCells,
   setMaterial,
   setWater,
@@ -36,13 +35,14 @@ import {
   type Cell,
   type FaceRef,
   type Patch,
+  type RampEdge,
   type ReadonlyMapDoc,
   type ReadonlyVoxel,
   type SurfaceAddress,
 } from '@papercut/document'
 
 export type TerrainMode = 'sculpt' | 'paint'
-export type SculptVerb = 'raise' | 'flatten' | 'ramp' | 'water'
+export type SculptVerb = 'raise' | 'flatten' | 'smooth' | 'ramp' | 'water'
 export type PaintVerb = 'material' | 'tint'
 export type StrokeShape = 'brush' | 'rect' | 'fill'
 
@@ -62,8 +62,21 @@ export interface TerrainParams {
   readonly brush: Brush
   readonly material: number
   readonly tint: number
+  /** Half-tiles per pass of Raise, Lower and Smooth. */
+  readonly strength: number
+  /** The height Flatten sets, in half-tiles: sampled at each press unless pinned. */
+  readonly height: number
+  readonly heightPinned: boolean
+  /** The ramp being dragged out: the cliff edge it starts from, how many cells the drag has taken it back, and how many the drop needs. `null` between drags. */
+  readonly rampRun: RampDrag | null
   /** Cells past a boundary before a sculpt stroke moves to the next cell; the prototype's dial. */
   readonly sculptDeadZone: number
+}
+
+export interface RampDrag {
+  readonly edge: RampEdge
+  readonly run: number
+  readonly needed: number
 }
 
 /** The modifiers a stroke reads, on every terrain verb that has an inverse. */
@@ -76,6 +89,10 @@ export const TERRAIN_DEFAULTS: TerrainParams = {
   brush: { size: 1, shape: 'square' },
   material: 0,
   tint: 0xffffff,
+  strength: 2,
+  height: 2,
+  heightPinned: false,
+  rampRun: null,
   sculptDeadZone: 0.2,
 }
 
@@ -116,8 +133,10 @@ export function terrainLabel(params: TerrainParams, modifiers: TerrainModifiers)
         return modifiers.shift ? 'Lower' : 'Raise'
       case 'flatten':
         return 'Flatten'
+      case 'smooth':
+        return 'Smooth'
       case 'ramp':
-        return 'Toggle ramp'
+        return modifiers.shift ? 'Remove ramp' : 'Cut ramp'
       case 'water':
         return modifiers.shift ? 'Remove water' : 'Carve water'
     }
@@ -158,11 +177,21 @@ export function eyedrop(voxel: ReadonlyVoxel, params: TerrainParams, address: Su
   return { material: address.kind === SURFACE_CLIFF ? bandMaterial(voxel, address) : materialAt(voxel, address.x, address.y) }
 }
 
+/** The cells a ramp drag covers: `run` cells back from the edge, away from the side it descends toward. */
+export function rampRunCells(drag: RampDrag): Cell[] {
+  const [dx, dz] = DIR_VECTORS[drag.edge.dir]
+  const cells: Cell[] = []
+  for (let k = 0; k < drag.run; k++) cells.push([drag.edge.x - k * dx, drag.edge.z - k * dz])
+  return cells
+}
+
 /**
  * One sculpt tick: the verb in `params`, over `cells`, addressed at `address`.
  * `anchorHeight` is the height sampled when the stroke began — flatten levels
- * to the cell that was pressed rather than following the terrain, and a stroke
- * is the only thing that knows which cell that was.
+ * to the cell that was pressed (or to the pinned height) rather than
+ * following the terrain, and a stroke is the only thing that knows which
+ * cell that was. The ramp verb is not here: a ramp is a drag, not a tick,
+ * and `stroke.ts` owns it.
  */
 export function sculptPatches(
   doc: ReadonlyMapDoc,
@@ -175,20 +204,13 @@ export function sculptPatches(
 ): Patch[] {
   switch (params.sculptVerb) {
     case 'raise':
-      return raise(doc, voxel, cells, modifiers.shift ? -1 : 1)
+      return raise(doc, voxel, cells, modifiers.shift ? -params.strength : params.strength)
     case 'flatten':
-      return flatten(doc, voxel, cells, anchorHeight)
-    case 'ramp': {
-      // A cliff face cuts a ramp back from that edge, as long a run as the
-      // drop needs (the drag that chooses the run is the tool rework's); a
-      // ramp's own top removes the run it belongs to.
-      if (address.kind === SURFACE_CLIFF) {
-        const edge = { x: address.x, z: address.y, dir: address.dir }
-        const run = rampRunLength(voxel, edge)
-        return run === null ? [] : rampRun(doc, voxel, edge, run)
-      }
-      return clearRampRun(doc, voxel, address.x, address.y)
-    }
+      return flatten(doc, voxel, cells, params.heightPinned ? params.height : anchorHeight)
+    case 'smooth':
+      return smooth(doc, voxel, cells, params.strength)
+    case 'ramp':
+      return []
     case 'water':
       if (modifiers.shift) return setWater(voxel, cells, null)
       // INTERIM (2026-09-12): pool one half-tile over the pressed cell, so
