@@ -1,0 +1,624 @@
+<meta charset="utf-8">
+<title>Terrain Tools</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #15171c; --bg2: #1b1e25; --panel: #242833; --panel2: #2c3140;
+    --line: #353b4a; --line2: #414859;
+    --ink: #e8eaf0; --ink2: #aab0c0; --ink3: #7b8294;
+    --accent: #e9a23b; --accent-ink: #1a1206; --accent-dim: rgba(233,162,59,.16);
+    --warn: #e5636f; --ok: #7bc47f;
+    --font: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --r-sm: 4px; --r-md: 6px;
+    --top: 44px; --ctx: 40px; --rail: 52px; --insp: 300px; --status: 28px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.4 var(--font); -webkit-font-smoothing: antialiased; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:focus-visible, [tabindex]:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  svg { display: block; }
+  kbd, .kbd { font: 500 10.5px/1 var(--mono); color: var(--ink3); background: var(--bg2); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 3px; padding: 2px 4px 1px; white-space: nowrap; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ---------- frame ---------- */
+  .app { display: grid; height: 100vh; min-height: 620px; min-width: 960px;
+    grid-template-columns: var(--rail) 1fr var(--insp);
+    grid-template-rows: var(--top) var(--ctx) 1fr var(--status);
+    grid-template-areas: "top top top" "rail ctx insp" "rail view insp" "status status status"; }
+  .top { grid-area: top; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: var(--bg2); border-bottom: 1px solid var(--line); }
+  .rail { grid-area: rail; background: var(--bg2); border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; padding: 8px 0; gap: 4px; }
+  .ctx { grid-area: ctx; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; padding: 0 10px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; }
+  .view { grid-area: view; position: relative; background: #0f1115; overflow: hidden; }
+  .insp { grid-area: insp; background: var(--bg2); border-left: 1px solid var(--line); overflow-y: auto; }
+  .status { grid-area: status; background: var(--bg2); border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 12px; color: var(--ink3); font-size: 12px; }
+
+  .brand { font-weight: 600; color: var(--ink2); letter-spacing: .01em; }
+  .crumb { color: var(--ink3); }
+  .crumb b { color: var(--ink); font-weight: 500; }
+  .grow { flex: 1; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; border-radius: var(--r-md); color: var(--ink2); }
+  .btn:hover { background: var(--panel); color: var(--ink); }
+
+  /* ---------- rail ---------- */
+  .tool { position: relative; width: 40px; height: 40px; border-radius: var(--r-md); display: grid; place-items: center; color: var(--ink2); }
+  .tool:hover { background: var(--panel); color: var(--ink); }
+  .tool.on { background: var(--panel2); color: var(--accent); }
+  .tool.on::before { content: ""; position: absolute; left: -6px; top: 8px; bottom: 8px; width: 2px; border-radius: 1px; background: var(--accent); }
+  .tool.soon::after { content: ""; position: absolute; left: 6px; top: 6px; width: 5px; height: 5px; border-radius: 50%; background: var(--ink3); opacity: .6; }
+  .tool.new::after { content: "new"; position: absolute; right: 3px; top: 3px; font: 600 8px/1 var(--mono); letter-spacing: .04em; color: var(--accent); text-transform: uppercase; }
+  .rail .gap { flex: 1; }
+  .rail hr { width: 24px; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+
+  /* ---------- context bar ---------- */
+  .lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); margin-right: -2px; }
+  .seg { display: inline-flex; background: var(--bg2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 2px; gap: 2px; flex: none; }
+  .seg button { height: 22px; width: 28px; border-radius: 4px; color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+  .seg button:hover { color: var(--ink); }
+  .seg button.on { background: var(--panel2); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+  .verb { height: 28px; width: 30px; border-radius: var(--r-md); display: inline-flex; align-items: center; justify-content: center; color: var(--ink2); flex: none; }
+  .verb:hover { background: var(--panel2); color: var(--ink); }
+  .verb.on { background: var(--accent-dim); color: var(--accent); }
+  .vsep { width: 1px; height: 22px; background: var(--line2); flex: none; }
+  .chip { height: 26px; width: 30px; border-radius: var(--r-md); border: 1px solid var(--line2); color: var(--ink2); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .chip:hover { color: var(--ink); border-color: var(--ink3); }
+  .chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+  .chip .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); }
+  .chip.active { width: auto; padding: 0 9px 0 6px; gap: 7px; border-color: var(--accent); color: var(--ink); }
+  .chip.active .nm { font-weight: 500; }
+  .chip.active .car { width: 0; height: 0; border: 4px solid transparent; border-top: 5px solid var(--ink3); margin-top: 4px; }
+  .hint { color: var(--ink3); font-size: 11.5px; line-height: 1.45; }
+  .ctx .hint { white-space: nowrap; }
+
+  /* the scrub field: a number you drag, click into, or nudge */
+  .scrub { display: inline-flex; align-items: center; height: 26px; border: 1px solid var(--line2); border-radius: var(--r-sm); background: var(--bg2); cursor: ew-resize; user-select: none; flex: none; }
+  .scrub .sl { padding: 0 7px 0 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); border-right: 1px solid var(--line); height: 100%; display: inline-flex; align-items: center; }
+  .scrub .sv { min-width: 4.2ch; padding: 0 8px; text-align: right; font: 500 12px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+  .scrub .un { padding-right: 7px; margin-left: -5px; font-size: 10.5px; color: var(--ink3); }
+  .scrub:hover { border-color: var(--ink3); }
+  .scrub.drag { border-color: var(--accent); }
+  .scrub.drag .sv { color: var(--accent); }
+  .scrub input { width: 5ch; height: 20px; margin: 0 4px; border: 0; border-radius: 3px; background: var(--panel2); color: var(--ink); font: 500 12px var(--mono); text-align: right; padding: 0 4px; }
+  .scrub.insp { cursor: ew-resize; }
+
+  /* picker popover */
+  .pop { position: absolute; z-index: 6; top: calc(var(--top) + var(--ctx) + 6px); left: 0; background: var(--bg2); border: 1px solid var(--line2); border-radius: var(--r-md); box-shadow: 0 8px 24px rgba(0,0,0,.45); padding: 10px; display: none; width: 236px; }
+  .pop.show { display: block; }
+  .pop .ph { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); margin: 0 0 8px; display: flex; justify-content: space-between; }
+  .pop .grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .pop .cell { aspect-ratio: 1; border-radius: 5px; border: 1px solid rgba(0,0,0,.4); position: relative; }
+  .pop .cell.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .pop .cell i { position: absolute; right: 3px; bottom: 2px; font: 600 8.5px var(--mono); color: rgba(255,255,255,.75); }
+
+  .tip { position: fixed; z-index: 9; pointer-events: none; background: #0f1115; border: 1px solid var(--line2); border-radius: 4px; padding: 4px 7px; font-size: 12px; color: var(--ink); display: flex; gap: 8px; align-items: center; opacity: 0; transition: opacity .1s; box-shadow: 0 4px 12px rgba(0,0,0,.4); }
+  .tip.show { opacity: 1; }
+
+  /* ---------- viewport ---------- */
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+  .ov { position: absolute; pointer-events: none; font-size: 11.5px; color: var(--ink3); }
+  .ov.tl { left: 10px; top: 8px; display: flex; gap: 6px; align-items: center; }
+  .ov.br { right: 10px; bottom: 8px; display: flex; gap: 10px; }
+  .ov .pill { pointer-events: auto; background: rgba(27,30,37,.85); border: 1px solid var(--line); border-radius: 12px; padding: 3px 9px; color: var(--ink2); backdrop-filter: blur(4px); display: inline-flex; gap: 8px; align-items: center; }
+  .ov .pill .kbd { font-size: 9.5px; }
+  .ov .pill.tog { cursor: pointer; }
+  .ov .pill.tog.on { border-color: var(--accent); color: var(--accent); }
+
+  /* ---------- inspector ---------- */
+  .insp .head { height: 36px; display: flex; align-items: center; padding: 0 12px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink3); border-bottom: 1px solid var(--line); }
+  .sec { border-bottom: 1px solid var(--line); }
+  .sec summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; font-weight: 600; color: var(--ink); }
+  .sec summary::-webkit-details-marker { display: none; }
+  .sec summary::before { content: ""; width: 0; height: 0; border: 4px solid transparent; border-left: 5px solid var(--ink3); margin-right: 2px; transition: transform .12s; }
+  .sec[open] summary::before { transform: rotate(90deg) translateX(1px); }
+  .sec summary .sum { margin-left: auto; font-weight: 400; color: var(--ink3); font-size: 11.5px; }
+  .sec summary .sum.acc { color: var(--accent); }
+  .sec .body { padding: 2px 12px 12px 22px; display: grid; gap: 7px; }
+  .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; min-height: 24px; color: var(--ink2); }
+  .row .v { color: var(--ink); font: 500 12px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+  .row .v.mut { color: var(--ink3); }
+  .acts { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 2px; }
+  .act { height: 26px; padding: 0 9px; border-radius: var(--r-sm); border: 1px solid var(--line2); background: var(--panel); color: var(--ink2); display: inline-flex; align-items: center; gap: 6px; }
+  .act:hover { color: var(--ink); border-color: var(--ink3); }
+  .act.danger { color: var(--warn); }
+  .list { display: grid; gap: 2px; margin-left: -10px; }
+  .mat { display: grid; grid-template-columns: 14px 18px 1fr auto auto; align-items: center; gap: 8px; height: 28px; padding: 0 8px 0 6px; border-radius: var(--r-sm); color: var(--ink2); text-align: left; }
+  .mat:hover { background: var(--panel); color: var(--ink); }
+  .mat.on { background: var(--accent-dim); color: var(--accent); }
+  .mat .grip { color: var(--ink3); font-size: 12px; letter-spacing: -2px; cursor: grab; opacity: .7; }
+  .mat .sw { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,.4); }
+  .mat .role { font: 500 9.5px/1 var(--mono); letter-spacing: .06em; color: var(--ink3); border: 1px solid var(--line); border-radius: 3px; padding: 2px 4px; text-transform: uppercase; }
+  .mat.on .role { color: var(--accent); border-color: var(--accent); opacity: .8; }
+  .mat .n { font: 500 11.5px var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+  .mat.add { grid-template-columns: 14px 18px 1fr auto; color: var(--ink3); }
+  .mat.add:hover { color: var(--ink); }
+  .dual { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; width: 128px; }
+  .dual canvas { position: static; width: 100%; aspect-ratio: 1; border-radius: 3px; cursor: default; }
+  .rampstrip { display: flex; gap: 3px; }
+  .rampstrip canvas { position: static; width: 28px; height: 40px; border-radius: 3px; cursor: default; }
+  .sheet { border: 1px solid var(--line); border-radius: 4px; background: repeating-conic-gradient(#1f232c 0 25%, #262b36 0 50%) 0 0 / 14px 14px; height: 96px; display: grid; place-items: center; color: var(--ink3); font-size: 11.5px; }
+
+  .status .hints { display: flex; gap: 14px; overflow: hidden; white-space: nowrap; }
+  .status .hints span { display: inline-flex; gap: 5px; align-items: center; }
+  .status .right { display: flex; gap: 14px; align-items: center; flex: none; }
+
+  /* ---------- notes ---------- */
+  .notes { max-width: 70ch; padding: 40px 32px 64px; color: var(--ink2); }
+  .notes h2 { font-size: 15px; margin: 0 0 4px; color: var(--ink); text-wrap: balance; }
+  .notes p.lede { margin: 0 0 20px; color: var(--ink3); }
+  .notes dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 12px 18px; }
+  .notes dt { color: var(--ink); font-weight: 600; }
+  .notes dd { margin: 0; }
+  .notes .kbd { font-size: 10px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <span class="brand">papercut</span>
+    <span class="crumb">/ <b>Meadow Crossing</b></span>
+    <span class="grow"></span>
+    <span class="hint">Terrain tools, 2026-09-13. The viewport is a top-down dual-grid demo; everything else is literal.</span>
+    <span class="grow"></span>
+    <button class="btn" id="labels">Icons only ▾</button>
+  </header>
+  <nav class="rail" id="rail" aria-label="Tools"></nav>
+  <div class="ctx" id="ctx"></div>
+  <div class="view" id="view">
+    <canvas id="cv"></canvas>
+    <div class="pop" id="pop"></div>
+    <div class="ov tl"><span class="pill" id="under">—</span></div>
+    <div class="ov br"><span class="pill tog on" id="showq">Show quarters</span><span class="pill cam">orbit <span class="kbd">⌥ drag</span> pan <span class="kbd">space</span></span></div>
+  </div>
+  <aside class="insp" id="insp"></aside>
+  <footer class="status"><div class="hints" id="hints"></div><div class="right"><span class="num" id="dormant">0 dormant</span><span>Layer 0–8</span></div></footer>
+</div>
+<div class="tip" id="tip"></div>
+
+<section class="notes">
+  <h2>What changed, and why it looks like this</h2>
+  <p class="lede">Four decisions logged on 2026-09-13, plus the Water ruling from the day before, worked into the frame from <code>select-first.html</code>. Paint in the demo to see the dual grid resolve; sculpt to see the rim rule at a cliff.</p>
+  <dl>
+    <dt>Materials, not tiles</dt><dd>The Paint bar's first verb is Material. What you paint is a library entry; the tile at every cell corner is derived from which of the four cells around that corner hold the material. Each material is sixteen whole tiles the artist draws, shown in the inspector as the 4×4 dual set. Corners come out of that with no corner art tagged by hand.</dd>
+    <dt>Quarters</dt><dd>The demo draws each cell as four quarters, each sampling the offset tile at its own corner. Toggle <em>Show quarters</em> to see the seams; on flat ground they are invisible, and at a cliff they land exactly on the height change, so nothing stretches. The cliff-top cell draws its rim; the cell at the foot treats a taller neighbour of the same material as connected and draws none.</dd>
+    <dt>Priority is order</dt><dd>Drag a material up or down the Materials list and it draws over or under its neighbours at a shared corner. There is no separate priority field. The count on each row is how many cells and bands use it, so an unused material is safe to delete.</dd>
+    <dt>Walls paint the same way</dt><dd>A cliff face is a grid too: run along the face, half-tile levels up. The Material brush on a band sets that band's wall material; the rest of the column keeps the cell's wall default, shown as the second swatch on each material row when it is used as a wall. <span class="kbd">⇧</span> on a band clears the override back to the column default; <span class="kbd">⌥</span> eyedrops from a top or a band.</dd>
+    <dt>Ramp by drag</dt><dd>With Ramp up, press on a cliff face and drag back onto the high side; the run grows one cell per cell of drag and the preview shows the 45° cut. Release when the run meets the drop; a run that does not meet it is refused and the status bar says by how much. Click any cell of a ramp to remove the whole run. No direction dropdown, no ramp panel.</dd>
+    <dt>Strength and height</dt><dd>Raise and Smooth carry a Strength in half-tiles per pass. Flatten shows the Height it will set, sampled at the press and editable in place. Every one of these is a scrub field: drag sideways to change, click to type, arrow keys to nudge, <span class="kbd">⇧</span> for coarse steps. The size keys <span class="kbd">[</span> <span class="kbd">]</span> stay.</dd>
+    <dt>Water is a rail item</dt><dd>Fill and Drain, a Level scrub defaulting to the layer view's top handle, and the same stroke shapes as Terrain. Picking looks through water everywhere, so the ground under a pool is still what every other tool edits.</dd>
+    <dt>Built on voxels</dt><dd>Scheduled the same day: the document becomes cubes, with a half slab, the 45° ramp and the half ramp as voxel shapes, and one material per voxel. The sculpt verbs above are written against that, not against columns. Nothing in this frame changes; the demo stays top-down because the paint model is the same picture either way, offset tiles over a flat area and quarters where a height edge crosses a corner.</dd>
+    <dt>Stamp stays, for now</dt><dd>The raw tile brush is the third Paint verb, kept as an escape hatch. It stamps one tile from an authored sheet over a top or a band. Its picker is the old sheet palette and is marked for redesign; nothing else in the paint model depends on it.</dd>
+  </dl>
+</section>
+
+<script>
+  // ---------- state ----------
+  const MATS = [
+    { id: 'stone', name: 'Stone', color: '#7d8494', dark: '#5c6272', role: 'wall', sheet: 'ground.png', region: '0,4 · 4×4' },
+    { id: 'path', name: 'Path', color: '#b08f5e', dark: '#8a6f47', role: 'top', sheet: 'ground.png', region: '4,4 · 4×4' },
+    { id: 'dirt', name: 'Dirt', color: '#8a6a45', dark: '#6a5034', role: 'any', sheet: 'ground.png', region: '4,0 · 4×4' },
+    { id: 'grass', name: 'Grass', color: '#4f8a46', dark: '#3a6a34', role: 'top', sheet: 'ground.png', region: '0,0 · 4×4' },
+    { id: 'sand', name: 'Sand', color: '#c9b27f', dark: '#a48f62', role: 'top', sheet: 'ground.png', region: '8,0 · 4×4' },
+  ]
+  const S = {
+    tool: 'terrain', labels: false, quarters: true,
+    terrain: { mode: 'paint', verb: 'raise', paintVerb: 'material', stroke: 'brush', shape: 'square', size: 2, strength: 1, height: 4, deadZone: 0.2, material: 'dirt', stamp: 21 },
+    water: { mode: 'fill', level: 3, stroke: 'brush', size: 3 },
+    // library order IS draw priority: later draws over earlier
+    order: ['stone', 'path', 'dirt', 'grass', 'sand'],
+  }
+  const matOf = (id) => MATS.find((m) => m.id === id)
+  const prio = (id) => S.order.indexOf(id)
+  const get = (path) => path.split('.').reduce((o, k) => o[k], S)
+  const set = (path, v) => { const p = path.split('.'); const k = p.pop(); p.reduce((o, k) => o[k], S)[k] = v }
+
+  // ---------- icons ----------
+  const I = {
+    select: '<path d="M5 3l14 9-6 1.5L16 20l-2.5 1-3-6.5L6 18z"/>',
+    terrain: '<path d="M3 18l5-8 4 5 3-3 6 6z"/><path d="M3 21h18"/>',
+    water: '<path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/>',
+    objects: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/>',
+    buildings: '<path d="M4 20V9l8-5 8 5v11z"/><path d="M10 20v-6h4v6"/>',
+    fences: '<path d="M5 8v12M12 8v12M19 8v12M3 12h18M3 17h18"/><path d="M5 8l0-3M12 8l0-3M19 8l0-3"/>',
+    sculpt: '<path d="M4 19l4-1 10-10-3-3L5 15z"/><path d="M13 7l3 3"/>',
+    paint: '<path d="M4 4h10v6H4z"/><path d="M14 7h3v4l-6 2v7h-2v-8l5-2z"/>',
+    raise: '<path d="M12 19V6"/><path d="M6 12l6-6 6 6"/>',
+    flatten: '<path d="M4 16h16"/><path d="M8 8l4 4 4-4"/><path d="M12 4v8"/>',
+    smooth: '<path d="M3 15c3-6 6 6 9 0s6-6 9 0"/>',
+    ramp: '<path d="M3 19h18V7z"/><path d="M3 19L21 7"/>',
+    material: '<path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/><path d="M13 13l7 7M20 13l-7 7"/>',
+    stamp: '<path d="M6 20h12v-3H6zM9 17v-4a3 3 0 1 1 6 0v4"/><path d="M4 20h16"/>',
+    tint: '<path d="M12 3s5 6 5 10a5 5 0 0 1-10 0c0-4 5-10 5-10z"/><path d="M9 14a3 3 0 0 0 3 3"/>',
+    brush: '<path d="M4 20c0-4 2-5 5-5l9-11 2 2-11 9c0 3-1 5-5 5z"/>',
+    rect: '<rect x="4" y="6" width="16" height="12" rx="1"/>',
+    fill: '<path d="M4 12l8-8 7 7-8 8z"/><path d="M19 13c1 2 2 3 2 4a2 2 0 0 1-4 0c0-1 1-2 2-4z"/>',
+    square: '<rect x="5" y="5" width="14" height="14" rx="1"/>',
+    circle: '<circle cx="12" cy="12" r="7"/>',
+    fillw: '<path d="M3 15c3-3 6 3 9 0s6-3 9 0"/><path d="M12 4v7M9 8l3 3 3-3"/>',
+    drain: '<path d="M3 15c3-3 6 3 9 0s6-3 9 0"/><path d="M12 11V4M9 7l3-3 3 3"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  }
+  const ic = (id, s = 17) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${I[id]}</svg>`
+  const kbd = (k) => `<span class="kbd">${k}</span>`
+
+  // ---------- markup helpers ----------
+  const seg = (path, opts) => `<span class="seg">${opts.map(([v, label, k]) =>
+    `<button data-set="${path}" data-val="${v}" class="${get(path) === v ? 'on' : ''}" data-tip="${label}" data-key="${k ?? ''}">${ic(v === 'fill' && path === 'water.mode' ? 'fillw' : v, 16)}</button>`).join('')}</span>`
+  const verbs = (path, opts) => opts.map(([v, label, k]) =>
+    `<button class="verb ${get(path) === v ? 'on' : ''}" data-set="${path}" data-val="${v}" data-tip="${label}" data-key="${k ?? ''}">${ic(v)}</button>`).join('')
+  const scrub = (path, label, { min = 0, max = 99, step = 1, unit = '', fmt = (v) => v, cls = '' } = {}) =>
+    `<span class="scrub ${cls}" data-scrub="${path}" data-min="${min}" data-max="${max}" data-step="${step}" tabindex="0" data-tip="${label}: drag to change, click to type, ⇧ for coarse steps" data-key=""><span class="sl">${label}</span><span class="sv">${fmt(get(path))}</span>${unit ? `<span class="un">${unit}</span>` : ''}</span>`
+  const lbl = (t) => `<span class="lbl">${t}</span>`
+  const strokeBits = (base) => [
+    lbl('Stroke'), seg(base + '.stroke', [['brush', 'Brush stroke'], ['rect', 'Rectangle — press to release'], ['fill', 'Flood fill the plateau under the press']]),
+    seg(base + '.shape', [['square', 'Square brush'], ['circle', 'Round brush']]),
+    scrub(base + '.size', 'Size', { min: 1, max: 12 }),
+  ]
+
+  // ---------- context bar ----------
+  const BAR = {
+    terrain: () => {
+      const t = S.terrain
+      const out = [seg('terrain.mode', [['sculpt', 'Sculpt', '⇥'], ['paint', 'Paint', '⇥']]), '<span class="vsep"></span>']
+      if (t.mode === 'sculpt') {
+        out.push(verbs('terrain.verb', [['raise', 'Raise — ⇧ lowers', 'Q'], ['flatten', 'Flatten to a height', 'W'], ['smooth', 'Smooth toward the neighbours', 'E'], ['ramp', 'Ramp — press a cliff face, drag back to set the run', 'R']]))
+        out.push('<span class="vsep"></span>')
+        if (t.verb === 'ramp') out.push(`<span class="hint">Press a cliff face, drag back onto the high side. Click a ramp to remove it.</span>`)
+        else {
+          out.push(...strokeBits('terrain'))
+          if (t.verb === 'flatten') out.push(scrub('terrain.height', 'Height', { min: 0, max: 40, unit: '½' }))
+          else out.push(scrub('terrain.strength', 'Strength', { min: 1, max: 8, unit: '½' }))
+        }
+      } else {
+        out.push(verbs('terrain.paintVerb', [['material', 'Material — autotiles tops and cliff bands', 'Q'], ['stamp', 'Stamp a single sheet tile (escape hatch)', 'W'], ['tint', 'Tint', 'E']]))
+        out.push('<span class="vsep"></span>')
+        if (t.paintVerb === 'material') {
+          const m = matOf(t.material)
+          out.push(`<button class="chip active" id="pick" data-tip="Active material — click to choose, ⌥ click a surface to eyedrop" data-key="⌥"><i class="sw" style="background:${m.color}"></i><span class="nm">${m.name}</span><span class="car"></span></button>`)
+          out.push(S.order.slice().reverse().filter((id) => id !== t.material).slice(0, 4).map((id) => { const mm = matOf(id); return `<button class="chip" data-set="terrain.material" data-val="${id}" data-tip="${mm.name}" data-key=""><i class="sw" style="background:${mm.color}"></i></button>` }).join(''))
+        } else if (t.paintVerb === 'stamp') {
+          out.push(`<button class="chip active" id="pick" data-tip="Stamp tile — picker is the old sheet palette, marked for redesign" data-key=""><i class="sw" style="background:repeating-linear-gradient(45deg,#6a5034 0 3px,#8a6a45 0 6px)"></i><span class="nm num">tile ${t.stamp}</span><span class="car"></span></button>`)
+        } else {
+          out.push(`<button class="chip active" data-tip="Tint colour" data-key=""><i class="sw" style="background:#c9884a"></i><span class="nm num">#C9884A</span><span class="car"></span></button>`)
+        }
+        out.push('<span class="vsep"></span>', ...strokeBits('terrain'))
+      }
+      return out
+    },
+    water: () => [
+      seg('water.mode', [['fill', 'Fill up to the water line', '1'], ['drain', 'Drain', '2']]),
+      '<span class="vsep"></span>',
+      scrub('water.level', 'Level', { min: 0, max: 40, unit: '½' }),
+      `<span class="hint">Defaults to the layer view's top handle.</span>`,
+      '<span class="vsep"></span>',
+      lbl('Stroke'), seg('water.stroke', [['brush', 'Brush stroke'], ['rect', 'Rectangle'], ['fill', 'Flood fill the basin']]),
+      scrub('water.size', 'Size', { min: 1, max: 12 }),
+    ],
+    select: () => [`<span class="hint">Select bar as in select-first.html</span>`],
+    objects: () => [`<span class="hint">Objects bar as in select-first.html</span>`],
+    buildings: () => [`<span class="hint">Planned</span>`],
+    fences: () => [`<span class="hint">Planned</span>`],
+  }
+
+  // ---------- inspector ----------
+  const section = (title, body, { open = true, sum = '', acc = false } = {}) =>
+    `<details class="sec" ${open ? 'open' : ''}><summary>${title}<span class="sum ${acc ? 'acc' : ''}">${sum}</span></summary><div class="body">${body}</div></details>`
+  const row = (k, v, mut) => `<div class="row"><span>${k}</span><span class="v ${mut ? 'mut' : ''}">${v}</span></div>`
+  const acts = (list) => `<div class="acts">${list.map(([t, k, c]) => `<button class="act ${c ?? ''}">${t}${k ? kbd(k) : ''}</button>`).join('')}</div>`
+
+  function useCounts() {
+    const c = {}
+    for (const id of S.order) c[id] = 0
+    for (let i = 0; i < W * H; i++) { c[mat[i]]++; c[wall[i]] += Math.max(0, hgt[i] - 0) }
+    return c
+  }
+  function materialsSection() {
+    const counts = useCounts()
+    const rows = S.order.slice().reverse().map((id) => {
+      const m = matOf(id)
+      return `<button class="mat ${S.terrain.material === id ? 'on' : ''}" draggable="true" data-mat="${id}" data-set="terrain.material" data-val="${id}"><span class="grip">⋮⋮</span><i class="sw" style="background:${m.color}"></i><span>${m.name}</span><span class="role">${m.role}</span><span class="n">${counts[id]}</span></button>`
+    }).join('')
+    const m = matOf(S.terrain.material)
+    const detail = `<div class="hint" style="margin-top:6px">Top of the list draws over what is below it at a shared corner. Drag to reorder.</div>`
+      + `<div style="display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;margin-top:4px"><div class="dual" id="dual"></div><div style="display:grid;gap:4px">${row('Sheet', m.sheet, true)}${row('Region', m.region)}${row('Format', 'dual 16')}${row('Role', m.role)}</div></div>`
+      + `<div class="row"><span>Ramp strip · √2 tall</span></div><div class="rampstrip" id="rampstrip"></div>`
+      + acts([['Rename'], ['Duplicate'], ['Replace art…'], ['Delete', '', 'danger']])
+    return section('Materials', `<div class="list">${rows}<button class="mat add"><span></span><span style="font-size:15px;text-align:center">+</span><span>New material…</span><span class="n">⌘N</span></button></div>` + detail, { sum: `${S.order.length} · ${m.name}` })
+  }
+  const INSP = {
+    terrain: () => {
+      const t = S.terrain
+      if (t.mode === 'sculpt') {
+        return section('Brush', [
+          `<div style="display:grid;gap:6px">${scrub('terrain.size', 'Size', { min: 1, max: 12, cls: 'insp' })}${t.verb === 'flatten' ? scrub('terrain.height', 'Height', { min: 0, max: 40, unit: '½', cls: 'insp' }) : scrub('terrain.strength', 'Strength', { min: 1, max: 8, unit: '½', cls: 'insp' })}${scrub('terrain.deadZone', 'Dead zone', { min: 0, max: 0.5, step: 0.05, fmt: (v) => v.toFixed(2), cls: 'insp' })}</div>`,
+          `<div class="hint">${t.verb === 'ramp' ? 'A ramp is always 45°: one tile down per cell of run. A half-length piece finishes an odd half-tile drop.' : t.verb === 'flatten' ? 'Height is sampled at the press; edit it here or in the bar to flatten to a chosen level.' : 'Strength is half-tiles per pass. ⇧ inverts Raise; ⌥ click eyedrops a height into Flatten.'}</div>`,
+        ].join(''), { sum: t.verb[0].toUpperCase() + t.verb.slice(1) }) + levelSection()
+      }
+      let s = materialsSection()
+      if (t.paintVerb === 'stamp') s += section('Stamp', `<div class="sheet">ground.png · 16 × 8 tiles</div>${row('Selected', 'tile ' + t.stamp)}<div class="hint">Escape hatch: stamps a raw tile over the derived one. The picker is the old sheet palette and is marked for redesign.</div>`, { sum: 'tile ' + t.stamp, acc: true })
+      if (t.paintVerb === 'tint') s += section('Tint', row('Colour', '#C9884A') + `<div class="hint">Per cell, baked into vertex colour with the ambient occlusion. ⇧ clears.</div>`)
+      return s + levelSection()
+    },
+    water: () => section('Water', [scrub('water.level', 'Level', { min: 0, max: 40, unit: '½', cls: 'insp' }), row('Surface', 'water.png', true), row('Bound to', 'Meadow (voxel)', true), `<div class="hint">Water never sits at or below the ground under it; sculpting ground up to the line drains it. Flow and shore settings will live here.</div>`].join(''), { sum: 'fill' }) + levelSection(),
+    select: () => levelSection(), objects: () => levelSection(), buildings: () => levelSection(), fences: () => levelSection(),
+  }
+  const levelSection = () => section('Level', row('Size', '24 × 18') + row('Texel density', '16 px') + row('Sheets', 'ground.png, water.png', true), { open: false, sum: 'Meadow Crossing' })
+
+  // ---------- render frame ----------
+  const TOOLS = [
+    { id: 'select', title: 'Select', key: 'V' }, { id: 'terrain', title: 'Terrain', key: 'T' }, { id: 'water', title: 'Water', key: 'A', tag: 'new' },
+    { id: 'objects', title: 'Objects', key: 'O' }, { id: 'buildings', title: 'Buildings', key: 'B', soon: true }, { id: 'fences', title: 'Fences', key: 'F', soon: true },
+  ]
+  const HINTS = {
+    terrain: () => {
+      const t = S.terrain
+      if (t.mode === 'sculpt') return t.verb === 'ramp' ? [['press + drag', 'set the run'], ['click ramp', 'remove'], ['⇧ click', 'remove']] : [['drag', t.verb], ['⇧ drag', 'lower'], ['⌥ click', 'eyedrop height'], ['[ ]', 'size']]
+      return [['drag', 'paint ' + (t.paintVerb === 'material' ? matOf(t.material).name : t.paintVerb)], ['⇧ drag', 'clear override'], ['⌥ click', 'eyedrop'], ['[ ]', 'size']]
+    },
+    water: () => [['drag', S.water.mode + ' to level ' + S.water.level], ['⌥ click', 'pick level'], ['[ ]', 'size']],
+    select: () => [], objects: () => [], buildings: () => [], fences: () => [],
+  }
+  function render() {
+    document.body.classList.toggle('labels', S.labels)
+    document.getElementById('rail').innerHTML = TOOLS.map((t) => `<button class="tool ${S.tool === t.id ? 'on' : ''} ${t.soon ? 'soon' : ''} ${t.tag ? t.tag : ''}" data-tool="${t.id}" data-tip="${t.title}" data-key="${t.key}">${ic(t.id, 20)}</button>`).join('')
+      + `<span class="gap"></span><hr><button class="tool" data-tip="Level settings" data-key=",">${ic('gear', 19)}</button>`
+    document.getElementById('ctx').innerHTML = BAR[S.tool]().join('')
+    document.getElementById('insp').innerHTML = `<div class="head">${TOOLS.find((t) => t.id === S.tool).title}</div>` + INSP[S.tool]()
+    document.getElementById('hints').innerHTML = HINTS[S.tool]().map(([k, v]) => `<span>${kbd(k)} ${v}</span>`).join('')
+    document.getElementById('showq').classList.toggle('on', S.quarters)
+    drawDual(); drawRamp(); draw()
+  }
+
+  // ---------- events ----------
+  document.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-tool]'); if (t && t.dataset.tool) { S.tool = t.dataset.tool; render(); return }
+    const s = e.target.closest('[data-set]'); if (s) { let v = s.dataset.val; set(s.dataset.set, v); if (s.dataset.set === 'terrain.material') S.terrain.paintVerb = 'material'; render(); return }
+    if (e.target.closest('#pick')) { togglePop(); return }
+    if (e.target.id === 'showq') { S.quarters = !S.quarters; render(); return }
+    if (e.target.id === 'labels') { S.labels = !S.labels; document.getElementById('labels').textContent = S.labels ? 'Icons + labels ▾' : 'Icons only ▾'; render(); return }
+    if (!e.target.closest('.pop')) document.getElementById('pop').classList.remove('show')
+  })
+  function togglePop() {
+    const pop = document.getElementById('pop'); const btn = document.getElementById('pick')
+    if (pop.classList.contains('show')) return pop.classList.remove('show')
+    pop.style.left = (btn.getBoundingClientRect().left - document.getElementById('view').getBoundingClientRect().left) + 'px'
+    const counts = useCounts()
+    pop.innerHTML = `<p class="ph"><span>Materials</span><span>drag to reorder</span></p><div class="grid">${S.order.slice().reverse().map((id) => { const m = matOf(id); return `<button class="cell ${S.terrain.material === id ? 'on' : ''}" style="background:${m.color}" data-set="terrain.material" data-val="${id}" data-tip="${m.name} · ${m.role}" data-key=""><i>${counts[id]}</i></button>` }).join('')}<button class="cell" style="background:var(--panel2);color:var(--ink3);font-size:18px" data-tip="New material…" data-key="⌘N">+</button></div>`
+    pop.classList.add('show')
+  }
+  // drag to reorder = draw priority
+  let dragging = null
+  document.addEventListener('dragstart', (e) => { const m = e.target.closest('[data-mat]'); if (m) dragging = m.dataset.mat })
+  document.addEventListener('dragover', (e) => { if (e.target.closest('[data-mat]')) e.preventDefault() })
+  document.addEventListener('drop', (e) => {
+    const m = e.target.closest('[data-mat]'); if (!m || !dragging || dragging === m.dataset.mat) return
+    e.preventDefault()
+    S.order.splice(S.order.indexOf(dragging), 1)
+    S.order.splice(S.order.indexOf(m.dataset.mat) + (e.offsetY > m.offsetHeight / 2 ? 0 : 1), 0, dragging)
+    dragging = null; render()
+  })
+  // scrub fields
+  let sc = null
+  document.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('[data-scrub]'); if (!el || e.target.tagName === 'INPUT') return
+    sc = { el, path: el.dataset.scrub, x0: e.clientX, v0: get(el.dataset.scrub), moved: false }
+    el.setPointerCapture(e.pointerId)
+  })
+  document.addEventListener('pointermove', (e) => {
+    if (!sc) return
+    const dx = e.clientX - sc.x0; if (Math.abs(dx) < 3 && !sc.moved) return
+    sc.moved = true; sc.el.classList.add('drag')
+    const step = +sc.el.dataset.step * (e.shiftKey ? 4 : 1)
+    setScrub(sc.el, sc.v0 + Math.round(dx / 8) * step)
+  })
+  document.addEventListener('pointerup', (e) => {
+    if (!sc) return
+    const { el, moved } = sc; sc = null; el.classList.remove('drag')
+    if (moved) return render()
+    const sv = el.querySelector('.sv'); const inp = document.createElement('input'); inp.value = sv.textContent; sv.replaceWith(inp); inp.focus(); inp.select()
+    const commit = () => { setScrub(el, parseFloat(inp.value)); render() }
+    inp.addEventListener('blur', commit); inp.addEventListener('keydown', (k) => { if (k.key === 'Enter') inp.blur(); if (k.key === 'Escape') { inp.value = sv.textContent; inp.blur() } })
+  })
+  document.addEventListener('keydown', (e) => {
+    const el = e.target.closest?.('[data-scrub]'); if (!el || e.target.tagName === 'INPUT') return
+    const step = +el.dataset.step * (e.shiftKey ? 4 : 1)
+    if (e.key === 'ArrowUp' || e.key === 'ArrowRight') { setScrub(el, get(el.dataset.scrub) + step); render() }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') { setScrub(el, get(el.dataset.scrub) - step); render() }
+  })
+  function setScrub(el, v) {
+    const min = +el.dataset.min, max = +el.dataset.max, step = +el.dataset.step
+    if (Number.isNaN(v)) return
+    v = Math.min(max, Math.max(min, Math.round(v / step) * step)); v = +v.toFixed(2)
+    set(el.dataset.scrub, v)
+    const sv = el.querySelector('.sv'); if (sv) sv.textContent = step < 1 ? v.toFixed(2) : v
+    if (el.dataset.scrub.endsWith('.size') || el.dataset.scrub === 'water.level') draw()
+  }
+  // tooltips
+  const tip = document.getElementById('tip')
+  document.addEventListener('mouseover', (e) => {
+    const el = e.target.closest('[data-tip]'); if (!el) return tip.classList.remove('show')
+    tip.innerHTML = el.dataset.tip + (el.dataset.key ? kbd(el.dataset.key) : '')
+    const r = el.getBoundingClientRect(); tip.style.left = Math.min(r.left, innerWidth - 300) + 'px'; tip.style.top = (r.bottom + 6) + 'px'; tip.classList.add('show')
+  })
+  document.addEventListener('mouseout', (e) => { if (e.target.closest('[data-tip]')) tip.classList.remove('show') })
+
+  // ---------- the dual-grid demo ----------
+  const W = 16, H = 10
+  const mat = new Array(W * H).fill('grass'), wall = new Array(W * H).fill('stone'), hgt = new Array(W * H).fill(0), wat = new Array(W * H).fill(-1)
+  const idx = (x, y) => y * W + x
+  const inb = (x, y) => x >= 0 && y >= 0 && x < W && y < H
+  ;(function seed() {
+    for (let y = 2; y < 7; y++) for (let x = 3; x < 9; x++) hgt[idx(x, y)] = 2
+    for (let y = 3; y < 5; y++) for (let x = 5; x < 8; x++) hgt[idx(x, y)] = 4
+    for (let x = 0; x < W; x++) mat[idx(x, 8)] = 'path'; mat[idx(9, 7)] = 'path'; mat[idx(9, 6)] = 'path'
+    for (let y = 4; y < 7; y++) for (let x = 11; x < 15; x++) mat[idx(x, y)] = 'sand'
+    mat[idx(12, 5)] = 'dirt'; mat[idx(13, 5)] = 'dirt'; mat[idx(6, 3)] = 'dirt'
+    for (let y = 5; y < 7; y++) for (let x = 12; x < 14; x++) { hgt[idx(x, y)] = 0; wat[idx(x, y)] = 1 }
+  })()
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d')
+  let cell = 40, ox = 0, oy = 0
+  // From THIS cell's point of view, does neighbour (nx,ny) continue material m at height h?
+  // Same material at the same height counts; so does a TALLER same-material neighbour (no rim at the foot of a cliff);
+  // a lower one does not (the cliff top draws its rim). Off the volume counts as continuing.
+  function same(m, h, nx, ny) {
+    if (!inb(nx, ny)) return true
+    const i = idx(nx, ny)
+    return mat[i] === m && hgt[i] >= h
+  }
+  // materials present at corner (cx,cy) from cell (x,y)'s perspective, and for each its 4-bit quadrant mask (NW=1 NE=2 SW=4 SE=8)
+  function cornerMasks(x, y, cx, cy) {
+    const cells = [[cx - 1, cy - 1, 1], [cx, cy - 1, 2], [cx - 1, cy, 4], [cx, cy, 8]]
+    const h = hgt[idx(x, y)]
+    const masks = {}
+    for (const [nx, ny, bit] of cells) {
+      const m = inb(nx, ny) ? mat[idx(nx, ny)] : mat[idx(x, y)]
+      const hh = inb(nx, ny) ? hgt[idx(nx, ny)] : h
+      // a lower cell does not join this cell's corner tile; a taller one joins as its own material
+      if (hh < h) continue
+      masks[m] = (masks[m] ?? 0) | bit
+    }
+    // this cell's own material is always present at its own quadrant
+    return masks
+  }
+  function drawQuarter(x, y, q) {
+    // q: 0 NW, 1 NE, 2 SW, 3 SE. The corner this quarter sits on:
+    const cx = x + (q % 2), cy = y + (q > 1 ? 1 : 0)
+    const px = ox + x * cell + (q % 2) * cell / 2, py = oy + y * cell + (q > 1 ? 1 : 0) * cell / 2, s = cell / 2
+    const myBit = [8, 4, 2, 1][q] // which quadrant of the offset tile this quarter is
+    const masks = cornerMasks(x, y, cx, cy)
+    const present = Object.keys(masks).sort((a, b) => prio(a) - prio(b))
+    ctx.save(); ctx.beginPath(); ctx.rect(px, py, s, s); ctx.clip()
+    // base: the lowest-priority material, full
+    ctx.fillStyle = matOf(present[0]).color; ctx.fillRect(px, py, s, s)
+    for (const m of present) {
+      const bits = masks[m]
+      if (!(bits & myBit)) continue
+      const under = present[Math.max(0, present.indexOf(m) - 1)]
+      paintQuadrant(ctx, px, py, s, myBit, bits, matOf(m), matOf(under).color)
+    }
+    ctx.restore()
+  }
+  /**
+   * One quadrant of an offset tile, at (px,py) with side s, drawn the way the
+   * authored art would look: the material's fill, rounded where the quadrant
+   * stands alone, a rim along every edge where the material ends, and a notch
+   * of the material underneath at an inside corner. `myBit` is which quadrant
+   * this is (NW=1 NE=2 SW=4 SE=8) and `bits` which quadrants hold `mat`.
+   */
+  function paintQuadrant(g, px, py, s, myBit, bits, m, underColor) {
+    const r = s * 0.55, inset = 1.2
+    const horiz = { 8: 4, 4: 8, 2: 1, 1: 2 }[myBit], vert = { 8: 2, 2: 8, 4: 1, 1: 4 }[myBit], diag = { 8: 1, 1: 8, 4: 2, 2: 4 }[myBit]
+    const hasH = bits & horiz, hasV = bits & vert, hasD = bits & diag
+    // the offset tile's centre is the quadrant's corner that touches it
+    const tcx = (myBit & 5) ? px + s : px, tcy = (myBit & 3) ? py + s : py
+    const farX = tcx === px ? px + s : px, farY = tcy === py ? py + s : py
+    const ex = tcx === px ? px + inset : px + s - inset, ey = tcy === py ? py + inset : py + s - inset
+    g.fillStyle = m.color
+    g.beginPath()
+    if (!hasH && !hasV) { g.moveTo(farX, farY); g.lineTo(ex, farY); g.arcTo(ex, ey, farX, ey, r); g.lineTo(farX, ey); g.closePath() }
+    else g.rect(px, py, s, s)
+    g.fill()
+    g.strokeStyle = m.dark; g.lineWidth = Math.max(1.5, s * 0.11)
+    g.beginPath()
+    if (!hasH && !hasV) { g.moveTo(ex, farY); g.arcTo(ex, ey, farX, ey, r - inset); g.lineTo(farX, ey) }
+    else {
+      if (!hasH) { g.moveTo(ex, py); g.lineTo(ex, py + s) }
+      if (!hasV) { g.moveTo(px, ey); g.lineTo(px + s, ey) }
+    }
+    g.stroke()
+    if (hasH && hasV && !hasD) { // inside corner: the material underneath shows through a notch
+      g.fillStyle = underColor
+      g.beginPath(); g.arc(tcx, tcy, r * 0.5, 0, Math.PI * 2); g.fill()
+      g.strokeStyle = m.dark; g.beginPath(); g.arc(tcx, tcy, r * 0.5 + 1, 0, Math.PI * 2); g.stroke()
+    }
+  }
+  function draw() {
+    const r = cv.parentElement.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio
+    ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
+    cell = Math.floor(Math.min((r.width - 40) / W, (r.height - 60) / H)); ox = Math.floor((r.width - W * cell) / 2); oy = Math.floor((r.height - H * cell) / 2) + 8
+    ctx.fillStyle = '#0f1115'; ctx.fillRect(0, 0, r.width, r.height)
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) for (let q = 0; q < 4; q++) drawQuarter(x, y, q)
+    // height shading and cliff walls (a top-down cheat: a dark band on the south and east faces)
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const h = hgt[idx(x, y)], px = ox + x * cell, py = oy + y * cell
+      if (h) { ctx.fillStyle = `rgba(255,255,255,${0.035 * h})`; ctx.fillRect(px, py, cell, cell) }
+      const drop = (nx, ny) => inb(nx, ny) ? h - hgt[idx(nx, ny)] : 0
+      const ds = drop(x, y + 1), de = drop(x + 1, y)
+      if (ds > 0) { ctx.fillStyle = matOf(wall[idx(x, y)]).dark; ctx.fillRect(px, py + cell - ds * 3, cell, ds * 3); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(px, py + cell, cell, ds * 2) }
+      if (de > 0) { ctx.fillStyle = matOf(wall[idx(x, y)]).dark; ctx.fillRect(px + cell - de * 2, py, de * 2, cell) }
+      const w = wat[idx(x, y)]
+      if (w > h) { ctx.fillStyle = 'rgba(63,126,166,.75)'; ctx.fillRect(px, py, cell, cell); ctx.fillStyle = 'rgba(255,255,255,.18)'; ctx.fillRect(px + 4, py + 5, cell * 0.4, 2) }
+    }
+    if (S.quarters) { ctx.strokeStyle = 'rgba(255,255,255,.07)'; ctx.lineWidth = 1; ctx.beginPath(); for (let i = 0; i <= W * 2; i++) { ctx.moveTo(ox + i * cell / 2 + 0.5, oy); ctx.lineTo(ox + i * cell / 2 + 0.5, oy + H * cell) } for (let j = 0; j <= H * 2; j++) { ctx.moveTo(ox, oy + j * cell / 2 + 0.5); ctx.lineTo(ox + W * cell, oy + j * cell / 2 + 0.5) } ctx.stroke() }
+    ctx.strokeStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); for (let i = 0; i <= W; i++) { ctx.moveTo(ox + i * cell + 0.5, oy); ctx.lineTo(ox + i * cell + 0.5, oy + H * cell) } for (let j = 0; j <= H; j++) { ctx.moveTo(ox, oy + j * cell + 0.5); ctx.lineTo(ox + W * cell, oy + j * cell + 0.5) } ctx.stroke()
+    // brush preview
+    if (hover) { const size = S.tool === 'water' ? S.water.size : S.terrain.size; const r0 = Math.floor((size - 1) / 2); ctx.strokeStyle = 'var(--accent)'; ctx.strokeStyle = '#e9a23b'; ctx.lineWidth = 1.5; ctx.strokeRect(ox + (hover[0] - r0) * cell + 1, oy + (hover[1] - r0) * cell + 1, size * cell - 2, size * cell - 2) }
+    document.getElementById('dormant').textContent = `${dormant} dormant`
+  }
+  let hover = null, painting = false, anchorH = 0, dormant = 3
+  function cellAt(e) { const r = cv.getBoundingClientRect(); const x = Math.floor((e.clientX - r.left - ox) / cell), y = Math.floor((e.clientY - r.top - oy) / cell); return inb(x, y) ? [x, y] : null }
+  function brushCells([cx, cy]) {
+    const size = S.tool === 'water' ? S.water.size : S.terrain.size, r0 = Math.floor((size - 1) / 2), out = []
+    for (let y = cy - r0; y < cy - r0 + size; y++) for (let x = cx - r0; x < cx - r0 + size; x++) if (inb(x, y)) out.push([x, y])
+    return out
+  }
+  function apply(c, e) {
+    const t = S.terrain
+    if (S.tool === 'water') { for (const [x, y] of brushCells(c)) { const i = idx(x, y); if (S.water.mode === 'drain') wat[i] = -1; else if (S.water.level > hgt[i]) wat[i] = S.water.level } return }
+    if (S.tool !== 'terrain') return
+    if (e.altKey) { const i = idx(c[0], c[1]); if (t.mode === 'paint') t.material = mat[i]; else t.height = hgt[i]; render(); return }
+    for (const [x, y] of brushCells(c)) {
+      const i = idx(x, y)
+      if (t.mode === 'paint') { if (t.paintVerb === 'material') mat[i] = e.shiftKey ? 'grass' : t.material; continue }
+      if (t.verb === 'raise') hgt[i] = Math.max(0, Math.min(8, hgt[i] + (e.shiftKey ? -t.strength : t.strength)))
+      else if (t.verb === 'flatten') hgt[i] = anchorH
+      else if (t.verb === 'smooth') { let s = 0, n = 0; for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (inb(x + dx, y + dy)) { s += hgt[idx(x + dx, y + dy)]; n++ } const target = Math.round(s / n); hgt[i] += Math.max(-t.strength, Math.min(t.strength, target - hgt[i])) }
+      if (wat[i] >= 0 && wat[i] <= hgt[i]) wat[i] = -1
+    }
+  }
+  cv.addEventListener('pointerdown', (e) => { const c = cellAt(e); if (!c) return; painting = true; anchorH = S.terrain.height = hgt[idx(c[0], c[1])]; apply(c, e); if (S.terrain.mode === 'sculpt') render(); else draw() })
+  cv.addEventListener('pointermove', (e) => {
+    const c = cellAt(e); hover = c
+    const u = document.getElementById('under')
+    if (c) { const i = idx(c[0], c[1]); u.textContent = `top (${c[0]}, ${c[1]}) · ${matOf(mat[i]).name} · h ${hgt[i]}${wat[i] > hgt[i] ? ' · water ' + wat[i] : ''}` }
+    if (painting && c && S.terrain.mode === 'paint' || painting && c && S.tool === 'water') apply(c, e)
+    draw()
+  })
+  addEventListener('pointerup', () => { if (painting) { painting = false; render() } })
+  cv.addEventListener('pointerleave', () => { hover = null; draw() })
+  addEventListener('resize', draw)
+
+  // the authored 4×4 dual set and the √2 ramp strip for the active material, drawn procedurally
+  function drawDual() {
+    const host = document.getElementById('dual'); if (!host) return
+    const m = matOf(S.terrain.material), under = matOf(S.order[Math.max(0, prio(m.id) - 1)] === m.id ? S.order[0] : S.order[Math.max(0, prio(m.id) - 1)])
+    host.innerHTML = ''
+    for (let mask = 0; mask < 16; mask++) {
+      const c = document.createElement('canvas'); c.width = c.height = 64; host.appendChild(c)
+      const g = c.getContext('2d'); const uc = under.id === m.id ? '#1f232c' : under.color; g.fillStyle = uc; g.fillRect(0, 0, 64, 64)
+      // the same quadrant painter the demo uses, so the 4×4 set IS what the viewport composes from
+      for (const [bit, qx, qy] of [[1, 0, 0], [2, 1, 0], [4, 0, 1], [8, 1, 1]]) {
+        if (!(mask & bit)) continue
+        g.save(); g.beginPath(); g.rect(qx * 32, qy * 32, 32, 32); g.clip()
+        paintQuadrant(g, qx * 32, qy * 32, 32, bit, mask, m, uc)
+        g.restore()
+      }
+      c.title = `mask ${mask.toString(2).padStart(4, '0')}`
+    }
+  }
+  function drawRamp() {
+    const host = document.getElementById('rampstrip'); if (!host) return
+    const m = matOf(S.terrain.material); host.innerHTML = ''
+    for (const kind of ['single', 'left', 'middle', 'right', 'half']) {
+      const c = document.createElement('canvas'); c.width = 28; c.height = 40; host.appendChild(c)
+      const g = c.getContext('2d'); g.fillStyle = m.color; g.fillRect(0, 0, 28, kind === 'half' ? 20 : 40)
+      g.strokeStyle = m.dark; g.lineWidth = 2
+      g.beginPath(); for (let y = 6; y < (kind === 'half' ? 20 : 40); y += 8) { g.moveTo(3, y); g.lineTo(25, y) } g.stroke()
+      g.lineWidth = 3; g.beginPath(); if (kind === 'single' || kind === 'left') { g.moveTo(1.5, 0); g.lineTo(1.5, 40) } if (kind === 'single' || kind === 'right') { g.moveTo(26.5, 0); g.lineTo(26.5, 40) } g.stroke()
+      if (kind === 'half') { g.fillStyle = '#1f232c'; g.fillRect(0, 20, 28, 20) }
+      c.title = kind + (kind === 'half' ? ' — one half-tile over half a cell' : ' — 1 × √2 tiles')
+    }
+  }
+
+  render()
+</script>
