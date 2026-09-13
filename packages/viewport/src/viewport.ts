@@ -17,6 +17,7 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 
 import { TerrainGrid } from './grid'
+import { ViewCube, type CubePiece } from './cube'
 import { FrameProfile, GpuTimer, type FrameProfileReport } from './profile'
 
 import {
@@ -28,6 +29,8 @@ import {
   inBounds,
   type DocumentReader,
   type SurfaceAddress,
+  type CameraRig,
+  type DeepReadonly,
   structureOf,
   type ReadonlyVoxel,
   frameOf,
@@ -141,6 +144,8 @@ export interface ViewportHandlers {
   heldKeys(): ReadonlySet<string>
   onHover(pick: EditorPick): void
   onCameraChange(state: { yaw: number; pitch: number; distance: number; inBounds: boolean }): void
+  /** The view cube was clicked on the view the camera already has: flip the editor's projection. */
+  onProjectionToggle(): void
   onStats(stats: { fps: number; triangles: number; meshMs: number }): void
 }
 
@@ -155,6 +160,8 @@ export interface ViewportOptions {
   showGrid: boolean
   /** Clamp the editor camera to what the game rig allows. */
   gameCamera: boolean
+  /** How the free editor camera projects. Under `gameCamera` and in play the rig's own projection is used instead. */
+  projection: CameraRig['projection']
   /**
    * The play session, or `null` while editing (#11). Not a boolean: the
    * session is an ACTOR in the host, spawned by `mode.play` and stopped by
@@ -185,6 +192,7 @@ const DEFAULT_OPTIONS: ViewportOptions = {
   brushPreview: [],
   showGrid: true,
   gameCamera: false,
+  projection: 'perspective',
   play: null,
   hover: null,
   selection: null,
@@ -267,6 +275,12 @@ export class Viewport {
   private fpsAccumulator = 0
   private fpsFrames = 0
   private sweep: { active: boolean; t: number; yaws: number[] } = { active: false, t: 0, yaws: [] }
+  /** A view-cube alignment in flight: the pose it left and the one it is going to, eased over a fraction of a second. */
+  private glide: { t: number; from: { yaw: number; pitch: number }; to: { yaw: number; pitch: number } } | null = null
+  /** The view cube in the corner, and the press it holds while the pointer is down on it. */
+  private cube = new ViewCube()
+  private cubePress: { piece: CubePiece | null; x: number; y: number; moved: boolean } | null = null
+  private renderPass: RenderPass
   private disposed = false
   /**
    * The `reader.generation` this viewport last drew. `syncDirty` compares it
@@ -320,7 +334,8 @@ export class Viewport {
     // canvas's own `antialias` never reached it with.
     const target = new THREE.WebGLRenderTarget(Math.max(1, canvas.clientWidth), Math.max(1, canvas.clientHeight), { type: THREE.HalfFloatType, samples: 4 })
     this.composer = new EffectComposer(this.renderer, target)
-    this.composer.addPass(new RenderPass(this.scene.scene, this.camera))
+    this.renderPass = new RenderPass(this.scene.scene, this.camera)
+    this.composer.addPass(this.renderPass)
     // Built at the real size rather than a placeholder that resize() fixes up
     // later. (That was a suspect for the software-GL black frame below; it was
     // not the cause, but sizing it correctly up front is right anyway.)
@@ -631,6 +646,7 @@ export class Viewport {
     this.scene.dispose()
     this.grid.dispose()
     this.gpuTimer?.dispose()
+    this.cube.dispose()
     this.composer.dispose()
     this.renderer.dispose()
   }
@@ -829,6 +845,16 @@ export class Viewport {
   private onPointerDown = (event: PointerEvent): void => {
     this.canvas.setPointerCapture(event.pointerId)
     this.lastPointer = { x: event.clientX, y: event.clientY }
+    // Any press takes the camera back from an alignment in flight.
+    this.glide = null
+
+    // A left press on the view cube is the cube's, never the level's: it
+    // either drags the orbit or, released where it landed, aligns the view.
+    const onCube = event.button === 0 && !this.playing ? this.cubePointAt(event) : null
+    if (onCube) {
+      this.cubePress = { piece: this.cube.pieceAt(onCube[0], onCube[1]), x: event.clientX, y: event.clientY, moved: false }
+      return
+    }
 
     // Which gesture this is, is not decided here any more. A left press is
     // picked unconditionally — including an alt press, which may yet turn out
@@ -853,12 +879,17 @@ export class Viewport {
     const dy = event.clientY - this.lastPointer.y
     this.lastPointer = { x: event.clientX, y: event.clientY }
 
+    if (this.cubePress) {
+      if (!this.cubePress.moved && Math.hypot(event.clientX - this.cubePress.x, event.clientY - this.cubePress.y) > 4) this.cubePress.moved = true
+      if (this.cubePress.moved) this.turn(dx, dy)
+      return
+    }
+
     const gesture = this.handlers.onPointerMove({ x: event.clientX, y: event.clientY, modifiers: this.modifiers(event) })
     // An alt press that crossed the threshold on THIS event answers 'orbit',
     // so its first frame of travel turns the camera rather than being eaten.
     if (gesture === 'orbit') {
-      this.orbit.yaw = wrapDegrees(this.orbit.yaw - dx * 0.4)
-      this.orbit.pitch = Math.min(89, Math.max(-5, this.orbit.pitch + dy * 0.3))
+      this.turn(dx, dy)
       return
     }
     if (gesture === 'pan') {
@@ -869,6 +900,15 @@ export class Viewport {
     // jittering under the threshold must not repaint the highlight.
     if (gesture === 'pending') return
     if (this.playing) return
+
+    // Over the cube, the cube lights up and the level under it does not.
+    const onCube = gesture === 'none' ? this.cubePointAt(event) : null
+    this.cube.highlight(onCube ? (this.cube.pieceAt(onCube[0], onCube[1])?.id ?? null) : null)
+    this.canvas.style.cursor = onCube && this.cube.pieceAt(onCube[0], onCube[1])?.view ? 'pointer' : ''
+    if (onCube) {
+      this.handlers.onHover({ surface: null, point: null, objectId: null, distance: Infinity, ray: null, handle: null })
+      return
+    }
 
     const pick = this.pickAt(event, gesture === 'stroke' ? this.handlers.carrying() : undefined)
     this.handlers.onHover(pick)
@@ -884,7 +924,85 @@ export class Viewport {
       this.canvas.releasePointerCapture(event.pointerId)
     }
     this.panGrab = null
+    if (this.cubePress) {
+      const { piece, moved } = this.cubePress
+      this.cubePress = null
+      if (!moved && piece?.view) this.alignTo(piece.view)
+      return
+    }
     this.handlers.onPointerUp({ x: event.clientX, y: event.clientY })
+  }
+
+  /** One orbit step: the middle or alt drag, and a drag on the view cube. */
+  private turn(dx: number, dy: number): void {
+    this.orbit.yaw = wrapDegrees(this.orbit.yaw - dx * 0.4)
+    this.orbit.pitch = Math.min(89, Math.max(-5, this.orbit.pitch + dy * 0.3))
+  }
+
+  /**
+   * A click on a view-cube piece: glide the camera to its view — or, already
+   * there, flip the projection, the way a second press of a view key does in
+   * a modelling tool.
+   */
+  private alignTo(view: { yaw: number; pitch: number }): void {
+    if (ViewCube.atView(this.orbit, view)) {
+      this.handlers.onProjectionToggle()
+      return
+    }
+    this.glide = { t: 0, from: { yaw: this.orbit.yaw, pitch: this.orbit.pitch }, to: view }
+  }
+
+  /** Where the pointer is within the view cube's corner, as fractions of it, or null when it is outside. */
+  private cubePointAt(event: PointerEvent): [number, number] | null {
+    const rect = this.canvas.getBoundingClientRect()
+    const { x, y, size } = this.cubeRect()
+    const fx = (event.clientX - rect.left - x) / size
+    const fy = (event.clientY - rect.top - y) / size
+    return fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1 ? [fx, fy] : null
+  }
+
+  /** The cube's corner in CSS pixels from the canvas's top-left: top right, clear of the layer slider's column. */
+  private cubeRect(): { x: number; y: number; size: number } {
+    const size = Math.min(110, Math.max(64, Math.round(this.canvas.clientHeight * 0.16)))
+    return { x: this.canvas.clientWidth - size - Viewport.CUBE_MARGIN_RIGHT, y: Viewport.CUBE_MARGIN_TOP, size }
+  }
+
+  private static readonly CUBE_MARGIN_RIGHT = 40
+  private static readonly CUBE_MARGIN_TOP = 12
+
+  /**
+   * The cube, drawn over the level in its corner: the same renderer, a
+   * scissored viewport, the depth cleared so the level never pokes through.
+   * Not while playing — the game has no cube.
+   */
+  private renderCube(): void {
+    if (this.playing) return
+    const { x, y, size } = this.cubeRect()
+    const height = this.canvas.clientHeight || 1
+    this.cube.orient(this.orbit.yaw, this.orbit.pitch)
+    const renderer = this.renderer
+    renderer.autoClear = false
+    renderer.setScissorTest(true)
+    renderer.setViewport(x, height - y - size, size, size)
+    renderer.setScissor(x, height - y - size, size, size)
+    renderer.clearDepth()
+    renderer.render(this.cube.scene, this.cube.camera)
+    renderer.setScissorTest(false)
+    renderer.setViewport(0, 0, this.canvas.clientWidth || 1, height)
+    renderer.autoClear = true
+  }
+
+  /**
+   * The camera the frame wants: the rig's projection under the game camera
+   * and in play, the editor's own otherwise. Swapped in place when it
+   * changes; the orbit places it and the render pass is re-pointed.
+   */
+  private ensureProjection(rig: DeepReadonly<CameraRig>): void {
+    const wanted = this.options.gameCamera || this.playing ? rig.projection : this.options.projection
+    const isOrtho = this.camera instanceof THREE.OrthographicCamera
+    if ((wanted === 'orthographic') === isOrtho) return
+    this.camera = createCamera(rig, (this.canvas.clientWidth || 1) / (this.canvas.clientHeight || 1), wanted)
+    this.renderPass.camera = this.camera
   }
 
   /**
@@ -990,6 +1108,14 @@ export class Viewport {
       this.orbit.yaw = this.sweep.yaws[index] ?? this.orbit.yaw
     }
 
+    if (this.glide) {
+      this.glide.t = Math.min(1, this.glide.t + dt / 0.3)
+      const s = this.glide.t * this.glide.t * (3 - 2 * this.glide.t)
+      this.orbit.yaw = wrapDegrees(this.glide.from.yaw + wrapDegrees(this.glide.to.yaw - this.glide.from.yaw) * s)
+      this.orbit.pitch = this.glide.from.pitch + (this.glide.to.pitch - this.glide.from.pitch) * s
+      if (this.glide.t >= 1) this.glide = null
+    }
+
     if (this.options.gameCamera || this.playing) {
       const clamped = clampToBounds(rig, this.orbit)
       this.orbit.yaw = clamped.yaw
@@ -1014,6 +1140,7 @@ export class Viewport {
       )
     }
 
+    this.ensureProjection(rig)
     updateCameraProjection(
       this.camera,
       rig,
@@ -1046,6 +1173,7 @@ export class Viewport {
     if (profile) this.gpuTimer?.begin()
     if (this.bypassComposer) this.renderer.render(this.scene.scene, this.camera)
     else this.composer.render()
+    this.renderCube()
     if (profile) {
       this.gpuTimer?.end()
       this.gpuTimer?.poll(this.recordGpu)

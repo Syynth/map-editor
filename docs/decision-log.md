@@ -353,3 +353,11 @@ Each entry:
 - **SCOPE:** minor/local
 - **WHAT:** A right-drag pan keeps the world point that was under the cursor at the press under the cursor for the whole drag. The press grabs the surface under it (or the plane at the orbit target's height over the sky); each move re-casts the cursor's ray onto that plane and slides the rig by the difference. Pixels-per-unit scaling is only a fallback for a ray that misses the plane (cursor above the horizon).
 - **WHY:** The old pan slid the target by a fixed per-pixel amount scaled by distance, so the ground drifted relative to the cursor — the tools felt janky and unusable. Anchoring the gesture to the thing under the cursor is the convention every 2D and CAD tool uses, and it makes the pan feel like dragging the map itself.
+
+## The view cube sets the editor's view, not the game's rig
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** editor-viewport
+- **SCOPE:** moderate
+- **WHAT:** A chamfered view cube overlays the viewport corner. Clicking a face, edge or corner animates the editor camera to that view; clicking the same view again toggles the editor between perspective and orthographic; dragging the cube orbits. That projection is editor view state on the view actor (`view.set {projection}`), alongside showGrid and gameCamera — NOT the document's `camera.projection`, which stays the game's rig. Game-camera mode and play honour the rig's projection; free editing honours the view's. Views from below are inert on the cube: the terrain is a top skin, there is nothing to see under it.
+- **WHY:** Aligning to a face and flipping to ortho is how you inspect and line things up while building, the way Blender's numpad views work; it says nothing about how the game looks, and one map is built under many views. Making the toggle a document edit would dirty the level, land in undo, and change the shipped game each time someone squared up a wall.

@@ -120,8 +120,12 @@ export function panToHold(state: RigState, grab: THREE.Vector3, under: THREE.Vec
  * Build the camera a rig describes. Orthographic is offered because a fixed
  * perspective HD-2D look often wants it, and swapping is cheap here.
  */
-export function createCamera(rig: DeepReadonly<CameraRig>, aspect: number): THREE.PerspectiveCamera | THREE.OrthographicCamera {
-  if (rig.projection === 'orthographic') {
+export function createCamera(
+  rig: DeepReadonly<CameraRig>,
+  aspect: number,
+  projection: CameraRig['projection'] = rig.projection,
+): THREE.PerspectiveCamera | THREE.OrthographicCamera {
+  if (projection === 'orthographic') {
     const halfHeight = rig.distance * 0.5
     const halfWidth = halfHeight * aspect
     return new THREE.OrthographicCamera(-halfWidth, halfWidth, halfHeight, -halfHeight, 0.1, 500)
