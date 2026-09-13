@@ -16,6 +16,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js'
 
+import { TerrainGrid } from './grid'
 import { FrameProfile, GpuTimer, type FrameProfileReport } from './profile'
 
 import {
@@ -241,7 +242,8 @@ export class Viewport {
   private handlers: ViewportHandlers
 
   private overlay = new THREE.Group()
-  private gridLines: THREE.LineSegments | null = null
+  /** The terrain grid, chunked like the terrain and updated chunk by chunk (`grid.ts`). */
+  private grid = new TerrainGrid()
   private brushMesh: THREE.Mesh
   private hoverMesh: THREE.Mesh
   private sketchLine: THREE.Line
@@ -360,8 +362,9 @@ export class Viewport {
     this.sketchSelected.renderOrder = 952
 
     this.overlay.add(this.brushMesh, this.hoverMesh, this.selectionBox, this.sketchLine, this.sketchPoints, this.sketchSelected)
+    this.overlay.add(this.grid.group)
     this.scene.scene.add(this.overlay)
-    this.rebuildGrid()
+    this.grid.rebuildAll(reader.doc)
 
     this.attachEvents()
     this.resize()
@@ -401,7 +404,7 @@ export class Viewport {
     this.scene.setDocument(this.reader.doc)
     this.scene.applyAtmosphere()
     this.scene.rebuildAll()
-    this.rebuildGrid()
+    this.grid.rebuildAll(this.reader.doc)
     // Framing, not re-pointing: the previous map's orbit target can sit
     // outside a smaller new map entirely, and the new map carries its own rig.
     this.frameMap()
@@ -424,11 +427,11 @@ export class Viewport {
     }
     const structures = this.reader.takeDirtyStructures()
     if (!this.reader.hasDirtyChunks() && structures.length === 0) return
-    this.scene.rebuild({ chunks: this.reader.takeDirtyChunks(), structures })
-    // The grid follows the terrain, so sculpting invalidates it too. Rebuilt
-    // wholesale rather than per chunk: it is one cheap line buffer, and only
-    // the editor pays for it.
-    if (this.options.showGrid) this.rebuildGrid()
+    const chunks = this.reader.takeDirtyChunks()
+    this.scene.rebuild({ chunks, structures })
+    // The grid follows the terrain, chunk for chunk: the same dirty keys rewrite the same chunks' lines, and a structure
+    // that changed as a whole — moved, resized — is re-placed or rebuilt with it.
+    this.grid.update(this.reader.doc, chunks, structures)
   }
 
   refreshAtmosphere(): void {
@@ -615,53 +618,13 @@ export class Viewport {
     this.detachEvents()
     this.character?.dispose()
     this.scene.dispose()
+    this.grid.dispose()
     this.gpuTimer?.dispose()
     this.composer.dispose()
     this.renderer.dispose()
   }
 
   // --- internals --------------------------------------------------------------
-
-  private rebuildGrid(): void {
-    if (this.gridLines) {
-      this.overlay.remove(this.gridLines)
-      this.gridLines.geometry.dispose()
-    }
-    // The grid hugs the terrain rather than lying on the ground plane, where
-    // any raised cell would bury it. Every voxel volume's cells, each in its
-    // own frame.
-    const doc = this.reader.doc
-    const points: number[] = []
-    const lift = 0.025
-    for (const id of doc.structureOrder) {
-      const voxel = doc.structures[id]
-      if (!voxel || voxel.kind !== 'voxel') continue
-      const frame = frameOf(doc, id)
-      const at = (lx: number, h: number, lz: number) => {
-        const [wx, wz] = toWorld(frame, lx, lz)
-        return [wx, frame.y + h, wz]
-      }
-      const { width, height } = voxel.size
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
-          const [c00, c01, c11, c10] = cornerHeights(voxel, x, y).map((h) => h * 0.5 + lift)
-          points.push(
-            ...at(x, c00, y), ...at(x, c01, y + 1),
-            ...at(x, c01, y + 1), ...at(x + 1, c11, y + 1),
-            ...at(x + 1, c11, y + 1), ...at(x + 1, c10, y),
-            ...at(x + 1, c10, y), ...at(x, c00, y),
-          )
-        }
-      }
-    }
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3))
-    this.gridLines = new THREE.LineSegments(
-      geometry,
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.12 }),
-    )
-    this.overlay.add(this.gridLines)
-  }
 
   /** A flat overlay quad hugging a cell's top surface, in world space through the volume's frame. */
   private cellQuad(voxel: ReadonlyVoxel, x: number, y: number, out: number[], lift = 0.03): void {
@@ -1018,7 +981,7 @@ export class Viewport {
     this.scene.sky.update(this.camera.position, this.scene.mapCentre())
     profile?.mark()
 
-    if (this.gridLines) this.gridLines.visible = this.options.showGrid && !this.playing
+    this.grid.group.visible = this.options.showGrid && !this.playing
     this.updateBrushPreview()
     this.updateHover()
     this.updateSelection()
