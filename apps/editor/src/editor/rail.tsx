@@ -10,9 +10,11 @@
  * a tool changes the tooltip without touching this.
  */
 
-import type { ToolId } from '@papercut/editor-host'
+import { useHost, useToolsSelector, useViewSelector } from '@papercut/editor-host'
 import { chordFor, tools, type Platform } from '@papercut/registry'
 import { RailButton, RailGap, RailRule, isIconName, type IconName } from '@papercut/ui'
+
+import { run } from './commands'
 
 /** Named in the design (Buildings, Fences) and drawn dimmer until a feature declares them. */
 const PLANNED: ReadonlyArray<{ title: string; icon: IconName }> = [
@@ -20,19 +22,12 @@ const PLANNED: ReadonlyArray<{ title: string; icon: IconName }> = [
   { title: 'Fences', icon: 'fences' },
 ]
 
-export function Rail({
-  tool,
-  onTool,
-  levelOpen,
-  onLevel,
-  platform,
-}: {
-  tool: ToolId
-  onTool: (tool: ToolId) => void
-  levelOpen: boolean
-  onLevel: () => void
-  platform: Platform
-}) {
+export function Rail({ platform }: { platform: Platform }) {
+  const host = useHost()
+  const tool = useToolsSelector((snapshot) => snapshot.context.tool)
+  const levelOpen = useViewSelector((snapshot) => snapshot.context.levelOpen)
+  const onTool = (id: string): void => run(host, 'tools.set', { tool: id })
+  const onLevel = (): void => run(host, 'view.set', { levelOpen: !levelOpen })
   return (
     <>
       {tools.all().map((decl) => (

@@ -9,11 +9,17 @@
  * exception — the gear on the rail opens and closes them together.
  */
 
+import { useMemo } from 'react'
+
 import type { Atmosphere, CameraRig, DeepReadonly, MapObject, Placement, ReadonlyMapDoc, RgbaImage } from '@papercut/document'
-import type { Selection } from '@papercut/editor-host'
-import type { EditorParams } from './params'
-import type { Platform } from '@papercut/registry'
+import { useDocument, useHost, useToolsSelector, useViewSelector, type Selection } from '@papercut/editor-host'
+import { mergeParams, type EditorParams } from './params'
+import { chordFor, type Platform } from '@papercut/registry'
 import { FileButton, InspectorHead, Note, Row, Section } from '@papercut/ui'
+
+import { useArt } from './art'
+import { run, setParams } from './commands'
+import { loadSheetFromFile } from './sheet'
 
 import { FeaturePanels } from './bars'
 import {
@@ -29,6 +35,71 @@ import {
 } from './panels'
 
 const TITLES: Record<string, string> = { select: 'Select', terrain: 'Terrain', object: 'Objects' }
+
+const wholeDocument = (doc: ReadonlyMapDoc): ReadonlyMapDoc => doc
+
+/**
+ * The inspector as a region: it reads the document settled — once a stroke has closed, not on every tick of a drag — and
+ * the tool parameters, selection, level toggle and last notice from their actors, and builds its own commands. Nothing
+ * above it passes it state.
+ */
+export function InspectorRegion({ platform }: { platform: Platform }) {
+  const host = useHost()
+  const doc = useDocument(wholeDocument, { settled: true })
+  const tools = useToolsSelector((snapshot) => snapshot.context)
+  const params = useMemo(() => mergeParams(tools), [tools])
+  const selection = useViewSelector((snapshot) => snapshot.context.selection)
+  const levelOpen = useViewSelector((snapshot) => snapshot.context.levelOpen)
+  const notice = useViewSelector((snapshot) => snapshot.context.notice)
+  const art = useArt()
+
+  const selected = selection?.kind === 'object' ? (doc.objects[selection.id] ?? null) : null
+  const updateObject = (id: string, changes: Partial<MapObject>): void => run(host, 'objects.update', { id, changes })
+
+  const onLoadSheet = async (file: File): Promise<void> => {
+    try {
+      const result = await loadSheetFromFile(file, host.reader.doc)
+      host.children.viewport.send({ type: 'sheet', image: result.image, warning: result.warning })
+    } catch (error) {
+      host.children.viewport.send({ type: 'sheet', image: null, warning: String(error) })
+    }
+  }
+
+  return (
+    <Inspector
+      doc={doc}
+      params={params}
+      set={(changes) => setParams(host, changes)}
+      selection={selection}
+      platform={platform}
+      selected={selected}
+      deleteKbd={chordFor('selection.delete', undefined, platform)}
+      levelOpen={levelOpen}
+      onLevelToggle={(open) => run(host, 'view.set', { levelOpen: open })}
+      sheet={art.sheet}
+      sheetWarning={art.sheetWarning}
+      onLoadSheet={(file) => void onLoadSheet(file)}
+      onSelect={(id) => {
+        // Select an object from a list, and go to Select so the drag and the keys act on it.
+        run(host, 'selection.set', { id })
+        setParams(host, { tool: 'select' })
+      }}
+      onObject={(changes) => {
+        if (selected) updateObject(selected.id, changes)
+      }}
+      onObjectChange={updateObject}
+      onStructure={(id, changes) => {
+        if (changes.name !== undefined) run(host, 'structure.rename', { id, name: changes.name })
+        if (changes.placement !== undefined) run(host, 'structure.place', { id, placement: changes.placement })
+      }}
+      onDelete={() => run(host, 'selection.delete')}
+      onRig={(changes) => run(host, 'camera.set', changes)}
+      onAtmosphere={(changes) => run(host, 'atmosphere.set', changes)}
+      onFix={(id) => updateObject(id, { display: 'billboardY' })}
+      message={notice}
+    />
+  )
+}
 
 export function Inspector({
   doc,
@@ -79,7 +150,7 @@ export function Inspector({
   onFix: (id: string) => void
   message: string | null
 }) {
-  const flags = useCoverageFlags()
+  const flags = useCoverageFlags(levelOpen)
   const structure = selection?.kind === 'structure' ? doc.structures[selection.id] ?? null : null
   const isTerrain = params.tool === 'terrain'
   const tilePicker = isTerrain && params.terrainMode === 'paint' && params.paintVerb === 'tile'
@@ -135,8 +206,8 @@ export function Inspector({
         <AtmosphereProperties atmosphere={doc.atmosphere} onChange={onAtmosphere} />
       </Section>
 
-      <Section title="Coverage" summary={flags === 0 ? 'clean' : `${flags} flagged`} accent={flags > 0} open={levelOpen} onToggle={onLevelToggle}>
-        <CoverageProperties onSelect={onSelect} onFix={onFix} />
+      <Section title="Coverage" summary={flags === null ? undefined : flags === 0 ? 'clean' : `${flags} flagged`} accent={flags !== null && flags > 0} open={levelOpen} onToggle={onLevelToggle}>
+        {levelOpen ? <CoverageProperties onSelect={onSelect} onFix={onFix} /> : null}
       </Section>
 
       {message ? (

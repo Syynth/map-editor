@@ -30,7 +30,7 @@ import {
   type MapObject,
   type RgbaImage,
 } from '@papercut/document'
-import { useDocument } from '@papercut/editor-host'
+import { useDocument, useDocumentSelector } from '@papercut/editor-host'
 import { sheetLayoutFor, tileColumnRow } from '@papercut/geometry'
 import { analyseCoverage, type CoverageReport } from '@papercut/runtime'
 import {
@@ -403,13 +403,20 @@ export function CameraRigProperties({ rig, onChange }: { rig: DeepReadonly<Camer
  */
 const coverageOf = (doc: ReadonlyMapDoc): CoverageReport => analyseCoverage(doc, doc.camera)
 
-/** The one number the section header shows, without rendering the body. */
-export function useCoverageFlags(): number {
-  return useDocument(coverageOf).readsWrong
+const flagsOf = (doc: ReadonlyMapDoc): number | null => analyseCoverage(doc, doc.camera).readsWrong
+const unshown = (): number | null => null
+
+/**
+ * The one number the section header shows, analysed only while the section is open (`null` while it is closed) and
+ * only once a stroke has closed: the analysis walks every object and every surface of the map.
+ */
+export function useCoverageFlags(open: boolean): number | null {
+  return useDocumentSelector(open ? flagsOf : unshown, { equal: Object.is, settled: true })
 }
 
+/** The section's body: mount it only while the section is open, since mounting it is what runs the analysis. */
 export function CoverageProperties({ onFix, onSelect }: { onFix: (id: string) => void; onSelect: (id: string) => void }) {
-  const report = useDocument(coverageOf)
+  const report = useDocument(coverageOf, { settled: true })
   const flagged = report.objects.filter((entry) => entry.readsWrong)
   const hiddenPercent =
     report.hiddenSurfaces.totalFaces === 0

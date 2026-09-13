@@ -21,7 +21,7 @@
 
 import type { ReadonlyMapDoc } from '@papercut/document'
 import { useSelector } from '@xstate/react'
-import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react'
 import type { SnapshotFrom } from 'xstate'
 
 import type { Host, HostActor, HostChildren } from './host'
@@ -61,6 +61,53 @@ export function useViewSelector<T>(selector: (snapshot: SnapshotFrom<HostChildre
   return useSelector(useHost().children.view, selector, compare)
 }
 
+/** A slice of the viewport actor — the hovered surface, the camera readout, the frame stats. Select one field: they change at pointer and frame rate. */
+export function useViewportSelector<T>(selector: (snapshot: SnapshotFrom<HostChildren['viewport']>) => T, compare?: Compare<T>): T {
+  return useSelector(useHost().children.viewport, selector, compare)
+}
+
+const isStroking = (snapshot: SnapshotFrom<HostChildren['gesture']>): boolean => snapshot.value === 'stroke'
+
+export interface DocumentSelectOptions<T> {
+  /**
+   * Re-render only when the selected value changes by this, rather than on
+   * every revision. Selections the store mutates in place — the document,
+   * an object record — must not use it: their identity never changes.
+   */
+  readonly equal?: Compare<T>
+  /**
+   * Hold the last value while a stroke is open, and select again when it
+   * closes: for work that walks the whole map (coverage, dormant paint) and
+   * is not worth redoing on every brush tick.
+   */
+  readonly settled?: boolean
+}
+
+/**
+ * The React front door to the document (#13), selecting narrowly: with
+ * `equal`, a component re-renders only when what it selected changed; with
+ * `settled`, not at all mid-stroke. See `useDocument` for the per-revision
+ * form every other reader uses.
+ */
+export function useDocumentSelector<T>(selector: (doc: ReadonlyMapDoc) => T, options: DocumentSelectOptions<T> = {}): T {
+  const host = useHost()
+  const { reader } = host
+  const { equal, settled = false } = options
+  const stroking = useSelector(host.children.gesture, isStroking)
+  const held = settled && stroking
+  const cache = useRef<{ revision: number; selector: (doc: ReadonlyMapDoc) => T; value: T } | null>(null)
+  const read = (): T => {
+    const revision = reader.getSnapshot()
+    const cached = cache.current
+    if (cached && (held || (cached.revision === revision && cached.selector === selector))) return cached.value
+    const next = selector(reader.doc)
+    const value = cached && equal && cached.selector === selector && equal(cached.value, next) ? cached.value : next
+    cache.current = { revision, selector, value }
+    return value
+  }
+  return useSyncExternalStore(reader.subscribe, read)
+}
+
 /**
  * The React front door to the document (#13). Subscribes to the revision
  * counter — the one thing about the document that changes identity, since
@@ -72,9 +119,19 @@ export function useViewSelector<T>(selector: (snapshot: SnapshotFrom<HostChildre
  * selector is the cheap part; a component that wants finer control keys a
  * `useMemo` of its own on what this returns.
  */
-export function useDocument<T>(selector: (doc: ReadonlyMapDoc) => T): T {
-  const { reader } = useHost()
-  const revision = useSyncExternalStore(reader.subscribe, reader.getSnapshot)
+export function useDocument<T>(selector: (doc: ReadonlyMapDoc) => T, options: { readonly settled?: boolean } = {}): T {
+  const host = useHost()
+  const { reader } = host
+  // `settled`: while a stroke is open the revision this reads stays where it
+  // was when the stroke began, so a panel that shows the whole document is
+  // not re-rendered on every brush tick; it catches up when the stroke closes.
+  const stroking = useSelector(host.children.gesture, isStroking)
+  const held = options.settled === true && stroking
+  const seen = useRef(reader.getSnapshot())
+  const revision = useSyncExternalStore(reader.subscribe, () => {
+    if (!held) seen.current = reader.getSnapshot()
+    return seen.current
+  })
   return useMemo(() => {
     // Named in the body as well as in the array, and that is the point rather
     // than a trick: `exhaustive-deps` (#37, on since #66 step 7) sees a value

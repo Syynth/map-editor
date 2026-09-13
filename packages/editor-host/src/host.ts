@@ -114,6 +114,7 @@ import { playLogic, type PlayLogic } from './play'
 import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps, type StrokeSample } from './strokes'
 import { TOOLS_OWNER, toolKeys, toolsLogicWith, type FeatureParams, type ToolsLogic } from './tools'
 import { VIEW_OWNER, viewKeys, viewLogic, type Selection, type ViewLogic } from './view'
+import { VIEWPORT_OWNER, viewportLogic, type ViewportLogic } from './viewport'
 
 export const HOST_OWNER = reserveOwner('editor-host')
 /** The gesture actor declares no commands; the id is the key its ref is held under. */
@@ -326,6 +327,7 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
       const document = spawn(source.logic, { id: 'document' })
       const tools = spawn(toolsLogicWith(Object.fromEntries(features.map((feature) => [feature.owner, (feature.params ?? {}) as FeatureParams]))), { id: 'tools' })
       const view = spawn(viewLogic, { id: 'view' })
+      const viewport = spawn(viewportLogic, { id: 'viewport' })
       // The gesture actor's stroke children write through the document ref,
       // read tool parameters from the tools ref, and reach a feature's tool
       // contract through `instances`, so its logic is built here, closed over
@@ -377,6 +379,7 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
           [DOCUMENT_OWNER]: document,
           [TOOLS_OWNER]: tools,
           [VIEW_OWNER]: view,
+          [VIEWPORT_OWNER]: viewport,
           [GESTURE_OWNER]: gesture,
           ...Object.fromEntries(spawned),
         },
@@ -508,6 +511,8 @@ export interface HostChildren {
   readonly document: ActorRefFrom<DocumentActorLogic>
   readonly tools: ActorRefFrom<ToolsLogic>
   readonly view: ActorRefFrom<ViewLogic>
+  /** What the viewport reports back: hover, brush cells, camera, frame stats (`viewport.ts`). */
+  readonly viewport: ActorRefFrom<ViewportLogic>
   readonly gesture: ActorRefFrom<GestureLogic>
 }
 
@@ -598,6 +603,7 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
     document: initial[DOCUMENT_OWNER] as ActorRefFrom<DocumentActorLogic>,
     tools: initial[TOOLS_OWNER] as ActorRefFrom<ToolsLogic>,
     view: initial[VIEW_OWNER] as ActorRefFrom<ViewLogic>,
+    viewport: initial[VIEWPORT_OWNER] as ActorRefFrom<ViewportLogic>,
     gesture: initial[GESTURE_OWNER] as ActorRefFrom<GestureLogic>,
   }
 
