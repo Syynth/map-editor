@@ -297,3 +297,11 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** The editor is published as a static GitHub Pages site so people can try it. A workflow builds apps/editor on every push to main and uploads it with actions/deploy-pages. There is no gh-pages branch.
 - **WHY:** The demo should always match main, and main is already protected by the gate, so anything that ships has passed it. The artifact flow keeps build output out of git history and avoids a second branch to manage.
+
+## The project is named Papercut
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** cross-system
+- **SCOPE:** moderate
+- **WHAT:** The editor is named "Papercut", replacing the placeholder "map-editor". This entry records the name only. Renaming the repo, packages, or app is a separate step.
+- **WHY:** The name fits the vision: flat 2D art cut out and arranged in 3D space, in a Paper Mario style. Developers use "papercuts" to mean small annoying bugs, and that meaning is a welcome joke, not a drawback. Other names were rejected: Foldout (Unity already uses the word for a UI control), Proscenium (hard to spell and say), Terrarium (too close to Terraria), and Papercraft (Papercraft Games already makes a level tool, Folded Paper Engine; the word is a generic hobby term; and it suggests the reverse workflow, 3D model to flat paper). Accepted trade-offs: PaperCut Software, the print-management company, owns papercut.com and dominates search results, and `papercut` is taken on npm.
