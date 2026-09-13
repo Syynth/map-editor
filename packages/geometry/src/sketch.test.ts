@@ -78,6 +78,30 @@ describe('meshSketch', () => {
     expect(Math.max(...ys)).toBe(2)
   })
 
+  it('a cut slices the full-profile wall and caps it there, with no lip above', () => {
+    // Height 2, base flared out by 1: halfway up the wall is out by 0.5. A cut at 1 keeps that ring,
+    // where a sketch simply rebuilt one unit tall would have its flare squashed to 0 there.
+    const mesh = meshSketch(square, { height: 2, ...specs, lip: 'flat', profile: wallProfilePreset('straight', 1), cut: 1 })
+    const at = (buffers: { positions: Float32Array }, axis: number) => Array.from(buffers.positions).filter((_, i) => i % 3 === axis)
+    expect(Math.max(...at(mesh.wallBody, 1))).toBe(1)
+    expect(Math.min(...at(mesh.wallBody, 0))).toBeCloseTo(-1)
+    const topRing = Array.from(mesh.wallBody.positions).filter((_, i) => i % 3 === 0 && mesh.wallBody.positions[i + 1] === 1)
+    expect(Math.max(...topRing)).toBeCloseTo(4.5)
+    expect(new Set(at(mesh.cap, 1))).toEqual(new Set([1]))
+    expect(Math.max(...at(mesh.cap, 0))).toBeCloseTo(4.5)
+    expect(mesh.rim.triangleCount).toBe(0)
+    expect(mesh.wallTop.triangleCount).toBe(0)
+    expect(mesh.wallBottom.triangleCount).toBeGreaterThan(0)
+  })
+
+  it('a cut at or above the height changes nothing; one at the ground leaves nothing', () => {
+    const whole = meshSketch(square, { height: 2, ...specs, lip: 'flat' })
+    const same = meshSketch(square, { height: 2, ...specs, lip: 'flat', cut: 2 })
+    expect(same.cap.positions).toEqual(whole.cap.positions)
+    expect(same.rim.triangleCount).toBe(whole.rim.triangleCount)
+    expect(meshSketch(square, { height: 2, ...specs, lip: 'flat', cut: 0 }).wallBody.triangleCount).toBe(0)
+  })
+
   it('a smooth profile keeps its endpoints', () => {
     const poly = wallProfilePolyline(wallProfilePreset('curve', 1))
     expect(poly[0]).toEqual({ out: 1, t: 0 })

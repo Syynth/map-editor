@@ -34,7 +34,7 @@ import {
 } from '@map-editor/document'
 import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@map-editor/geometry'
 import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
-import { layerView, withinLayers, type LayerRange } from './layers'
+import { CUT_TINT, GHOST_TINT, layerView, withinLayers, type LayerRange } from './layers'
 import { Sky, sunDirection } from './sky'
 
 function buildGeometry(buffers: MeshBuffers): THREE.BufferGeometry {
@@ -91,20 +91,35 @@ function bandSpec(band: EdgeBand | undefined): EdgeSpec {
   return band ? { width: band.width, segment: band.segment, repeat: band.repeat } : { width: 0.01, segment: 1, repeat: 'tile' }
 }
 
-/** What the mesher needs from a sketch and the two materials it names. */
-export function sketchMeshOf(doc: ReadonlyMapDoc, sketch: ReadonlySketch, layers: number): SketchMesh {
+/** What the mesher needs from a sketch and the two materials it names; `cut` slices it at that height above its base. */
+export function sketchMeshOf(doc: ReadonlyMapDoc, sketch: ReadonlySketch, cut?: number): SketchMesh {
   const cap = doc.surfaceMaterials[sketch.capMaterial] as FillEdgeMaterial | undefined
   const wall = doc.surfaceMaterials[sketch.wallMaterial] as FillEdgeMaterial | undefined
   return meshSketch(
     { points: sketch.points.map((p) => ({ ...p })) },
     {
-      height: layers * HALF,
+      height: sketch.layers * HALF,
+      cut,
       cap: { fillScale: cap?.fill.scale ?? 0.5, rim: bandSpec(cap?.rim) },
       wall: { bodyScale: wall?.fill.scale ?? 0.5, top: bandSpec(wall?.top), bottom: bandSpec(wall?.bottom) },
       lip: sketch.lip,
       profile: { points: sketch.wall.points.map((p) => ({ ...p })), smooth: sketch.wall.smooth },
     },
   )
+}
+
+/** The buffers with every vertex coloured `tint`, the way the layer view marks a cut cap or a ghosted column. */
+function tinted(buffers: MeshBuffers, tint: number): MeshBuffers {
+  const colors = new Float32Array(buffers.colors.length)
+  const r = ((tint >> 16) & 0xff) / 255
+  const g = ((tint >> 8) & 0xff) / 255
+  const b = (tint & 0xff) / 255
+  for (let i = 0; i < colors.length; i += 3) {
+    colors[i] = r
+    colors[i + 1] = g
+    colors[i + 2] = b
+  }
+  return { ...buffers, colors }
 }
 
 /** Which of a sketch's parts a material band dresses, and with what texture; `null` when the material has no such band. */
@@ -365,19 +380,25 @@ export class RuntimeScene {
     view.parts.clear()
     if (!sketch.closed || sketch.points.length < 3) return
 
-    // Under the layer view a sketch above the ceiling is not drawn; one cut by it is drawn to the ceiling.
-    let layers = sketch.layers
+    // Under the layer view a sketch above the ceiling is not drawn; one the ceiling passes through is
+    // sliced there, its cut face tinted like a cut column's; one wholly under the floor is ghosted.
+    const height = sketch.layers * HALF
+    let cut: number | undefined
+    let tint: number | null = null
     if (this.layers !== null) {
       const ceiling = this.layers.hi * HALF
       if (base >= ceiling) return
-      layers = Math.min(layers, Math.floor((ceiling - base) / HALF))
-      if (layers <= 0) return
+      if (ceiling - base < height) {
+        cut = ceiling - base
+        tint = CUT_TINT
+      } else if (base + height < this.layers.lo * HALF) tint = GHOST_TINT
     }
 
-    const mesh = sketchMeshOf(this.doc, sketch, layers)
+    const mesh = sketchMeshOf(this.doc, sketch, cut)
     for (const part of SKETCH_PARTS) {
-      const buffers = mesh[part]
-      if (buffers.triangleCount === 0) continue
+      const raw = mesh[part]
+      if (raw.triangleCount === 0) continue
+      const buffers = tint !== null && (tint === GHOST_TINT || part === 'cap') ? tinted(raw, tint) : raw
       const texture = textureForPart(this.doc, sketch, part)
       const band = part !== 'cap' && part !== 'wallBody'
       // A band the material does not have is not a part of this sketch.
