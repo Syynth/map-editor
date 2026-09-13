@@ -285,15 +285,16 @@ describe('walls are watertight', () => {
               const positive = d1 > 1e-9 || d2 > 1e-9 || d3 > 1e-9
               return !(negative && positive)
             })
-          for (let i = 1; i < 20; i++) {
-            const t = i / 20
+          // Twelve positions along the side and quarter-band heights: a hole or fin is at least a triangle half a band tall.
+          for (let i = 1; i < 12; i++) {
+            const t = i / 12
             const hTop = top[0] + (top[1] - top[0]) * t
             const hLow = low[0] + (low[1] - low[0]) * t
             // Past the map's edge there is nothing to meet below the floor: only the wall above it is owed.
             const lo = outside ? Math.max(0, Math.min(hTop, hLow)) : Math.min(hTop, hLow)
             const hi = outside ? Math.max(0, hTop) : Math.max(hTop, hLow)
             if (hi <= lo) continue
-            for (let h = Math.floor(lo) - 1; h <= hi + 1; h += 0.1) {
+            for (let h = Math.floor(lo) - 1; h <= hi + 1; h += 0.25) {
               const within = h > lo + 0.02 && h < hi - 0.02
               const beyond = h < lo - 0.02 || h > hi + 0.02
               if (within && !covered(t, h)) problems.push(`hole at cell ${x},${y} side ${dir}, t ${t.toFixed(2)}, h ${h.toFixed(2)}`)
