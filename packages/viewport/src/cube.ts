@@ -153,11 +153,21 @@ export interface CubeColours {
   face: number
   chamfer: number
   inert: number
-  highlight: number
+  /** The tint of each axis — the red, green, blue every 3D tool colours x, y and z — mixed faintly into its pieces. */
+  axes: readonly [number, number, number]
+  /** How much of the axis tint shows: 0 is the neutral grey, 1 the full colour. */
+  tint: number
   label: string
 }
 
-const DEFAULT_COLOURS: CubeColours = { face: 0xd9dde4, chamfer: 0xb8bec9, inert: 0x6f7480, highlight: 0x7fd4ff, label: '#3a3f4a' }
+const DEFAULT_COLOURS: CubeColours = {
+  face: 0xd9dde4,
+  chamfer: 0xb8bec9,
+  inert: 0x6f7480,
+  axes: [0xe0605a, 0x62c46c, 0x5b8def],
+  tint: 0.38,
+  label: '#3a3f4a',
+}
 
 export class ViewCube {
   readonly scene = new THREE.Scene()
@@ -245,16 +255,33 @@ export class ViewCube {
     this.outline.material.dispose()
   }
 
-  private baseColour(piece: CubePiece): number {
-    if (!piece.view) return this.colours.inert
-    return piece.kind === 'face' ? this.colours.face : this.colours.chamfer
+  /**
+   * A piece's colour: the neutral for its kind, faintly tinted by its axes.
+   * A face carries its own axis; an edge or corner the mix of the faces it
+   * joins, so the tints meet as they do on the cube. The underside keeps its
+   * dull grey — it has no view to advertise.
+   */
+  private baseColour(piece: CubePiece): THREE.Color {
+    const neutral = new THREE.Color(!piece.view ? this.colours.inert : piece.kind === 'face' ? this.colours.face : this.colours.chamfer)
+    if (!piece.view) return neutral
+    const mix = new THREE.Color(0, 0, 0)
+    let count = 0
+    piece.axes.forEach((axis, i) => {
+      if (axis === 0) return
+      mix.add(new THREE.Color(this.colours.axes[i]))
+      count += 1
+    })
+    mix.multiplyScalar(1 / count)
+    return neutral.lerp(mix, this.colours.tint)
   }
 
   private paint(id: string, lit: boolean): void {
     const mesh = this.meshes.get(id)
     const piece = this.pieces.find((candidate) => candidate.id === id)
     if (!mesh || !piece) return
-    mesh.material.color.set(lit && piece.view ? this.colours.highlight : this.baseColour(piece))
+    const base = this.baseColour(piece)
+    // Lit: the same tint, pushed toward white, so every axis lights up in its own colour rather than one accent.
+    mesh.material.color.copy(lit && piece.view ? base.lerp(new THREE.Color(0xffffff), 0.55) : base)
   }
 
   /** A face's word, drawn once into a small canvas; null where there is no canvas to draw on (tests). */
