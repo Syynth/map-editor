@@ -450,18 +450,18 @@ describe('pointer input through the host', () => {
     // takes it back whole.
     const { host, dispatch } = makeHost()
     dispatch('tools.set', { tool: 'object' })
-    const object = { ...OBJECT, position: [1, 0, 1] as [number, number, number], anchorCell: [1, 1] as [number, number] }
+    const object = { ...OBJECT, position: [1.5, 0, 1.5] as [number, number, number], anchorCell: [1, 1] as [number, number] }
     apply(host, 'Add object', addObject(host.reader.doc, object))
     const doc = host.reader.doc
 
-    const onObject = { pick: { surface: topAt(1, 1), point: { x: 1, z: 1 }, objectId: object.id } }
+    const onObject = { pick: { surface: topAt(1, 1), point: { x: 1.5, z: 1.5 }, objectId: object.id } }
     expect(host.input.pointerDown(pressAt(1, 1, onObject))).toBe('stroke')
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBe(object.id)
     host.input.pointerMove({ x: 50, y: 50, modifiers: NO_MODIFIERS })
-    host.input.strokeMove({ surface: topAt(5, 5), point: { x: 5, z: 5 }, objectId: null }, NO_MODIFIERS)
+    host.input.strokeMove({ surface: topAt(5, 5), point: { x: 5.5, z: 5.5 }, objectId: null }, NO_MODIFIERS)
     // Ground level comes from the terrain, so only x and z are the drag's.
     const groundPlane = (id: string) => [doc.objects[id]?.position[0], doc.objects[id]?.position[2]]
-    expect(groundPlane(object.id)).toEqual([5, 5])
+    expect(groundPlane(object.id)).toEqual([5.5, 5.5])
 
     expect(host.contextKeys()['host.stroking']).toBe(true)
     expect(dispatch('selection.delete')).toMatchObject({
@@ -479,7 +479,7 @@ describe('pointer input through the host', () => {
     // The invariant: an id in `objects` is an id in `objectOrder`, and the
     // object is back where the drag began, not where it ended.
     expect(Object.keys(doc.objects)).toEqual(doc.objectOrder)
-    expect(groundPlane(object.id)).toEqual([1, 1])
+    expect(groundPlane(object.id)).toEqual([1.5, 1.5])
   })
 
   it('refuses undo and redo while the stroke is open, and says which key failed', () => {
@@ -540,16 +540,16 @@ describe('pointer input through the host', () => {
     const doc = host.reader.doc
     expect(doc.objectOrder).toHaveLength(0)
 
-    // The press is snapped to the grid, as the drag will be.
+    // The press is snapped to the grid, as the drag will be: an object stands in the middle of its cell.
     host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.4, z: 2.4 }, objectId: null } }))
     expect(doc.objectOrder).toHaveLength(1)
     const id = doc.objectOrder[0]
-    expect(doc.objects[id].position[0]).toBe(2)
+    expect(doc.objects[id].position[0]).toBe(2.5)
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBe(id)
     expect(host.contextKeys()['view.hasSelection']).toBe(true)
 
     host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.4, z: 4.4 }, objectId: null }, NO_MODIFIERS)
-    expect(doc.objects[id].position[0]).toBe(4)
+    expect(doc.objects[id].position[0]).toBe(4.5)
     host.input.pointerUp({ x: 40, y: 40 })
     expect(host.reader.undoLabel()).toBe('Edit object')
   })
@@ -577,11 +577,11 @@ describe('pointer input through the host', () => {
     host.input.pointerUp({ x: 70, y: 70 })
     expect(host.children.view.getSnapshot().context.selection).toBeNull()
 
-    // Pressing the object selects it, and the rest of the drag moves it, snapped to the grid.
+    // Pressing the object selects it, and the rest of the drag moves it, snapped to a cell's centre.
     host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.5, z: 2.5 }, objectId: id } }))
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBe(id)
     host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.6, z: 4.6 }, objectId: null }, NO_MODIFIERS)
-    expect(doc.objects[id].position[0]).toBe(4)
+    expect(doc.objects[id].position[0]).toBe(4.5)
     host.input.pointerUp({ x: 40, y: 40 })
     expect(host.reader.undoLabel()).toBe('Move object')
 
@@ -594,29 +594,29 @@ describe('pointer input through the host', () => {
 
   it('a drag snaps as the tools actor says; ctrl frees one drag; shift holds it to an axis', () => {
     const { host, dispatch } = makeHost()
-    apply(host, 'Add', addObject(host.reader.doc, { ...OBJECT, position: [2, 0, 2], anchorCell: [2, 2] }))
+    apply(host, 'Add', addObject(host.reader.doc, { ...OBJECT, position: [2.5, 0, 2.5], anchorCell: [2, 2] }))
     const doc = host.reader.doc
     dispatch('tools.set', { tool: 'select' })
-    const grab = () => host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.3, z: 2.3 }, objectId: OBJECT.id } }))
+    const grab = () => host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.8, z: 2.8 }, objectId: OBJECT.id } }))
 
-    // Grid: whole cells. The grab was 0.3 off the object, and that offset rides along before the snap.
+    // Grid: the middle of a cell. The grab was 0.3 off the object, and that offset rides along before the snap.
     grab()
-    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.1, z: 3.9 } }, NO_MODIFIERS)
-    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([5, 4])
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.6, z: 4.4 } }, NO_MODIFIERS)
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([5.5, 4.5])
     // Ctrl (Cmd on a Mac) frees it, to the hundredth.
-    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.1, z: 3.9 } }, { ...NO_MODIFIERS, ctrl: true })
-    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([4.8, 3.6])
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.6, z: 4.4 } }, { ...NO_MODIFIERS, ctrl: true })
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([5.3, 4.1])
     // Shift holds the drag to the axis it has moved further along, measured from the press.
-    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 6.3, z: 3.3 } }, { ...NO_MODIFIERS, shift: true })
-    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([6, 2])
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 6.8, z: 3.8 } }, { ...NO_MODIFIERS, shift: true })
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([6.5, 2.5])
     host.input.pointerUp({ x: 60, y: 30 })
 
-    // Half cells, set on the tools actor and read per tick. The object is at (6, 2) now, and the
+    // Half cells, set on the tools actor and read per tick. The object is at (6.5, 2.5) now, and the
     // grab is again 0.3 past the press cell, so the same travel lands 2.8 east and 1.6 south of it.
     expect(dispatch('tools.set', { snap: 'half' })).toEqual({ ok: true })
     grab()
-    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.1, z: 3.9 } }, NO_MODIFIERS)
-    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([9, 3.5])
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.6, z: 4.4 } }, NO_MODIFIERS)
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([9.5, 4])
     host.input.pointerUp({ x: 50, y: 40 })
     expect(dispatch('tools.set', { snap: 'sticky' })).toMatchObject({ ok: false })
   })
@@ -652,20 +652,20 @@ describe('pointer input through the host', () => {
     host.input.pointerUp({ x: 20, y: 20 })
     const doc = host.reader.doc
     const id = doc.objectOrder[0]
-    expect(doc.objects[id].position[0]).toBe(2)
+    expect(doc.objects[id].position[0]).toBe(2.5)
 
     // Grab the tree half a cell off its position: that half-cell is the offset.
     dispatch('tools.set', { tool: 'select' })
-    host.input.pointerDown(pressAt(2, 2, { pick: { surface: null, point: { x: 2.5, z: 2.5 }, objectId: id } }))
+    host.input.pointerDown(pressAt(2, 2, { pick: { surface: null, point: { x: 3, z: 3 }, objectId: id } }))
     // Mid-drag the ray hits the dragged sprite itself (`point` is the sprite
     // plane, `objectId` the tree); the plane point is what the move reads.
-    host.input.strokeMove({ surface: null, point: { x: 9, z: 1 }, objectId: id, plane: { x: 5.5, z: 6.5 } }, NO_MODIFIERS)
-    expect(doc.objects[id].position[0]).toBeCloseTo(5)
-    expect(doc.objects[id].position[2]).toBeCloseTo(6)
+    host.input.strokeMove({ surface: null, point: { x: 9, z: 1 }, objectId: id, plane: { x: 6, z: 7 } }, NO_MODIFIERS)
+    expect(doc.objects[id].position[0]).toBeCloseTo(5.5)
+    expect(doc.objects[id].position[2]).toBeCloseTo(6.5)
     // Without a plane (no camera in a test) the ground point is the fallback, offset applied the same way.
-    host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.5, z: 4.5 }, objectId: null }, NO_MODIFIERS)
-    expect(doc.objects[id].position[0]).toBeCloseTo(4)
-    expect(doc.objects[id].position[2]).toBeCloseTo(4)
+    host.input.strokeMove({ surface: topAt(4, 4), point: { x: 5, z: 5 }, objectId: null }, NO_MODIFIERS)
+    expect(doc.objects[id].position[0]).toBeCloseTo(4.5)
+    expect(doc.objects[id].position[2]).toBeCloseTo(4.5)
     host.input.pointerUp({ x: 40, y: 40 })
   })
 
