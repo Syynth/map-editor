@@ -76,6 +76,28 @@ const GLYPHS = {
   open: <path d="M3 7h6l2 2h10v11H3z" />,
   export: <path d="M12 3v12M8 7l4-4 4 4M4 15v5h16v-5" />,
   grid: <path d="M4 4h16v16H4zM4 12h16M12 4v16" />,
+  // snapping: where on the grid a drag lands — a line crossing, a half-cell point, or anywhere
+  snapGrid: (
+    <>
+      <path d="M4 4h16v16H4zM4 12h16M12 4v16" opacity="0.55" />
+      <circle cx="12" cy="12" r="2.8" fill="currentColor" stroke="none" />
+    </>
+  ),
+  snapHalf: (
+    <>
+      <path d="M4 4h16v16H4zM4 12h16M12 4v16" opacity="0.55" />
+      <circle cx="8" cy="8" r="1.8" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="8" r="1.8" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="16" r="1.8" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="16" r="1.8" fill="currentColor" stroke="none" />
+    </>
+  ),
+  snapFree: (
+    <>
+      <circle cx="12" cy="12" r="8" strokeDasharray="3 3" opacity="0.55" />
+      <circle cx="12" cy="12" r="2.8" fill="currentColor" stroke="none" />
+    </>
+  ),
   camera: (
     <>
       <path d="M3 8l9-5 9 5v8l-9 5-9-5z" />
@@ -196,13 +218,6 @@ const GLYPHS = {
   ),
   faceLeft: <path d="M15 5 7 12l8 7z" fill="currentColor" stroke="none" />,
   faceRight: <path d="M9 5l8 7-8 7z" fill="currentColor" stroke="none" />,
-  snapGrid: <path d="M4 4h16v16H4zM4 12h16M12 4v16" />,
-  snapFree: (
-    <>
-      <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
-      <path d="M5 5l3 3M19 5l-3 3M5 19l3-3M19 19l-3-3" opacity=".6" />
-    </>
-  ),
 
   // sprites and materials
   tree: (
