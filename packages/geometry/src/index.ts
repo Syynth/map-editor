@@ -30,6 +30,26 @@ export {
 } from './template'
 export type { CliffBand, SheetLayout } from './template'
 
+export {
+  CORNER_BITS,
+  TERRAIN_SET_VERSION,
+  TerrainSetError,
+  addTerrain,
+  createTerrainSet,
+  edgeCoverage,
+  edgeTile,
+  exactTile,
+  pairAuthored,
+  parseTerrainSet,
+  serializeTerrainSet,
+  stampTemplate,
+  tagCorner,
+  templateTags,
+} from './terrainset'
+export type { CornerTags, Tag, TerrainDef, TerrainSet, TerrainSetFile } from './terrainset'
+export { TerrainAtlas, terrainKey } from './atlas'
+export type { AtlasTile, CompositeReport, CornerKeys, LoadedSet, TerrainKey } from './atlas'
+
 export { meshTerrainChunk } from './terrain'
 export type { MeshBuffers, TerrainChunkMesh } from './terrain'
 

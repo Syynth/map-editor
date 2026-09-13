@@ -22,4 +22,6 @@
  */
 
 export { createSampleMap } from './sample'
+export { PLACEHOLDER_PAIRS, PLACEHOLDER_TERRAINS, generatePlaceholderTerrainSet, generateTerrainSetArt } from './terrainset'
+export type { PlaceholderTerrain, PlaceholderTerrainSet } from './terrainset'
 export { bakedDir } from './baked-dir'
