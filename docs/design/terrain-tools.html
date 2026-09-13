@@ -240,11 +240,18 @@
   function rng(seed) { let s = (seed * 2654435761) >>> 0 || 1; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32 }
   const QUADS = [[1, 0, 0], [2, 1, 0], [4, 0, 1], [8, 1, 1]] // bit, qx, qy for NW NE SW SE
 
-  /** One quadrant of a tile: the over-terrain's fill, rounded when alone, a rim where it ends, a notch of the under-terrain at an inside corner. */
-  function paintQuadrant(g, px, py, s, myBit, bits, m, underColor) {
-    const r = s * 0.55, inset = Math.max(0.6, s * 0.06)
-    const horiz = { 8: 4, 4: 8, 2: 1, 1: 2 }[myBit], vert = { 8: 2, 2: 8, 4: 1, 1: 4 }[myBit], diag = { 8: 1, 1: 8, 4: 2, 2: 4 }[myBit]
-    const hasH = bits & horiz, hasV = bits & vert, hasD = bits & diag
+  /** Which quadrant lies across each axis, and diagonally, from a given quadrant bit. */
+  const NB = { h: { 8: 4, 4: 8, 2: 1, 1: 2 }, v: { 8: 2, 2: 8, 4: 1, 1: 4 }, d: { 8: 1, 1: 8, 4: 2, 2: 4 } }
+  /**
+   * One quadrant of a transition tile, for the terrain that holds it: its
+   * fill, rounded when the quadrant stands alone, and a rim along every edge
+   * where it ends. Where it holds the other three quadrants too, the inside
+   * corner is a fillet drawn in the fourth quadrant (paintFillet), and the
+   * rims toward that quadrant stop short of the tile centre to meet it.
+   */
+  function paintQuadrant(g, px, py, s, myBit, bits, m, fillets) {
+    const r = s * 0.5, inset = Math.max(0.6, s * 0.06)
+    const hasH = bits & NB.h[myBit], hasV = bits & NB.v[myBit], hasD = bits & NB.d[myBit]
     const tcx = (myBit & 5) ? px + s : px, tcy = (myBit & 3) ? py + s : py
     const farX = tcx === px ? px + s : px, farY = tcy === py ? py + s : py
     const ex = tcx === px ? px + inset : px + s - inset, ey = tcy === py ? py + inset : py + s - inset
@@ -253,13 +260,26 @@
     g.fill()
     g.strokeStyle = m.dark; g.lineWidth = Math.max(1.4, s * 0.16); g.beginPath()
     if (!hasH && !hasV) { g.moveTo(ex, farY); g.arcTo(ex, ey, farX, ey, r - inset); g.lineTo(farX, ey) }
-    else { if (!hasH) { g.moveTo(ex, py); g.lineTo(ex, py + s) } if (!hasV) { g.moveTo(px, ey); g.lineTo(px + s, ey) } }
-    g.stroke()
-    if (hasH && hasV && !hasD) {
-      g.save(); if (underColor) g.fillStyle = underColor; else g.globalCompositeOperation = 'destination-out'
-      g.beginPath(); g.arc(tcx, tcy, r * 0.5, 0, Math.PI * 2); g.fill(); g.restore()
-      g.strokeStyle = m.dark; g.beginPath(); g.arc(tcx, tcy, r * 0.5 + 0.8, 0, Math.PI * 2); g.stroke()
+    else {
+      if (!hasH) { const stop = fillets && hasV && hasD ? (tcy === py ? py + r : py + s - r) : tcy; g.moveTo(ex, farY); g.lineTo(ex, stop) }
+      if (!hasV) { const stop = fillets && hasH && hasD ? (tcx === px ? px + r : px + s - r) : tcx; g.moveTo(farX, ey); g.lineTo(stop, ey) }
     }
+    g.stroke()
+  }
+  /**
+   * The inside corner: this quadrant belongs to terrain `ma`, and terrain
+   * `mb` holds the other three. `ma`'s corner at the tile centre is rounded
+   * off and `mb` fills in behind it with a concave curve and its own rim.
+   */
+  function paintFillet(g, px, py, s, myBit, mb, ma) {
+    const r = s * 0.5, lw = Math.max(1.4, s * 0.16)
+    const tcx = (myBit & 5) ? px + s : px, tcy = (myBit & 3) ? py + s : py
+    const farX = tcx === px ? px + s : px, farY = tcy === py ? py + s : py
+    g.fillStyle = mb.color; g.fillRect(px, py, s, s)
+    g.fillStyle = ma.color; g.beginPath(); g.moveTo(farX, farY); g.lineTo(tcx, farY); g.arcTo(tcx, tcy, farX, tcy, r); g.lineTo(farX, tcy); g.closePath(); g.fill()
+    const acx = tcx === px ? px + r : px + s - r, acy = tcy === py ? py + r : py + s - r
+    const a0 = tcx < acx ? (tcy < acy ? Math.PI : Math.PI / 2) : (tcy < acy ? Math.PI * 1.5 : 0)
+    g.strokeStyle = mb.dark; g.lineWidth = lw; g.beginPath(); g.arc(acx, acy, r + lw / 2, a0, a0 + Math.PI / 2); g.stroke()
   }
   function speckle(g, x, y, m, seed, inside) {
     const r = rng(seed)
@@ -280,9 +300,11 @@
       sg.clearRect(x, y, TPX, TPX)
       if (ma) { sg.fillStyle = ma.color; sg.fillRect(x, y, TPX, TPX); speckle(sg, x, y, ma, tIndex(c, r) + 3, (px, py) => !(mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0])) }
       for (const [bit, qx, qy] of QUADS) {
-        if (!(mask & bit)) continue
+        const inside = ma && !(mask & bit) && (mask & NB.h[bit]) && (mask & NB.v[bit]) && (mask & NB.d[bit])
+        if (!(mask & bit) && !inside) continue
         sg.save(); sg.beginPath(); sg.rect(x + qx * 8, y + qy * 8, 8, 8); sg.clip()
-        paintQuadrant(sg, x + qx * 8, y + qy * 8, 8, bit, mask, mb, ma ? ma.color : null)
+        if (inside) paintFillet(sg, x + qx * 8, y + qy * 8, 8, bit, mb, ma)
+        else paintQuadrant(sg, x + qx * 8, y + qy * 8, 8, bit, mask, mb, !!ma)
         sg.restore()
       }
       speckle(sg, x, y, mb, tIndex(c, r) + 7, (px, py) => mask & QUADS[(py >= 8 ? 2 : 0) + (px >= 8 ? 1 : 0)][0])
