@@ -32,6 +32,7 @@ import {
   useToolsSelector,
   useViewSelector,
   type Host,
+  selectionSubject,
 } from '@map-editor/editor-host'
 // The brush preview draws the cells a terrain stroke will touch, so it calls
 // the same function the stroke does (`feature-terrain`'s, the one
@@ -416,10 +417,10 @@ export default function App() {
       gameCamera: view.gameCamera,
       play,
       hover: params.tool === 'terrain' ? hover : null,
-      selectedObjectId: view.selectedObjectId,
+      selection: selectionSubject(view.selection),
       layers: view.layers,
     })
-  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selectedObjectId, view.layers, hover, hoverCells, sketchOverlayKey])
+  }, [params.tool, playing, play, view.showGrid, view.gameCamera, view.selection, view.layers, hover, hoverCells, sketchOverlayKey])
 
   useEffect(() => {
     viewportRef.current?.refreshAtmosphere()

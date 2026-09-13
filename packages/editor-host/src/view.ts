@@ -8,7 +8,7 @@
  * it as the object case, read by the viewport and the inspector.
  */
 
-import { MAX_HEIGHT, MIN_HEIGHT } from '@map-editor/document'
+import { MAX_HEIGHT, MIN_HEIGHT, type DocumentTarget } from '@map-editor/document'
 import { commands, defineContextKey, reserveOwner } from '@map-editor/registry'
 import { setup, types } from 'xstate'
 import { z } from 'zod'
@@ -59,6 +59,25 @@ export interface ViewContext extends Required<ViewSettings> {
 commands.declare(VIEW_OWNER, { id: 'view.set', title: 'Set View Options', category: 'View', args: viewSettings })
 commands.declare(VIEW_OWNER, { id: 'selection.set', title: 'Select Object', category: 'Selection', args: objectSelection })
 commands.declare(VIEW_OWNER, { id: 'selection.select', title: 'Select', category: 'Selection', args: selectArgs })
+
+/**
+ * What a selection lives in, as the scene can point at it: an object, or a
+ * structure — a sketch point's is its sketch. The ONE place a selection kind
+ * meets a target, so a highlight, a framing or a pick that takes a
+ * `DocumentTarget` serves every kind, and a new kind is a new case here.
+ */
+export function selectionSubject(selection: Selection | null): DocumentTarget | null {
+  switch (selection?.kind) {
+    case 'object':
+      return { kind: 'object', id: selection.id }
+    case 'structure':
+      return { kind: 'structure', id: selection.id }
+    case 'sketchPoint':
+      return { kind: 'structure', id: selection.structure }
+    default:
+      return null
+  }
+}
 
 function selected(selection: Selection | null): Pick<ViewContext, 'selection' | 'selectedObjectId'> {
   return { selection, selectedObjectId: selection?.kind === 'object' ? selection.id : null }

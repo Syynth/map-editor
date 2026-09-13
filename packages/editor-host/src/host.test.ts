@@ -20,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from 'xstate'
 
 import { createHost, type Feature, type Host } from './host'
+import { selectionSubject } from './view'
 import type { PointerPress } from './gesture'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
@@ -1104,6 +1105,13 @@ describe('the sketch and structure commands, routed to the document actor', () =
 })
 
 describe('typed selection', () => {
+  it('every kind lives in a target the scene can point at', () => {
+    expect(selectionSubject(null)).toBeNull()
+    expect(selectionSubject({ kind: 'object', id: 'a' })).toEqual({ kind: 'object', id: 'a' })
+    expect(selectionSubject({ kind: 'structure', id: 'ground' })).toEqual({ kind: 'structure', id: 'ground' })
+    expect(selectionSubject({ kind: 'sketchPoint', structure: 'sk', index: 2 })).toEqual({ kind: 'structure', id: 'sk' })
+  })
+
   it('selects a structure, deletes it as one, and comes back whole on undo', () => {
     const { host, dispatch } = makeHost()
     expect(dispatch('selection.select', { selection: { kind: 'structure', id: 'ground' } })).toEqual({ ok: true })
