@@ -151,9 +151,34 @@ class BufferBuilder {
   }
 }
 
+/**
+ * The neighbour's own edge along one of this cell's sides, corner for
+ * corner: the heights at this cell's start and end corners of that side as
+ * the NEIGHBOUR has them — level for a flat cell, sloped for a ramp. A side
+ * face is drawn wherever this cell's edge stands above it, so a flat cell
+ * beside a ramp walls off the triangle between the ramp's sloped edge and
+ * its own level one, which comparing flat heights never saw (the ramp
+ * keeps its height and lowers corners). Outside the volume the edge is at
+ * the floor.
+ */
+function neighbourEdge(voxel: ReadonlyVoxel, x: number, y: number, dir: number): readonly [number, number] {
+  const [dx, dy] = DIR_VECTORS[dir]
+  const nx = x + dx
+  const ny = y + dy
+  if (!inBounds(voxel.size, nx, ny)) return [OUTSIDE_HEIGHT, OUTSIDE_HEIGHT]
+  const corners = cornerHeights(voxel, nx, ny)
+  const [start, end] = NEIGHBOUR_CORNERS[dir]
+  return [corners[start], corners[end]]
+}
+
 function heightOutside(voxel: ReadonlyVoxel, x: number, y: number): number {
   if (!inBounds(voxel.size, x, y)) return OUTSIDE_HEIGHT
   return voxel.terrain.height[cellIndex(voxel.size, x, y)]
+}
+
+/** A value held to a band: not below its floor, not above its ceiling. */
+function clamp(value: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, value))
 }
 
 function unpackTint(packed: number | undefined): [number, number, number] {
@@ -189,6 +214,20 @@ const SIDE_CORNERS: ReadonlyArray<readonly [number, number]> = [
   [0, 1],
   [3, 0],
 ]
+
+/**
+ * For each side, the neighbour's corner indices that coincide with this
+ * cell's start and end corners of that side (`SIDE_CORNERS`): a corner
+ * offset `(ox, oy)` here is `(ox - dx, oy - dy)` in the neighbour.
+ */
+const NEIGHBOUR_CORNERS: ReadonlyArray<readonly [number, number]> = SIDE_CORNERS.map(([start, end], dir) => {
+  const [dx, dy] = DIR_VECTORS[dir]
+  const across = (corner: number): number => {
+    const [ox, oy] = CORNER_OFFSETS[corner]
+    return CORNER_OFFSETS.findIndex(([nx, ny]) => nx === ox - dx && ny === oy - dy)
+  }
+  return [across(start), across(end)] as const
+})
 
 /** Face origin and u axis per side, chosen so u x +Y is the outward normal. */
 const SIDE_GEOMETRY: ReadonlyArray<{
@@ -240,7 +279,6 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, key:
   for (let y = bounds.y0; y < bounds.y1; y++) {
     for (let x = bounds.x0; x < bounds.x1; x++) {
       const index = cellIndex(voxel.size, x, y)
-      const ramp = voxel.terrain.ramp[index]
       const tint = unpackTint(tintPaint(voxel.paint, x, y))
 
       // --- corner heights, in half-tile units -------------------------------
@@ -275,18 +313,17 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, key:
       }
 
       // --- side faces -------------------------------------------------------
+      // A side is walled wherever this cell's edge stands above the
+      // neighbour's edge along it, both taken corner for corner, so a ramp's
+      // sloped edge and a flat neighbour's level one leave no triangle open
+      // between them. A ramp's descending edge meets a neighbour at the same
+      // height and draws nothing; over a drop it walls the drop.
       for (let dir = 0; dir < 4; dir++) {
-        // The descending face of a ramp meets the ground; nothing to draw.
-        if (ramp === dir) continue
-
-        const [dx, dy] = DIR_VECTORS[dir]
-        const neighbour = heightOutside(voxel, x + dx, y + dy)
-
         const [startCorner, endCorner] = SIDE_CORNERS[dir]
         const topStart = cornerH[startCorner]
         const topEnd = cornerH[endCorner]
-        const maxTop = Math.max(topStart, topEnd)
-        if (neighbour >= maxTop) continue
+        const [lowStart, lowEnd] = neighbourEdge(voxel, x, y, dir)
+        if (lowStart >= topStart && lowEnd >= topEnd) continue
 
         const { origin, u } = SIDE_GEOMETRY[dir]
         const ox = x + origin[0]
@@ -294,28 +331,23 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, key:
         const ex = ox + u[0]
         const ez = oz + u[1]
 
-        const topLevel = Math.ceil(maxTop) - 1
-        for (let level = neighbour; level <= topLevel; level++) {
+        const topLevel = Math.ceil(Math.max(topStart, topEnd)) - 1
+        const bottomLevel = Math.floor(Math.min(lowStart, lowEnd))
+        for (let level = bottomLevel; level <= topLevel; level++) {
           const bottom = level
           const top = level + 1
-          // Clip the band to the (possibly sloped) top edge of this side.
-          const clipStart = Math.min(top, topStart)
-          const clipEnd = Math.min(top, topEnd)
-          if (clipStart <= bottom && clipEnd <= bottom) continue
+          // Clip the band to both edges: the neighbour's below, this cell's above, either possibly sloped.
+          const bStart = clamp(lowStart, bottom, top)
+          const bEnd = clamp(lowEnd, bottom, top)
+          const hStart = clamp(topStart, bStart, top)
+          const hEnd = clamp(topEnd, bEnd, top)
+          if (hStart <= bStart && hEnd <= bEnd) continue
 
-          const hStart = Math.max(clipStart, bottom)
-          const hEnd = Math.max(clipEnd, bottom)
+          const band: CliffBand = level === topLevel ? 'top' : level === bottomLevel ? 'bottom' : 'middle'
+          const [u0, v0, u1, v1] = tileUv(layout, resolveCliffTile(voxel, layout, x, y, dir, level, band))
 
-          const band: CliffBand =
-            level === topLevel ? 'top' : level === neighbour ? 'bottom' : 'middle'
-          const [u0, v0, u1, v1] = tileUv(
-            layout,
-            resolveCliffTile(voxel, layout, x, y, dir, level, band),
-          )
-
-          // Keep the texture from stretching when a band is clipped short.
-          const vStart = v0 + (hStart - bottom) * (v1 - v0)
-          const vEnd = v0 + (hEnd - bottom) * (v1 - v0)
+          // Keep the texture from stretching when a band is clipped short at either edge.
+          const v = (h: number): number => v0 + (h - bottom) * (v1 - v0)
 
           // Bands sitting in a pit read darker at the bottom.
           const deep = 1 - AO_STRENGTH * Math.min(2, topLevel - level) * 0.5
@@ -323,16 +355,16 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, key:
 
           solid.quad(
             [
-              [ox, bottom * HALF, oz],
-              [ex, bottom * HALF, ez],
+              [ox, bStart * HALF, oz],
+              [ex, bEnd * HALF, ez],
               [ex, hEnd * HALF, ez],
               [ox, hStart * HALF, oz],
             ],
             [
-              [u0, v0],
-              [u1, v0],
-              [u1, vEnd],
-              [u0, vStart],
+              [u0, v(bStart)],
+              [u1, v(bEnd)],
+              [u1, v(hEnd)],
+              [u0, v(hStart)],
             ],
             shade,
             tint,
