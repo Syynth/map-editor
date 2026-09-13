@@ -337,3 +337,11 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** Performance changes start from `pnpm perf`: it drives a set of tasks on the real GPU and measures frame time (CPU per phase and GPU), memory footprint, allocations and leaks, and each fix is compared against a saved run. Leaks are fixed first, then React updates, then the rest by what the numbers show.
 - **WHY:** The editor is slow and memory-hungry, and guessing at causes had already cost time (the post-processing chase); a harness makes each change's effect visible and keeps regressions from sneaking back.
+
+## The layer view is a GPU section cut with flat caps
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** viewport
+- **SCOPE:** moderate
+- **WHAT:** The layer view is drawn on the GPU, not by clamping heights and remeshing. A clipping plane removes everything above the ceiling; what the ceiling cuts through shows a flat cap in the cut colour (not the terrain's top texture); what lies below the floor darkens in the shader. Picking lands on the cap at the ceiling. Moving the slider changes uniforms and never rebuilds geometry.
+- **WHY:** Remeshing every chunk per slider step cost 863 ms of script and 425 MiB a second, and near the bottom of the range almost every chunk changes every step, so rebuilding only what changed could not fix it. A flat cap is an acceptable look for a view that exists to show structure, not finished art.
