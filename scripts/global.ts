@@ -30,8 +30,8 @@
 // it already does at runtime — `undefined is not a function` from Playwright
 // — so marking these optional would only trade that crash for a `!` at every
 // call site without catching anything for real.
-import type { Host } from '@map-editor/editor-host'
-import type { Viewport } from '@map-editor/viewport'
+import type { Host } from '@papercut/editor-host'
+import type { Viewport } from '@papercut/viewport'
 
 export {}
 

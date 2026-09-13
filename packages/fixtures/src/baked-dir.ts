@@ -9,7 +9,7 @@
  * — verified against the built CLI, which resolved `../baked/` from
  * `apps/export-cli/dist/` and failed with `ENOENT` looking for
  * `apps/export-cli/baked/manifest.json`. `import.meta.resolve` instead asks
- * Node's own resolver to find `@map-editor/fixtures/package.json` from
+ * Node's own resolver to find `@papercut/fixtures/package.json` from
  * wherever this code is actually running, which walks real `node_modules`
  * directories on disk and lands on the package's real location however it
  * got here — a workspace symlink today. `./package.json` is on the `exports`
@@ -25,6 +25,6 @@
  * cloning into a path containing a space before this fix landed.
  */
 export function bakedDir(): URL {
-  const packageJsonUrl = import.meta.resolve('@map-editor/fixtures/package.json')
+  const packageJsonUrl = import.meta.resolve('@papercut/fixtures/package.json')
   return new URL('baked/', packageJsonUrl)
 }

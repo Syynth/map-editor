@@ -12,7 +12,7 @@
 
 import * as THREE from 'three'
 
-import { readAddress, type SurfaceAddress } from '@map-editor/document'
+import { readAddress, type SurfaceAddress } from '@papercut/document'
 import type { RuntimeScene } from './scene'
 
 export interface PickResult {

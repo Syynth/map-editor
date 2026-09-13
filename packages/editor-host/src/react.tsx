@@ -19,7 +19,7 @@
  * to the first one; a host that outlives React has no such seam.
  */
 
-import type { ReadonlyMapDoc } from '@map-editor/document'
+import type { ReadonlyMapDoc } from '@papercut/document'
 import { useSelector } from '@xstate/react'
 import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from 'react'
 import type { SnapshotFrom } from 'xstate'

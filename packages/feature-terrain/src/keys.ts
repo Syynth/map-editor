@@ -23,7 +23,7 @@
  * re-mints the owner.
  */
 
-import { defineContextKey, keymap, type ContextKey, type KeyValue, type OwnerId } from '@map-editor/registry'
+import { defineContextKey, keymap, type ContextKey, type KeyValue, type OwnerId } from '@papercut/registry'
 
 import type { PaintVerb, SculptVerb, TerrainMode } from './verbs'
 

@@ -4,9 +4,9 @@
  * — it installs the terrain feature and knows its parameter shape — so it
  * is the one place this merged view may be typed.
  */
-import type { ToolsSnapshot } from '@map-editor/editor-host'
-import type { SketchParams } from '@map-editor/feature-sketch'
-import type { TerrainParams } from '@map-editor/feature-terrain'
+import type { ToolsSnapshot } from '@papercut/editor-host'
+import type { SketchParams } from '@papercut/feature-sketch'
+import type { TerrainParams } from '@papercut/feature-terrain'
 
 export type EditorParams = ToolsSnapshot & TerrainParams & SketchParams
 

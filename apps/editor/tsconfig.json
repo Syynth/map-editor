@@ -39,10 +39,10 @@
   // What the references buy here, measured rather than assumed: TypeScript's
   // project-reference source redirect is applied by the LANGUAGE SERVICE but
   // not by a batch `tsc -p`. So `pnpm lint` — typescript-eslint drives the
-  // project service — resolves `@map-editor/*` to source and stays green in a
+  // project service — resolves `@papercut/*` to source and stays green in a
   // checkout that has never been built, while `pnpm --filter
-  // @map-editor/editor typecheck` resolves the `exports` map's `types`
-  // condition and reports `TS2307: Cannot find module '@map-editor/geometry'`
+  // @papercut/editor typecheck` resolves the `exports` map's `types`
+  // condition and reports `TS2307: Cannot find module '@papercut/geometry'`
   // the moment that package's `dist/` is absent. Both verified by moving a
   // `dist/` aside. That asymmetry is exactly what is wanted: an editor stays
   // useful unbuilt, and the gate still typechecks this app against the

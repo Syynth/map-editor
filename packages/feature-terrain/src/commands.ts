@@ -30,8 +30,8 @@ import {
   setWater,
   type Patch,
   type ReadonlyMapDoc,
-} from '@map-editor/document'
-import { commands, type OwnerId } from '@map-editor/registry'
+} from '@papercut/document'
+import { commands, type OwnerId } from '@papercut/registry'
 import { z } from 'zod'
 
 /**

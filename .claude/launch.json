@@ -6,7 +6,7 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": [
         "--filter",
-        "@map-editor/editor",
+        "@papercut/editor",
         "dev",
         "--port",
         "5174"

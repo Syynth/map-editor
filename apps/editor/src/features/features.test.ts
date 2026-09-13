@@ -12,10 +12,10 @@ import {
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
-import { createHost, type Host, type PointerPress } from '@map-editor/editor-host'
-import { commands, evaluate, keymap, panels, parseChords, resolve, tools } from '@map-editor/registry'
-import type { TerrainParams } from '@map-editor/feature-terrain'
+} from '@papercut/document'
+import { createHost, type Host, type PointerPress } from '@papercut/editor-host'
+import { commands, evaluate, keymap, panels, parseChords, resolve, tools } from '@papercut/registry'
+import type { TerrainParams } from '@papercut/feature-terrain'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { features } from './index'

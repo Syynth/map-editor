@@ -3,15 +3,15 @@
  *
  * This is the whole app: it owns no export logic of its own and deliberately
  * cannot acquire any. Everything that decides what lands in the file lives
- * behind `@map-editor/runtime/export`, so what the CLI writes and what the
+ * behind `@papercut/runtime/export`, so what the CLI writes and what the
  * editor's export button writes are the same bytes — which is the property
  * that makes a headless export worth having.
  */
 
 import { readFile, writeFile } from 'node:fs/promises'
 
-import { deserialize } from '@map-editor/document'
-import { exportGltf } from '@map-editor/runtime/export'
+import { deserialize } from '@papercut/document'
+import { exportGltf } from '@papercut/runtime/export'
 
 import { loadBakedAssets } from './baked-assets'
 import { encodePngPure } from './encode-png'

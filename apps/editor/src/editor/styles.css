@@ -1,7 +1,7 @@
 /*
  * What the app paints that the vocabulary does not: the canvas, and the tile
  * palette (a bitmap the app owns, drawn to pixel scale). Everything else on
- * screen is `@map-editor/ui`'s, styled by its own stylesheet, which
+ * screen is `@papercut/ui`'s, styled by its own stylesheet, which
  * `main.tsx` loads first.
  */
 

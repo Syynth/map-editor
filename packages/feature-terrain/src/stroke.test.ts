@@ -9,7 +9,7 @@ import {
   type SurfaceAddress,
   type MapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
+} from '@papercut/document'
 import { describe, expect, it } from 'vitest'
 
 import { terrainContract } from './stroke'

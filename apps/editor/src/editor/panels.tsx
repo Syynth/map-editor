@@ -29,10 +29,10 @@ import {
   type ReadonlyStructure,
   type MapObject,
   type RgbaImage,
-} from '@map-editor/document'
-import { useDocument } from '@map-editor/editor-host'
-import { sheetLayoutFor, tileColumnRow } from '@map-editor/geometry'
-import { analyseCoverage, type CoverageReport } from '@map-editor/runtime'
+} from '@papercut/document'
+import { useDocument } from '@papercut/editor-host'
+import { sheetLayoutFor, tileColumnRow } from '@papercut/geometry'
+import { analyseCoverage, type CoverageReport } from '@papercut/runtime'
 import {
   Action,
   Actions,
@@ -49,7 +49,7 @@ import {
   TextInput,
   Toggle,
   Verb,
-} from '@map-editor/ui'
+} from '@papercut/ui'
 import { rgbaToDataUrl } from './rgba'
 
 // --- tile palette -----------------------------------------------------------

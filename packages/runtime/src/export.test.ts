@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createMap, defaultFacing, type RgbaImage, type SpriteAsset } from '@map-editor/document'
+import { createMap, defaultFacing, type RgbaImage, type SpriteAsset } from '@papercut/document'
 import { buildExportScene, exportGltf, type ExportOptions } from './export'
 
 // `parse` needs to be reconfigurable per test (success vs. error), and

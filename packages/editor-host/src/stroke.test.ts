@@ -10,8 +10,8 @@ import {
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
-import type { ToolContract } from '@map-editor/registry'
+} from '@papercut/document'
+import type { ToolContract } from '@papercut/registry'
 import { describe, expect, it } from 'vitest'
 import { createActor, type InspectionEvent } from 'xstate'
 

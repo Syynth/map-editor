@@ -7,7 +7,7 @@
  * fall through to whatever the core keymap does with them.
  */
 
-import { defineContextKey, keymap, type ContextKey, type KeyValue, type OwnerId } from '@map-editor/registry'
+import { defineContextKey, keymap, type ContextKey, type KeyValue, type OwnerId } from '@papercut/registry'
 
 import type { SketchMode } from './params'
 

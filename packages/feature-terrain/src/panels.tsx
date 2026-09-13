@@ -19,9 +19,9 @@
  * keymap rather than from a string written here.
  */
 
-import { DIR_NAMES, type ReadonlyMapDoc } from '@map-editor/document'
-import { chordFor, panels, type OwnerId, type Platform } from '@map-editor/registry'
-import { BarDivider, BarLabel, BarSlider, ColorInput, Field, IconSegmented, Select, Slider } from '@map-editor/ui'
+import { DIR_NAMES, type ReadonlyMapDoc } from '@papercut/document'
+import { chordFor, panels, type OwnerId, type Platform } from '@papercut/registry'
+import { BarDivider, BarLabel, BarSlider, ColorInput, Field, IconSegmented, Select, Slider } from '@papercut/ui'
 
 import { terrainKeys } from './keys'
 import type { TerrainParams } from './verbs'

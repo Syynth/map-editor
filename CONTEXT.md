@@ -1,6 +1,6 @@
 # Context
 
-The vocabulary of `map-editor`. A glossary, not a spec: no implementation
+The vocabulary of `papercut`. A glossary, not a spec: no implementation
 details, no decisions. Decisions live in
 [`docs/decision-log.md`](docs/decision-log.md) and on the wayfinder maps it
 links to.

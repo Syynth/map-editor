@@ -35,7 +35,7 @@
  * somebody must remember to clear, and teardown is never in `exit` (#8).
  */
 
-import { inversePatch, patchAddress, type Cell, type DocumentActorLogic, type DocumentReader, type Patch } from '@map-editor/document'
+import { inversePatch, patchAddress, type Cell, type DocumentActorLogic, type DocumentReader, type Patch } from '@papercut/document'
 import { setup, types, type ActorRefFrom } from 'xstate'
 
 import type { EditorStrokeHandler, StrokeSample } from './strokes'

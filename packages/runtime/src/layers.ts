@@ -12,7 +12,7 @@
  * the chunk mesher dwarfs.
  */
 
-import { NO_WATER, cellIndex, tintKey, type ReadonlyVoxel } from '@map-editor/document'
+import { NO_WATER, cellIndex, tintKey, type ReadonlyVoxel } from '@papercut/document'
 
 export interface LayerRange {
   /** Lowest height shown, in half-tiles. */

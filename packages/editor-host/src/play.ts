@@ -29,7 +29,7 @@
 import {
   type DocumentReader,
   levelCentre,
-} from '@map-editor/document'
+} from '@papercut/document'
 import { setup, types } from 'xstate'
 
 /** Where the character is put down, in world units. */

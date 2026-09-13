@@ -1,5 +1,5 @@
 {
-  "name": "@map-editor/registry",
+  "name": "@papercut/registry",
   "private": true,
   "version": "0.0.0",
   "type": "module",

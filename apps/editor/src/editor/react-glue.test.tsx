@@ -30,14 +30,14 @@ import {
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
+} from '@papercut/document'
 import { act, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { features } from '../features'
 
-import { HostProvider, createHost, useDocument, useHost, useToolsSelector, type Host } from '@map-editor/editor-host'
+import { HostProvider, createHost, useDocument, useHost, useToolsSelector, type Host } from '@papercut/editor-host'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
 const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure

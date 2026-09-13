@@ -7,7 +7,7 @@
  * `development` condition that reads `src/`. So the editor's bundle can no
  * longer be assembled from a checkout that has never been built: with the
  * packages' `dist/` absent, rolldown fails outright to resolve
- * `@map-editor/geometry`.
+ * `@papercut/geometry`.
  *
  * Every script that runs `vite build` against `apps/editor` — `pnpm shoot`,
  * `pnpm tour`, `pnpm probe` — therefore has to materialise that closure first.
@@ -32,7 +32,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
  */
 export function buildWorkspacePackages() {
   console.log('Building workspace packages...')
-  const deps = spawnSync('npx', ['turbo', 'run', 'build', '--filter=@map-editor/editor^...'], {
+  const deps = spawnSync('npx', ['turbo', 'run', 'build', '--filter=@papercut/editor^...'], {
     cwd: ROOT,
     stdio: ['ignore', 'ignore', 'inherit'],
   })

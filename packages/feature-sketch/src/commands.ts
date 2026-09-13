@@ -5,7 +5,7 @@
  * `sketch.close` and `sketch.set`; these are the tool's, not the data's.
  */
 
-import { commands, type OwnerId } from '@map-editor/registry'
+import { commands, type OwnerId } from '@papercut/registry'
 import { z } from 'zod'
 
 const sketchParams = z

@@ -1,5 +1,5 @@
 {
-  "name": "map-editor",
+  "name": "papercut",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -15,10 +15,10 @@
     }
   },
   "scripts": {
-    "dev": "pnpm --filter @map-editor/editor dev",
+    "dev": "pnpm --filter @papercut/editor dev",
     "gate": "turbo run test typecheck lint",
     "gate:full": "turbo run build test typecheck lint check-bundle-size",
-    "preview": "pnpm --filter @map-editor/editor preview",
+    "preview": "pnpm --filter @papercut/editor preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit && tsc --noEmit -p scripts",
@@ -32,10 +32,10 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@map-editor/document": "workspace:*",
-    "@map-editor/editor-host": "workspace:*",
-    "@map-editor/eslint-rules": "workspace:*",
-    "@map-editor/viewport": "workspace:*",
+    "@papercut/document": "workspace:*",
+    "@papercut/editor-host": "workspace:*",
+    "@papercut/eslint-rules": "workspace:*",
+    "@papercut/viewport": "workspace:*",
     "@types/node": "^22.20.2",
     "eslint": "^10.10.0",
     "eslint-plugin-react-hooks": "^7.1.1",

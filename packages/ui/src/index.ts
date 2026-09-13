@@ -4,7 +4,7 @@
  * Issue #12's rule: this is not "the package that contains Mantine", it is the
  * package that holds the vocabulary, and Mantine is an implementation detail of
  * it. The dependency on `@mantine/core` is declared here and nowhere else, and
- * so is the one stylesheet: an app imports `@map-editor/ui/styles.css`, which
+ * so is the one stylesheet: an app imports `@papercut/ui/styles.css`, which
  * carries Mantine's base styles and the frame's own rules in that order.
  *
  * Three layers, in the order a panel author meets them:
@@ -15,7 +15,7 @@
  * - `primitives.tsx` — the form controls a panel is written in, on Mantine.
  * - `icons.tsx` — the glyphs, by name, so a declaration can carry one.
  *
- * Absent, deliberately: the arrow to `@map-editor/registry` (declarations
+ * Absent, deliberately: the arrow to `@papercut/registry` (declarations
  * only, never handlers) that would let a control resolve a command id to its
  * title and chord. The app does that join today; the day two apps need it,
  * it moves here.

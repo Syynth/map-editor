@@ -1,7 +1,7 @@
 # Command registries and extension surfaces in comparable editors
 
-Research for [#5](https://github.com/Syynth/map-editor/issues/5), under the map
-[#2](https://github.com/Syynth/map-editor/issues/2). Feeds three later decisions: the command
+Research for [#5](https://github.com/Syynth/papercut/issues/5), under the map
+[#2](https://github.com/Syynth/papercut/issues/2). Feeds three later decisions: the command
 dispatch prototype, the feature-module extension surface, and the keymap registry.
 
 Everything above the final section is fact, sourced from primary documentation and source code.
@@ -1766,7 +1766,7 @@ command's parameters, because afterwards it is whatever you froze.
 | Godot | **Command objects** — `create_action` / `add_do_method` / `add_undo_method` / `commit_action`; you write the inverse | one action per `create_action`; history chosen by first object touched |
 | Unity | **State snapshots** — `Undo.RecordObject(obj, name)` before mutating | `SetCurrentGroupName` + `CollapseUndoOperations(group)` |
 | Photoshop | **Exclusive modal scope** — `executeAsModal(fn, {commandName})` brackets all mutation into one named history state | the scope is the unit |
-| map-editor today | Patches with a **mechanically derived** inverse (`applyPatch` reads the previous value as it writes) | one `{label, patches, inverse}` per commit; compaction planned in the stroke actor |
+| papercut today | Patches with a **mechanically derived** inverse (`applyPatch` reads the previous value as it writes) | one `{label, patches, inverse}` per commit; compaction planned in the stroke actor |
 
 ---
 

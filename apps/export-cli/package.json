@@ -1,5 +1,5 @@
 {
-  "name": "@map-editor/export-cli",
+  "name": "@papercut/export-cli",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -14,9 +14,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@map-editor/document": "workspace:*",
-    "@map-editor/fixtures": "workspace:*",
-    "@map-editor/runtime": "workspace:*",
+    "@papercut/document": "workspace:*",
+    "@papercut/fixtures": "workspace:*",
+    "@papercut/runtime": "workspace:*",
     "fast-png": "8.0.0"
   },
   "devDependencies": {

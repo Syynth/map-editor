@@ -17,8 +17,8 @@ import {
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
-import { commands, defineFeature, dispose, provideFeature, type HotHandle, reserveOwner, tools as toolDeclarations } from '@map-editor/registry'
+} from '@papercut/document'
+import { commands, defineFeature, dispose, provideFeature, type HotHandle, reserveOwner, tools as toolDeclarations } from '@papercut/registry'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from 'xstate'
 

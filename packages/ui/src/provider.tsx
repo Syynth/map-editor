@@ -8,7 +8,7 @@
 
 // Mantine's base stylesheet is not imported from this module. It is the first
 // line of `styles.css` next door, which an app loads as
-// `@map-editor/ui/styles.css` — a CSS `@import` resolved from this package's
+// `@papercut/ui/styles.css` — a CSS `@import` resolved from this package's
 // own directory, which is the only place `@mantine/core` resolves (#12). A
 // side-effect `.css` import from a `.tsx` would instead be bundled away by
 // tsup into a file nothing loads.

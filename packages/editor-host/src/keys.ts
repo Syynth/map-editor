@@ -24,7 +24,7 @@
  * neither platform sees a phantom conflict.
  */
 
-import { keymap, reserveOwner, type KeyBinding } from '@map-editor/registry'
+import { keymap, reserveOwner, type KeyBinding } from '@papercut/registry'
 
 // `./host` for its side effect only: `mode.play`, `mode.edit`,
 // `commands.run` and `selection.delete` are declared at its import, and a

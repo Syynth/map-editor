@@ -31,7 +31,7 @@ import {
   CLIFF_MIDDLE,
   CLIFF_TOP,
   RAMP_COLUMN,
-} from '@map-editor/geometry'
+} from '@papercut/geometry'
 import {
   MASK_EAST,
   MASK_NORTH,
@@ -41,7 +41,7 @@ import {
   type MaterialDef,
   type RgbaImage,
   type SpriteAsset,
-} from '@map-editor/document'
+} from '@papercut/document'
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0

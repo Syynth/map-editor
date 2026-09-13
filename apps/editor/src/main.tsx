@@ -1,16 +1,16 @@
 import { StrictMode, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-import { createDocument } from '@map-editor/document'
-import { HostProvider, createHost } from '@map-editor/editor-host'
-import { UiProvider } from '@map-editor/ui'
+import { createDocument } from '@papercut/document'
+import { HostProvider, createHost } from '@papercut/editor-host'
+import { UiProvider } from '@papercut/ui'
 
 import App from './editor/App'
 import { loadAutosave } from './editor/autosave'
 import { features } from './features'
 // The vocabulary's stylesheet — Mantine's base plus the frame — then the
 // app's own remainder, which only paints what the vocabulary does not.
-import '@map-editor/ui/styles.css'
+import '@papercut/ui/styles.css'
 import './editor/styles.css'
 
 const root = document.getElementById('root')

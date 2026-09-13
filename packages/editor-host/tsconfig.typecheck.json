@@ -11,7 +11,7 @@
   // It deliberately carries NO `references`. The build config's references
   // make `tsc` redirect a dependency's `dist/*.d.ts` back to that package's
   // source, which is what keeps an editor useful in an unbuilt checkout;
-  // without them this program resolves `@map-editor/*` through the `exports`
+  // without them this program resolves `@papercut/*` through the `exports`
   // map's `types` condition and reads the REAL emitted declarations, exactly
   // as an outside consumer would. That is what makes turbo's
   // `typecheck -> ^build` edge load-bearing rather than decorative: delete a

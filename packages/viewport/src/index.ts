@@ -11,7 +11,7 @@
  * - No React, and no dependency that could bring it. The class is imperative
  *   because bulk terrain geometry changes on every brush tick; that property is
  *   load-bearing and the package boundary is what keeps it honest.
- * - No `@map-editor/viewport-contrib`. Issue #3 puts the overlay-contribution
+ * - No `@papercut/viewport-contrib`. Issue #3 puts the overlay-contribution
  *   surface in its own package so a feature cannot resolve the renderer, but
  *   nothing contributes an overlay yet and its surface is undesigned, so an
  *   empty shell would claim a boundary nothing enforces.

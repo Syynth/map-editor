@@ -12,8 +12,8 @@
  * least predictable downward.
  */
 
-import { BLOCK_COLUMNS, BLOCK_ROWS } from '@map-editor/geometry'
-import type { ReadonlyMapDoc, RgbaImage } from '@map-editor/document'
+import { BLOCK_COLUMNS, BLOCK_ROWS } from '@papercut/geometry'
+import type { ReadonlyMapDoc, RgbaImage } from '@papercut/document'
 
 export interface SheetLoadResult {
   /** Raw pixels, the form the runtime takes a sheet in (#47). */

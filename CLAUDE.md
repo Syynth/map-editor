@@ -1,4 +1,4 @@
-# map-editor
+# papercut
 
 A desktop editor for building 3D levels in a Paper Mario / HD-2D style, where
 the artist never models anything in 3D. See
@@ -14,7 +14,7 @@ during interactive work and record them there.
 ## How work happens here (2026-09-11, supersedes the wayfinder setup)
 
 **Wayfinding is retired.** The map at
-[#2](https://github.com/Syynth/map-editor/issues/2) is closed out — its route is clear and every
+[#2](https://github.com/Syynth/papercut/issues/2) is closed out — its route is clear and every
 decision it made is recorded in `docs/decision-log.md` and on its tickets. Do not chart new
 maps, do not create wayfinder tickets, do not invoke the wayfinder skill. It was tried and the
 owner does not want it.
@@ -25,7 +25,7 @@ owner does not want it.
    the tail items (#48, #56). This runs on the `autonomous-pump` skill: serial trains for
    dependent work, parallel waves for disjoint work, adversarial review on every step, `main`
    protected by the `gate` check. Config in
-   [`.claude/skills/autonomous-pump/MAP-EDITOR-CONFIG.md`](.claude/skills/autonomous-pump/MAP-EDITOR-CONFIG.md).
+   [`.claude/skills/autonomous-pump/PAPERCUT-CONFIG.md`](.claude/skills/autonomous-pump/PAPERCUT-CONFIG.md).
 2. **Building features** — once the refactor lands, the owner and the assistant build features
    together, directly, in conversation. No pump, no chips, no tickets-as-process. Decisions still
    go in the decision log; that is the one process that stays.

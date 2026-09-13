@@ -26,8 +26,8 @@ import {
   type ReadonlyMapDoc,
   type RgbaImage,
   type SpriteAsset,
-} from '@map-editor/document'
-import { meshTerrainChunk, type MeshBuffers } from '@map-editor/geometry'
+} from '@papercut/document'
+import { meshTerrainChunk, type MeshBuffers } from '@papercut/geometry'
 import { sketchMeshOf } from './scene'
 import { resolveDisplayMode, rgbaTexture } from './billboard'
 import { atlasFor, embedPngImages, type PngEncoder } from './images'

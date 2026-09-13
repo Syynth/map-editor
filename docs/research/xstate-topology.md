@@ -1,8 +1,8 @@
 # XState v5: topology, availability, and testing
 
-Research for [#4](https://github.com/Syynth/map-editor/issues/4), under the map
-[#2](https://github.com/Syynth/map-editor/issues/2). Feeds the root-actor command-dispatch prototype
-([#8](https://github.com/Syynth/map-editor/issues/8)) and the actor-topology decision.
+Research for [#4](https://github.com/Syynth/papercut/issues/4), under the map
+[#2](https://github.com/Syynth/papercut/issues/2). Feeds the root-actor command-dispatch prototype
+([#8](https://github.com/Syynth/papercut/issues/8)) and the actor-topology decision.
 
 **Date:** 2026-09-11. **Primary version under test:** `xstate@5.32.6` (published 2026-08-25).
 

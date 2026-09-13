@@ -27,8 +27,8 @@
  *    untouched, which is the whole point of falling through.
  */
 
-import type { Host } from '@map-editor/editor-host'
-import { chordFromEvent, createChordSession, keymap, type Platform } from '@map-editor/registry'
+import type { Host } from '@papercut/editor-host'
+import { chordFromEvent, createChordSession, keymap, type Platform } from '@papercut/registry'
 
 /**
  * The slice of `window` this needs. Narrow on purpose: a test drives the

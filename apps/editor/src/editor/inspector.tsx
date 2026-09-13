@@ -9,11 +9,11 @@
  * exception — the gear on the rail opens and closes them together.
  */
 
-import type { Atmosphere, CameraRig, DeepReadonly, MapObject, Placement, ReadonlyMapDoc, RgbaImage } from '@map-editor/document'
-import type { Selection } from '@map-editor/editor-host'
+import type { Atmosphere, CameraRig, DeepReadonly, MapObject, Placement, ReadonlyMapDoc, RgbaImage } from '@papercut/document'
+import type { Selection } from '@papercut/editor-host'
 import type { EditorParams } from './params'
-import type { Platform } from '@map-editor/registry'
-import { FileButton, InspectorHead, Note, Row, Section } from '@map-editor/ui'
+import type { Platform } from '@papercut/registry'
+import { FileButton, InspectorHead, Note, Row, Section } from '@papercut/ui'
 
 import { FeaturePanels } from './bars'
 import {

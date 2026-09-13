@@ -22,7 +22,7 @@ describe('CI gate workflow', () => {
   const steps = workflow.slice(workflow.indexOf('\n    steps:')).split(/\n {6}- /).slice(1)
 
   const buildStepIndex = steps.findIndex((step) =>
-    /run:\s*pnpm (turbo run build\b|--filter @map-editor\/editor build\b)/.test(step),
+    /run:\s*pnpm (turbo run build\b|--filter @papercut\/editor build\b)/.test(step),
   )
   const lintingStepIndex = steps.findIndex((step) => /run:\s*pnpm (gate\b|turbo run [^\n]*\blint\b)/.test(step))
 

@@ -16,7 +16,7 @@
  * always face outward whichever way the points were clicked.
  */
 
-import { outlineOf, type LipStyle, type Outline, type Profile, type ProfilePoint, type WallProfile, type WallProfilePoint } from '@map-editor/document'
+import { outlineOf, type LipStyle, type Outline, type Profile, type ProfilePoint, type WallProfile, type WallProfilePoint } from '@papercut/document'
 
 import type { MeshBuffers } from './terrain'
 

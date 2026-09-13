@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { HALF, allChunkKeys, createMap, createSketch, frameOf, type RgbaImage, type SpriteAsset } from '@map-editor/document'
+import { HALF, allChunkKeys, createMap, createSketch, frameOf, type RgbaImage, type SpriteAsset } from '@papercut/document'
 import { CUT_TINT, GHOST_TINT } from './layers'
 import { RuntimeScene } from './scene'
 

@@ -8,8 +8,8 @@
  * it as the object case, read by the viewport and the inspector.
  */
 
-import { MAX_HEIGHT, MIN_HEIGHT, type DocumentTarget } from '@map-editor/document'
-import { commands, defineContextKey, reserveOwner } from '@map-editor/registry'
+import { MAX_HEIGHT, MIN_HEIGHT, type DocumentTarget } from '@papercut/document'
+import { commands, defineContextKey, reserveOwner } from '@papercut/registry'
 import { setup, types } from 'xstate'
 import { z } from 'zod'
 

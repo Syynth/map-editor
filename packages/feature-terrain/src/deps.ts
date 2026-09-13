@@ -8,11 +8,11 @@
  * `document` and `registry`, never from the host that supplies the values.
  */
 
-import type { Patch, ReadonlyMapDoc } from '@map-editor/document'
-import type { FeatureDeps as GenericFeatureDeps } from '@map-editor/registry'
+import type { Patch, ReadonlyMapDoc } from '@papercut/document'
+import type { FeatureDeps as GenericFeatureDeps } from '@papercut/registry'
 
 import type { TerrainParams } from './verbs'
 
 export type FeatureDeps = GenericFeatureDeps<ReadonlyMapDoc, Patch, TerrainParams>
 
-export type { StrokeHandler, ToolContract } from '@map-editor/registry'
+export type { StrokeHandler, ToolContract } from '@papercut/registry'

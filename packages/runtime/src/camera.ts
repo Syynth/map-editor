@@ -15,7 +15,7 @@
 
 import * as THREE from 'three'
 
-import type { CameraRig, DeepReadonly } from '@map-editor/document'
+import type { CameraRig, DeepReadonly } from '@papercut/document'
 
 export interface RigState {
   yaw: number

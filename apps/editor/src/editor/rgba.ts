@@ -8,7 +8,7 @@
  * reachable from a package; it is composition-root glue.
  */
 
-import type { RgbaImage } from '@map-editor/document'
+import type { RgbaImage } from '@papercut/document'
 
 export function rgbaToCanvas(image: RgbaImage): HTMLCanvasElement {
   const canvas = document.createElement('canvas')

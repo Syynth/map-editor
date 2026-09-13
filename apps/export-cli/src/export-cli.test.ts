@@ -16,13 +16,13 @@ import { join } from 'node:path'
 
 import { expect, it } from 'vitest'
 
-import { serialize } from '@map-editor/document'
-import { createSampleMap } from '@map-editor/fixtures'
+import { serialize } from '@papercut/document'
+import { createSampleMap } from '@papercut/fixtures'
 
 import { exportMapFile } from './index'
 
 async function exportSampleMap(): Promise<Buffer> {
-  const dir = await mkdtemp(join(tmpdir(), 'map-editor-export-'))
+  const dir = await mkdtemp(join(tmpdir(), 'papercut-export-'))
   const inputPath = join(dir, 'sample.json')
   const outputPath = join(dir, 'sample.glb')
   // Through a real file, not a document handed over in memory: reading the
@@ -76,7 +76,7 @@ it('embeds its textures as real PNGs, decoded from the checked-in bake', async (
 })
 
 it('rejects a map its own loader cannot read, without writing a partial file', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'map-editor-export-'))
+  const dir = await mkdtemp(join(tmpdir(), 'papercut-export-'))
   const inputPath = join(dir, 'bad.json')
   const outputPath = join(dir, 'bad.glb')
   await writeFile(inputPath, '{ "not": "a map" }')

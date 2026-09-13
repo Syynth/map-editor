@@ -23,7 +23,7 @@
  * the command form of a verb cannot drift from each other either.
  */
 
-import { SURFACE_TOP, cellIndex, inBounds, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@map-editor/document'
+import { SURFACE_TOP, cellIndex, inBounds, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@papercut/document'
 import type { FeatureDeps, StrokeHandler, ToolContract } from './deps'
 import { eyedrop, paintPatches, sculptPatches, strokeCells, terrainLabel, type TerrainModifiers } from './verbs'
 

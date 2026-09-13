@@ -5,7 +5,7 @@
  * `GLTFWriter.writeAsync` (three 0.186.0, `GLTFExporter.js`) merges its
  * buffers into a `Blob` and reads the bytes back out through
  * `FileReader.readAsArrayBuffer`, twice, on the `binary: true` path
- * `exportGltf` (`@map-editor/runtime/export`) always takes — lines 679 and
+ * `exportGltf` (`@papercut/runtime/export`) always takes — lines 679 and
  * 697 for the merged buffer, 723 and 731 for the finished `.glb`. `Blob`
  * itself Node has had as a global since v18; `FileReader` it does not, and
  * never will — it is a browser progress-event wrapper around exactly the
