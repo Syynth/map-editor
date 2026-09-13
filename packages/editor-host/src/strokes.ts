@@ -211,7 +211,7 @@ function objectStroke(deps: StrokeDeps, selection: Selection | null): EditorStro
 
       // Placed where the press snaps to, so a click lands on the grid the way a drag would.
       const snap = modifiers.ctrl ? 'free' : tools.snap
-      const position = groundedPosition(doc, snapTo(pick.point.x, snap), snapTo(pick.point.z, snap))
+      const position = groundedPosition(doc, snapTo(pick.point.x, snap, 'centre'), snapTo(pick.point.z, snap, 'centre'))
       const object: MapObject = {
         id: newId(),
         name: tools.spriteName,
@@ -248,7 +248,8 @@ function objectStroke(deps: StrokeDeps, selection: Selection | null): EditorStro
  * The target moves by how far the pointer has travelled since the press, so
  * the result is the same whether it is read as an offset or a delta. It snaps
  * as the tools actor says (ruling of 2026-09-12, "Select tool"): grid, half
- * or free, read per tick so a change mid-drag takes;
+ * or free, read per tick so a change mid-drag takes — an object to cell
+ * centres, a structure to cell corners;
  * Ctrl frees one drag, and Shift holds it to whichever axis it has moved
  * further along, measured from the press. An object's height follows the
  * terrain; a structure moves by its placement in its parent's frame, and a
@@ -309,7 +310,8 @@ class Drag {
     const doc = this.deps.reader.doc
     const object = doc.objects[id]
     if (!object || object.locked) return []
-    const position = groundedPosition(doc, snapTo(origin.x + at.x - pressed.x, snap), snapTo(origin.z + at.z - pressed.z, snap))
+    // An object stands in the middle of a cell (`snap.ts`); its placement is not a corner the way a structure's is.
+    const position = groundedPosition(doc, snapTo(origin.x + at.x - pressed.x, snap, 'centre'), snapTo(origin.z + at.z - pressed.z, snap, 'centre'))
     return updateObject(doc, object.id, {
       position,
       anchorCell: object.anchorCell ? [Math.floor(position[0]), Math.floor(position[2])] : null,

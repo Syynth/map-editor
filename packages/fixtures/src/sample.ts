@@ -43,7 +43,8 @@ function place(
     id: newId(),
     name: sprite,
     sprite,
-    position: [x, groundHeight(doc, x, z), z],
+    // In the middle of the cell, where a snapped drag would put it.
+    position: [x + 0.5, groundHeight(doc, x + 0.5, z + 0.5), z + 0.5],
     rotationY: Math.round((hash(x, z, 3) * 8 - 4)) * 45,
     scale: 0.85 + hash(x, z, 9) * 0.4,
     display: 'auto',
