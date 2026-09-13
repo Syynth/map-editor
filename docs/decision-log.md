@@ -313,3 +313,27 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** The project is named Papercut. The GitHub repository is `Syynth/papercut` (renamed in place; the old name redirects for git and the API, but not for the Pages site, which now lives at https://syynth.github.io/papercut/), the package scope is `@papercut/*`, and the header and page title carry the name. The checkout folder on disk keeps its old name.
 - **WHY:** The owner's choice of name; no rationale recorded.
+
+## UI state lives in actors; the UI is regions that select from them
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** editor-ui
+- **SCOPE:** architectural
+- **WHAT:** State the UI reads lives in xstate actors on the host, read through selectors: what the artist set (tools, view), and what the viewport observes (hover, brush cells, camera, frame stats) in a viewport actor. No hand-rolled stores and no React context for editor state. The app is a composition of regions that each select only what they show and dispatch their own commands; nothing passes interaction state down as props. Things that must reach the viewport object (frame, sweep) are commands its actor answers with emitted events. Artists will later configure terrains and textures live, so the art stays derived in one place.
+- **WHY:** Actors are already how the editor's behaviour is built and inspected, and selector reads re-render only what changed. The god component re-rendered the whole editor on every pointer move (400 ms of script a second, measured).
+
+## No tilt-shift; post-processing off for now
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** viewport
+- **SCOPE:** moderate
+- **WHAT:** Tilt-shift is removed from the editor entirely. The post-processing stack is bypassed by default: the viewport renders straight to the canvas, and bloom is off everywhere. The composer stays built so a probe can measure it.
+- **WHY:** Tilt-shift was never asked for. On an M5 Mac, anything drawn through the composer rendered cut off past a view depth, and neither a 24-bit multisampled target nor dropping tilt-shift fixed it; the level must render on every machine before any post effect.
+
+## Performance work is measurement first
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** cross-system
+- **SCOPE:** moderate
+- **WHAT:** Performance changes start from `pnpm perf`: it drives a set of tasks on the real GPU and measures frame time (CPU per phase and GPU), memory footprint, allocations and leaks, and each fix is compared against a saved run. Leaks are fixed first, then React updates, then the rest by what the numbers show.
+- **WHY:** The editor is slow and memory-hungry, and guessing at causes had already cost time (the post-processing chase); a harness makes each change's effect visible and keeps regressions from sneaking back.
