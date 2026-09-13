@@ -21,9 +21,11 @@
  * once per phase, inside `enq`, never in a transition body (see `stroke.ts`).
  *
  * The shared verbs behave identically everywhere:
- *   Shift  — erase / invert (lower instead of raise, clear paint, remove water)
+ *   Shift  — erase / invert (lower instead of raise, clear paint, remove water);
+ *            on a drag, constrain it to one axis
  *   Alt    — eyedropper (pick up whatever is under the cursor)
- *   Ctrl   — reach through objects to the terrain beneath
+ *   Ctrl   — reach through objects to the terrain beneath; on a drag, no
+ *            snapping (Cmd on a Mac, which the viewport folds into `ctrl`)
  *
  * Two things a stroke changes that are not the document — the eyedropper's
  * tool parameters and the object tool's selection — leave through `StrokeDeps`
@@ -37,16 +39,19 @@
  */
 
 import {
-  SURFACE_SKETCH_CAP,
-  SURFACE_SKETCH_WALL,
   addObject,
   defaultFacing,
+  frameOf,
   groundedPosition,
   newId,
+  placeStructure,
+  snapTo,
+  toLocal,
   updateObject,
   type DocumentReader,
   type MapObject,
   type Patch,
+  type SnapMode,
   type SurfaceAddress,
 } from '@map-editor/document'
 import type { StrokeHandler, ToolContract } from '@map-editor/registry'
@@ -125,40 +130,53 @@ export type EditorStrokeHandler = StrokeHandler<StrokeSample, Patch>
 export function createStrokeHandler(deps: StrokeDeps, sample: StrokeSample, selection: Selection | null): EditorStrokeHandler | undefined {
   const tool = deps.tools().tool
   // The host's two tools are built in; any other declared tool runs the contract its feature contributed.
-  if (tool === 'select') return selectStroke(deps, selection)
+  if (tool === 'select') return selectStroke(deps, sample, selection)
   if (tool === 'object') return objectStroke(deps, selection)
   return deps.contract(tool)?.stroke(sample)
 }
 
-/** The object a selection names, if it is one: what a drag can move. */
-function selectedObject(selection: Selection | null): string | null {
-  return selection?.kind === 'object' ? selection.id : null
+/** What a drag can move: an object, or a structure by its placement. */
+type DragTarget = { readonly kind: 'object'; readonly id: string } | { readonly kind: 'structure'; readonly id: string }
+
+/** The drag target a selection names, if it names one. */
+function selectedTarget(selection: Selection | null): DragTarget | null {
+  if (selection?.kind === 'object') return { kind: 'object', id: selection.id }
+  if (selection?.kind === 'structure') return { kind: 'structure', id: selection.id }
+  return null
 }
 
-function selectStroke(deps: StrokeDeps, selection: Selection | null): EditorStrokeHandler {
-  const drag = new Drag(deps, selectedObject(selection))
+/**
+ * Select is one polymorphic tool over everything that exists (ruling of
+ * 2026-09-12, "App frame"): a press on an object selects and drags it; on a
+ * structure's surface — a voxel volume's top or cliff, a sketch's cap or
+ * wall — selects and drags the structure; on nothing at all it clears the
+ * selection unless shift is held. The undo label is decided at the press,
+ * because the document reads it before `begin` runs.
+ */
+function selectStroke(deps: StrokeDeps, sample: StrokeSample, selection: Selection | null): EditorStrokeHandler {
+  const drag = new Drag(deps)
+  const { pick } = sample
+  const label = pick.objectId ? 'Move object' : pick.surface ? 'Move structure' : 'Select'
 
   return {
-    label: 'Move object',
+    label,
     begin(sample) {
       const { pick, modifiers } = sample
       if (pick.objectId) {
         if (modifiers.alt) deps.setTools({ spriteName: deps.reader.doc.objects[pick.objectId]?.sprite ?? deps.tools().spriteName })
         deps.select({ kind: 'object', id: pick.objectId })
-        drag.grab(pick.objectId, pick)
+        drag.grab({ kind: 'object', id: pick.objectId }, pick)
         return []
       }
-      // Select is polymorphic: a press on a sketch's cap or wall selects the sketch.
-      const surface = pick.surface
-      if (surface && (surface.kind === SURFACE_SKETCH_CAP || surface.kind === SURFACE_SKETCH_WALL)) {
-        deps.select({ kind: 'structure', id: surface.structure })
-        drag.release()
+      if (pick.surface) {
+        deps.select({ kind: 'structure', id: pick.surface.structure })
+        drag.grab({ kind: 'structure', id: pick.surface.structure }, pick)
         return []
       }
-      if (!modifiers.shift) {
-        deps.select(null)
-        drag.release()
-      }
+      // Shift on nothing keeps the selection, and the drag moves it from wherever the press was.
+      const held = selectedTarget(selection)
+      if (modifiers.shift && held) drag.grab(held, pick)
+      else if (!modifiers.shift) deps.select(null)
       return []
     },
     move: (sample) => drag.move(sample),
@@ -167,8 +185,8 @@ function selectStroke(deps: StrokeDeps, selection: Selection | null): EditorStro
 }
 
 function objectStroke(deps: StrokeDeps, selection: Selection | null): EditorStrokeHandler {
-  /** What a drag moves: the object pressed, the object placed, or failing both the selection at the press. */
-  const drag = new Drag(deps, selectedObject(selection))
+  /** What a drag moves: the object pressed, the object placed, or on a shift-press the selection. */
+  const drag = new Drag(deps)
 
   return {
     label: 'Edit object',
@@ -180,14 +198,20 @@ function objectStroke(deps: StrokeDeps, selection: Selection | null): EditorStro
       if (pick.objectId) {
         if (modifiers.alt) deps.setTools({ spriteName: doc.objects[pick.objectId]?.sprite ?? tools.spriteName })
         deps.select({ kind: 'object', id: pick.objectId })
-        drag.grab(pick.objectId, pick)
+        drag.grab({ kind: 'object', id: pick.objectId }, pick)
         return []
       }
 
-      if (modifiers.shift) return []
+      if (modifiers.shift) {
+        const held = selectedTarget(selection)
+        if (held) drag.grab(held, pick)
+        return []
+      }
       if (!pick.point) return []
 
-      const position = groundedPosition(doc, pick.point.x, pick.point.z)
+      // Placed where the press snaps to, so a click lands on the grid the way a drag would.
+      const snap = modifiers.ctrl ? 'free' : tools.snap
+      const position = groundedPosition(doc, snapTo(pick.point.x, snap), snapTo(pick.point.z, snap))
       const object: MapObject = {
         id: newId(),
         name: tools.spriteName,
@@ -203,7 +227,7 @@ function objectStroke(deps: StrokeDeps, selection: Selection | null): EditorStro
         hidden: false,
       }
       deps.select({ kind: 'object', id: object.id })
-      drag.grab(object.id, pick)
+      drag.grab({ kind: 'object', id: object.id }, pick, { x: position[0], z: position[2] })
       return addObject(doc, object)
     },
     move: (sample) => drag.move(sample),
@@ -212,50 +236,97 @@ function objectStroke(deps: StrokeDeps, selection: Selection | null): EditorStro
 }
 
 /**
- * Dragging an object along the ground, the way a grab feels in every app
+ * Dragging something along the ground, the way a grab feels in every app
  * that has one: the point you pressed stays under the pointer. The offset
- * between the object and the press's plane point is taken once at the grab
- * and kept, so the object never jumps to the cursor, and each tick reads the
+ * between the target and the press's plane point is taken once at the grab
+ * and kept, so nothing jumps to the cursor, and each tick reads the
  * pointer's position on the PRESS's plane (`pick.plane`) rather than
  * whatever the ray hits now — mid-drag that is the dragged sprite itself,
  * whose hit point slides along the billboard and made the motion feel
- * constrained to an axis for no reason. Height follows the terrain.
+ * constrained to an axis for no reason.
+ *
+ * The target moves by how far the pointer has travelled since the press, so
+ * the result is the same whether it is read as an offset or a delta. It snaps
+ * as the tools actor says (ruling of 2026-09-12, "Select tool"): grid, half
+ * or free, read per tick so a change mid-drag takes;
+ * Ctrl frees one drag, and Shift holds it to whichever axis it has moved
+ * further along, measured from the press. An object's height follows the
+ * terrain; a structure moves by its placement in its parent's frame, and a
+ * voxel volume only ever to whole cells (its placement is integer by the
+ * scene-graph ruling). The root has no parent to move within and stays put.
  */
 class Drag {
-  private target: string | null
-  private offset = { x: 0, z: 0 }
+  private target: DragTarget | null = null
+  /** Where the press's plane point was, in the world. */
+  private pressed: { x: number; z: number } | null = null
+  /** Where the target was at the grab, in the frame its position is measured in. */
+  private origin: { x: number; z: number } | null = null
 
-  constructor(
-    private readonly deps: StrokeDeps,
-    selection: string | null,
-  ) {
-    // The selection at the press is the fallback target, held without an
-    // offset: a drag that starts on it uses the grab; one that starts beside
-    // it (a shift-press on empty ground) moves nothing.
-    this.target = selection
-  }
+  constructor(private readonly deps: StrokeDeps) {}
 
-  grab(id: string, pick: PickSample): void {
-    this.target = id
-    const object = this.deps.reader.doc.objects[id]
+  /** `origin` is where the target is when the document does not hold it yet: the object a press is placing. */
+  grab(target: DragTarget, pick: PickSample, origin: { x: number; z: number } | null = this.positionOf(target)): void {
     const at = pick.plane ?? pick.point
-    this.offset = object && at ? { x: object.position[0] - at.x, z: object.position[2] - at.z } : { x: 0, z: 0 }
+    this.target = at && origin ? target : null
+    this.pressed = at ? { x: at.x, z: at.z } : null
+    this.origin = origin
   }
 
   release(): void {
     this.target = null
   }
 
+  /** Where the target is, in the frame its position is measured in; `null` for what cannot move. */
+  private positionOf(target: DragTarget): { x: number; z: number } | null {
+    const doc = this.deps.reader.doc
+    if (target.kind === 'object') {
+      const object = doc.objects[target.id]
+      return object ? { x: object.position[0], z: object.position[2] } : null
+    }
+    const structure = doc.structures[target.id]
+    return structure && structure.parent !== null ? { x: structure.placement.x, z: structure.placement.z } : null
+  }
+
   move(sample: StrokeSample): readonly Patch[] {
     const at = sample.pick.plane ?? sample.pick.point
-    if (!this.target || !at) return []
+    if (!this.target || !this.pressed || !this.origin || !at) return []
+    const { modifiers } = sample
+    const snap: SnapMode = modifiers.ctrl ? 'free' : this.deps.tools().snap
+    const to = this.constrained(at, this.pressed, modifiers.shift)
+    if (this.target.kind === 'object') return this.moveObject(this.target.id, this.origin, this.pressed, to, snap)
+    return this.moveStructure(this.target.id, this.origin, this.pressed, to, snap)
+  }
+
+  /** The pointer held to the axis it has travelled further along since the press. */
+  private constrained(at: { x: number; z: number }, pressed: { x: number; z: number }, hold: boolean): { x: number; z: number } {
+    if (!hold) return at
+    const dx = at.x - pressed.x
+    const dz = at.z - pressed.z
+    return Math.abs(dx) >= Math.abs(dz) ? { x: at.x, z: pressed.z } : { x: pressed.x, z: at.z }
+  }
+
+  private moveObject(id: string, origin: { x: number; z: number }, pressed: { x: number; z: number }, at: { x: number; z: number }, snap: SnapMode): readonly Patch[] {
     const doc = this.deps.reader.doc
-    const object = doc.objects[this.target]
+    const object = doc.objects[id]
     if (!object || object.locked) return []
-    const position = groundedPosition(doc, at.x + this.offset.x, at.z + this.offset.z)
+    const position = groundedPosition(doc, snapTo(origin.x + at.x - pressed.x, snap), snapTo(origin.z + at.z - pressed.z, snap))
     return updateObject(doc, object.id, {
       position,
       anchorCell: object.anchorCell ? [Math.floor(position[0]), Math.floor(position[2])] : null,
     })
+  }
+
+  private moveStructure(id: string, origin: { x: number; z: number }, pressed: { x: number; z: number }, at: { x: number; z: number }, snap: SnapMode): readonly Patch[] {
+    const doc = this.deps.reader.doc
+    const structure = doc.structures[id]
+    if (!structure || structure.parent === null) return []
+    // The placement moves by how far the pointer has travelled, measured in the parent's frame.
+    const frame = frameOf(doc, structure.parent)
+    const [fromX, fromZ] = toLocal(frame, pressed.x, pressed.z)
+    const [toX, toZ] = toLocal(frame, at.x, at.z)
+    const step = structure.kind === 'voxel' ? 'grid' : snap
+    const placement = { x: snapTo(origin.x + toX - fromX, step), z: snapTo(origin.z + toZ - fromZ, step), yaw: structure.placement.yaw }
+    if (placement.x === structure.placement.x && placement.z === structure.placement.z) return []
+    return placeStructure(doc, id, placement)
   }
 }

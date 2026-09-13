@@ -40,7 +40,7 @@ const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.
 
 /** The terrain feature's slice as this package sees it: opaque, except the brush the stub contract reads. */
 const BRUSH = { size: 3, shape: 'square' as const }
-const SCULPT: ToolsSnapshot = { tool: 'terrain', spriteName: 'tree', features: { terrain: { brush: BRUSH } } }
+const SCULPT: ToolsSnapshot = { tool: 'terrain', spriteName: 'tree', snap: 'grid', features: { terrain: { brush: BRUSH } } }
 const brushOf = (tools: ToolsSnapshot) => (tools.features.terrain as { brush: { size: number; shape: 'square' | 'circle' } }).brush
 /** The same snapshot with a one-cell brush. */
 const withBrush = (size: number): ToolsSnapshot => ({ ...SCULPT, features: { terrain: { brush: { size, shape: 'square' } } } })

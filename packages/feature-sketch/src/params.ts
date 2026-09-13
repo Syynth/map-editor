@@ -5,8 +5,10 @@
  * command that changes the first two, and the stroke sets `drawing` itself.
  */
 
+import { snapTo, type SnapMode } from '@map-editor/document'
+
 export type SketchMode = 'draw' | 'edit'
-export type SketchSnap = 'grid' | 'half' | 'free'
+export type SketchSnap = SnapMode
 
 export interface SketchParams {
   readonly sketchMode: SketchMode
@@ -17,9 +19,4 @@ export interface SketchParams {
 
 export const SKETCH_DEFAULTS: SketchParams = { sketchMode: 'draw', sketchSnap: 'grid', drawing: null }
 
-/** Snap a coordinate: to the cell grid, to half cells, or not at all (rounded to a hundredth so a file stays readable). */
-export function snapTo(value: number, snap: SketchSnap): number {
-  if (snap === 'free') return Math.round(value * 100) / 100
-  const step = snap === 'grid' ? 1 : 0.5
-  return Math.round(value / step) * step
-}
+export { snapTo }

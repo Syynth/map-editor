@@ -70,12 +70,12 @@ describe('drawing an outline', () => {
     expect(doc.structureOrder.filter((id) => doc.structures[id]?.kind === 'sketch')).toHaveLength(2)
   })
 
-  it('snaps to half cells or not at all as the parameters say, and shift means free for one press', () => {
+  it('snaps to half cells or not at all as the parameters say, and ctrl means free for one press', () => {
     const doc = createMap(12, 12)
     const half = stub(doc, { sketchSnap: 'half' })
     half.press(2.3, 2.6)
     expect(onlySketch(doc)?.points[0]).toMatchObject({ x: 2.5, z: 2.5 })
-    half.press(4.26, 4.24, { shift: true, alt: false, ctrl: false })
+    half.press(4.26, 4.24, { shift: false, alt: false, ctrl: true })
     expect(onlySketch(doc)?.points[1]).toMatchObject({ x: 4.26, z: 4.24 })
   })
 

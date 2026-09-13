@@ -540,47 +540,109 @@ describe('pointer input through the host', () => {
     const doc = host.reader.doc
     expect(doc.objectOrder).toHaveLength(0)
 
-    host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.5, z: 2.5 }, objectId: null } }))
+    // The press is snapped to the grid, as the drag will be.
+    host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.4, z: 2.4 }, objectId: null } }))
     expect(doc.objectOrder).toHaveLength(1)
     const id = doc.objectOrder[0]
+    expect(doc.objects[id].position[0]).toBe(2)
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBe(id)
     expect(host.contextKeys()['view.hasSelection']).toBe(true)
 
-    host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.5, z: 4.5 }, objectId: null }, NO_MODIFIERS)
-    expect(doc.objects[id].position[0]).toBeCloseTo(4.5)
+    host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.4, z: 4.4 }, objectId: null }, NO_MODIFIERS)
+    expect(doc.objects[id].position[0]).toBe(4)
     host.input.pointerUp({ x: 40, y: 40 })
     expect(host.reader.undoLabel()).toBe('Edit object')
   })
 
-  it('the select tool selects what it presses, clears on empty ground unless shift is held, and never places', () => {
+  it('the select tool selects what it presses — an object, or the structure under the pointer — clears on nothing unless shift is held, and never places', () => {
     const { host, dispatch } = makeHost()
     dispatch('tools.set', { tool: 'object', spriteName: 'tree' })
-    host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.5, z: 2.5 }, objectId: null } }))
+    host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2, z: 2 }, objectId: null } }))
     host.input.pointerUp({ x: 20, y: 20 })
     const doc = host.reader.doc
     const id = doc.objectOrder[0]
     expect(id).toBeDefined()
 
-    // The default tool. Pressing empty ground with something selected clears it and adds nothing.
+    // The default tool. The ground is a structure like any other: pressing it selects it, and adds nothing.
     dispatch('tools.set', { tool: 'select' })
     host.input.pointerDown(pressAt(5, 5, { pick: { surface: topAt(5, 5), point: { x: 5.5, z: 5.5 }, objectId: null } }))
     host.input.pointerUp({ x: 50, y: 50 })
     expect(doc.objectOrder).toHaveLength(1)
-    expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
+    expect(host.children.view.getSnapshot().context.selection).toEqual({ kind: 'structure', id: 'ground' })
+    // Nothing was edited: the last entry is still the placement.
+    expect(host.reader.undoLabel()).toBe('Edit object')
 
-    // Pressing the object selects it, and the rest of the drag moves it.
+    // Pressing nothing at all clears it.
+    host.input.pointerDown(pressAt(7, 7, { pick: { surface: null, point: null, objectId: null } }))
+    host.input.pointerUp({ x: 70, y: 70 })
+    expect(host.children.view.getSnapshot().context.selection).toBeNull()
+
+    // Pressing the object selects it, and the rest of the drag moves it, snapped to the grid.
     host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.5, z: 2.5 }, objectId: id } }))
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBe(id)
-    host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.5, z: 4.5 }, objectId: null }, NO_MODIFIERS)
-    expect(doc.objects[id].position[0]).toBeCloseTo(4.5)
+    host.input.strokeMove({ surface: topAt(4, 4), point: { x: 4.6, z: 4.6 }, objectId: null }, NO_MODIFIERS)
+    expect(doc.objects[id].position[0]).toBe(4)
     host.input.pointerUp({ x: 40, y: 40 })
     expect(host.reader.undoLabel()).toBe('Move object')
 
-    // Shift on empty ground keeps the selection.
-    host.input.pointerDown(pressAt(6, 6, { pick: { surface: topAt(6, 6), point: { x: 6.5, z: 6.5 }, objectId: null }, modifiers: { ...NO_MODIFIERS, shift: true } }))
+    // Shift on nothing keeps the selection.
+    host.input.pointerDown(pressAt(6, 6, { pick: { surface: null, point: null, objectId: null }, modifiers: { ...NO_MODIFIERS, shift: true } }))
     host.input.pointerUp({ x: 60, y: 60 })
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBe(id)
     expect(doc.objectOrder).toHaveLength(1)
+  })
+
+  it('a drag snaps as the tools actor says; ctrl frees one drag; shift holds it to an axis', () => {
+    const { host, dispatch } = makeHost()
+    apply(host, 'Add', addObject(host.reader.doc, { ...OBJECT, position: [2, 0, 2], anchorCell: [2, 2] }))
+    const doc = host.reader.doc
+    dispatch('tools.set', { tool: 'select' })
+    const grab = () => host.input.pointerDown(pressAt(2, 2, { pick: { surface: topAt(2, 2), point: { x: 2.3, z: 2.3 }, objectId: OBJECT.id } }))
+
+    // Grid: whole cells. The grab was 0.3 off the object, and that offset rides along before the snap.
+    grab()
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.1, z: 3.9 } }, NO_MODIFIERS)
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([5, 4])
+    // Ctrl (Cmd on a Mac) frees it, to the hundredth.
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.1, z: 3.9 } }, { ...NO_MODIFIERS, ctrl: true })
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([4.8, 3.6])
+    // Shift holds the drag to the axis it has moved further along, measured from the press.
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 6.3, z: 3.3 } }, { ...NO_MODIFIERS, shift: true })
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([6, 2])
+    host.input.pointerUp({ x: 60, y: 30 })
+
+    // Half cells, set on the tools actor and read per tick. The object is at (6, 2) now, and the
+    // grab is again 0.3 past the press cell, so the same travel lands 2.8 east and 1.6 south of it.
+    expect(dispatch('tools.set', { snap: 'half' })).toEqual({ ok: true })
+    grab()
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 5.1, z: 3.9 } }, NO_MODIFIERS)
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([9, 3.5])
+    host.input.pointerUp({ x: 50, y: 40 })
+    expect(dispatch('tools.set', { snap: 'sticky' })).toMatchObject({ ok: false })
+  })
+
+  it('the select tool drags a structure by its placement in its parent, and never the root', () => {
+    const { host, dispatch } = makeHost()
+    dispatch('sketch.new', { parent: 'ground', name: 'Island' })
+    const doc = host.reader.doc
+    const island = doc.structureOrder.find((id) => id !== 'ground') as string
+    dispatch('structure.place', { id: island, placement: { x: 3, z: 3, yaw: 0 } })
+    dispatch('tools.set', { tool: 'select' })
+
+    const cap: SurfaceAddress = { structure: island, kind: 3, x: 0, y: 0, dir: -1, level: 0 }
+    host.input.pointerDown(pressAt(4, 4, { pick: { surface: cap, point: { x: 4.2, z: 4.2 }, objectId: null } }))
+    expect(host.children.view.getSnapshot().context.selection).toEqual({ kind: 'structure', id: island })
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 6.3, z: 5.1 } }, NO_MODIFIERS)
+    expect(doc.structures[island].placement).toEqual({ x: 5, z: 4, yaw: 0 })
+    host.input.pointerUp({ x: 60, y: 50 })
+    expect(host.reader.undoLabel()).toBe('Move structure')
+
+    // The root sits on the level itself: a press selects it, the drag moves nothing.
+    host.input.pointerDown(pressAt(1, 1, { pick: { surface: topAt(1, 1), point: { x: 1, z: 1 }, objectId: null } }))
+    host.input.strokeMove({ surface: null, point: null, objectId: null, plane: { x: 4, z: 4 } }, NO_MODIFIERS)
+    host.input.pointerUp({ x: 40, y: 40 })
+    expect(doc.structures.ground.placement).toEqual({ x: 0, z: 0, yaw: 0 })
+    expect(host.reader.undoLabel()).toBe('Move structure')
   })
 
   it('a drag keeps the grabbed point under the pointer and follows the press plane, not what the ray hits', () => {
@@ -950,6 +1012,36 @@ describe('deleting objects', () => {
     expect(host.reader.doc.objects[object.id]).toBeUndefined()
     expect(host.children.view.getSnapshot().context.selectedObjectId).toBeNull()
     expect(host.contextKeys()['view.hasSelection']).toBe(false)
+  })
+
+  it('selection.nudge moves the selection a cell along the world axes, by its kind', () => {
+    const { host, dispatch } = makeHost()
+    apply(host, 'Add', addObject(host.reader.doc, { ...OBJECT, position: [2, 0, 2], anchorCell: [2, 2] }))
+    const doc = host.reader.doc
+    expect(dispatch('selection.nudge', { dx: 1, dz: 0 })).toMatchObject({ ok: false, kind: 'unavailable' })
+
+    dispatch('selection.set', { id: OBJECT.id })
+    expect(dispatch('selection.nudge', { dx: 1, dz: 0 })).toEqual({ ok: true })
+    expect(dispatch('selection.nudge', { dx: 0, dz: -1 })).toEqual({ ok: true })
+    expect([doc.objects[OBJECT.id].position[0], doc.objects[OBJECT.id].position[2]]).toEqual([3, 1])
+    expect(doc.objects[OBJECT.id].anchorCell).toEqual([3, 1])
+
+    // A structure by its placement, turned into its parent's frame; the root stays put.
+    dispatch('sketch.new', { parent: 'ground', name: 'Island' })
+    const island = doc.structureOrder.find((id) => id !== 'ground') as string
+    dispatch('selection.select', { selection: { kind: 'structure', id: island } })
+    expect(dispatch('selection.nudge', { dx: -1, dz: 1 })).toEqual({ ok: true })
+    expect(doc.structures[island].placement).toEqual({ x: -1, z: 1, yaw: 0 })
+    dispatch('selection.select', { selection: { kind: 'structure', id: 'ground' } })
+    expect(dispatch('selection.nudge', { dx: 1, dz: 0 })).toEqual({ ok: true })
+    expect(doc.structures.ground.placement).toEqual({ x: 0, z: 0, yaw: 0 })
+
+    // A sketch point, in its sketch's frame.
+    dispatch('sketch.point.add', { id: island, point: { x: 1, z: 1, smooth: false } })
+    dispatch('selection.select', { selection: { kind: 'sketchPoint', structure: island, index: 0 } })
+    expect(dispatch('selection.nudge', { dx: 0, dz: 1 })).toEqual({ ok: true })
+    expect(doc.structures[island].kind === 'sketch' && doc.structures[island].points[0]).toMatchObject({ x: 1, z: 2 })
+    expect(dispatch('selection.nudge', { dx: 99, dz: 0 })).toMatchObject({ ok: false })
   })
 
   it('selection.delete is unavailable with nothing selected, and says so', () => {

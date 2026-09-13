@@ -22,6 +22,8 @@ import {
   structureOf,
   type ReadonlyVoxel,
   toWorld,
+  type Placement,
+  type SnapMode,
 } from '@map-editor/document'
 import {
   useDocument,
@@ -160,20 +162,26 @@ function report(id: string, result: ReturnType<Host['dispatch']>): void {
   if (why !== null) console.warn(`[editor] ${id} refused: ${why}`)
 }
 
+/** The snap-off modifier as the status bar names it: Cmd on a Mac, Ctrl elsewhere (the viewport folds both into `ctrl`). */
+const MOD = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'ctrl'
+
 /** The status bar's hints per tool: what the pointer and the modifiers do right now. */
 function hintsFor(params: EditorParams): ReadonlyArray<{ kbd?: string; text: string }> {
   switch (params.tool) {
     case 'select':
       return [
-        { kbd: 'click', text: 'select an object' },
+        { kbd: 'click', text: 'select what is under it' },
         { kbd: 'drag', text: 'move it' },
-        { kbd: '⇧ click', text: 'keep the selection' },
-        { kbd: '⌥ click', text: 'pick up its sprite' },
+        { kbd: '⇧ drag', text: 'along one axis' },
+        { kbd: MOD, text: 'no snapping' },
+        { kbd: '← →', text: 'nudge a cell' },
+        { kbd: '⌥ click', text: 'pick up a sprite' },
       ]
     case 'object':
       return [
         { kbd: 'click', text: `place ${params.spriteName}` },
         { kbd: 'drag', text: 'move what you placed' },
+        { kbd: MOD, text: 'no snapping' },
         { kbd: '⇧ click', text: 'place nothing' },
       ]
     case 'terrain':
@@ -192,13 +200,13 @@ function hintsFor(params: EditorParams): ReadonlyArray<{ kbd?: string; text: str
         ? [
             { kbd: 'click', text: params.drawing ? 'add a point' : 'start an outline' },
             { kbd: '⌥ click', text: 'a corner point' },
-            { kbd: '⇧', text: 'no snapping' },
+            { kbd: MOD, text: 'no snapping' },
             ...(params.drawing ? [{ kbd: '⏎', text: 'finish' }, { kbd: 'esc', text: 'discard' }] : []),
           ]
         : [
             { kbd: 'drag', text: 'move a point' },
             { kbd: 'click', text: 'select a sketch' },
-            { kbd: '⇧', text: 'no snapping' },
+            { kbd: MOD, text: 'no snapping' },
           ]
     default:
       return []
@@ -248,11 +256,12 @@ export default function App() {
   /** The one write verb the panels get, routed to the actor that owns the parameters. */
   const setParams = useCallback(
     (changes: Partial<EditorParams>) => {
-      // The host owns the tool and the sprite; everything else here is the app's terrain-specific UI (the tile palette) speaking to the terrain feature.
-      const { tool, spriteName, ...rest } = changes
-      const own: { tool?: string; spriteName?: string } = {}
+      // The host owns the tool, the sprite and the snap; everything else here is the app's terrain-specific UI (the tile palette) speaking to the terrain feature.
+      const { tool, spriteName, snap, ...rest } = changes
+      const own: { tool?: string; spriteName?: string; snap?: SnapMode } = {}
       if (tool !== undefined) own.tool = tool
       if (spriteName !== undefined) own.spriteName = spriteName
+      if (snap !== undefined) own.snap = snap
       if (Object.keys(own).length > 0) report('tools.set', host.dispatch('tools.set', own))
       if (Object.keys(rest).length > 0) report('terrain.params', host.dispatch('terrain.params', rest))
     },
@@ -439,6 +448,15 @@ export default function App() {
 
   const deleteSelection = useCallback(() => report('selection.delete', host.dispatch('selection.delete')), [host])
 
+  /** A change to a structure's name or placement, by id. */
+  const updateStructure = useCallback(
+    (id: string, changes: { name?: string; placement?: Placement }) => {
+      if (changes.name !== undefined) report('structure.rename', host.dispatch('structure.rename', { id, name: changes.name }))
+      if (changes.placement !== undefined) report('structure.place', host.dispatch('structure.place', { id, placement: changes.placement }))
+    },
+    [host],
+  )
+
   const setRig = useCallback(
     (changes: Partial<CameraRig>) => report('camera.set', host.dispatch('camera.set', changes)),
     [host],
@@ -599,7 +617,7 @@ export default function App() {
       }
       bar={
         params.tool === 'select' ? (
-          <SelectBar selected={selected} platform={platform} onDelete={deleteSelection} onClear={() => select(null)} />
+          <SelectBar doc={doc} selection={view.selection} params={params} set={setParams} platform={platform} onDelete={deleteSelection} onClear={() => select(null)} />
         ) : params.tool === 'object' ? (
           <ObjectBar params={params} set={setParams} />
         ) : (
@@ -668,6 +686,7 @@ export default function App() {
           onSelect={selectFromList}
           onObject={updateSelected}
           onObjectChange={updateObject}
+          onStructure={updateStructure}
           onDelete={deleteSelection}
           onRig={setRig}
           onAtmosphere={setAtmosphere}
