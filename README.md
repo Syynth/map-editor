@@ -23,6 +23,7 @@ pnpm bench         # mesher throughput
 pnpm shoot         # drive it headless and save screenshots to shots/
 pnpm tour          # capture the 25-step guided walkthrough to shots/tour/
 pnpm probe         # measure whether post-processing survives on this GPU
+pnpm perf          # frame time, memory, allocations and leaks per task, on this GPU (shots/perf/)
 pnpm bake          # re-render packages/fixtures/baked/ (the sample map's placeholder art as PNG)
 ```
 

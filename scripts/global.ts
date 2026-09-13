@@ -39,6 +39,16 @@ declare global {
   interface Window {
     __viewport: Viewport
     __host: Host
+    // Installed by scripts/perf.mjs's init script before the app loads: the
+    // frame intervals it records into a preallocated array (so recording
+    // allocates nothing) and the long tasks the page reports while recording.
+    __perf?: {
+      intervals: Float64Array
+      count: number
+      last: number
+      recording: boolean
+      longTasks: number[]
+    }
     // Set once, after `apps/editor/src/bake/main.ts`'s generator finishes —
     // see that file's own `BakeResult` for the manifest's real shape.
     // `unknown` here is enough: every reader either JSON.stringifies it

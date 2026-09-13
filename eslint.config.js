@@ -39,7 +39,7 @@ export default tseslint.config(
     // fresh checkout and fail everywhere else. `.gitignore`'s `dist/` matches at
     // any depth (gitignore semantics differ), so `git status` stays clean and
     // hides it.
-    ignores: ['**/dist/**', '**/.turbo/**', '.claude/**'],
+    ignores: ['**/dist/**', '**/dist-perf/**', '**/.turbo/**', '.claude/**'],
   },
 
   {

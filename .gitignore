@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# `pnpm perf`'s own unminified production build (scripts/perf.mjs).
+dist-perf/
 .turbo/
 
 # `tsc -b` from the repo root (see tsconfig.json's solution `references`, #46)
