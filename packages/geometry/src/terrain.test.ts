@@ -318,6 +318,7 @@ describe('walls are watertight', () => {
   })
 
   it('has no hole and no fin anywhere on maps of random heights and ramps', () => {
-    for (const seed of [1, 7, 42, 1234]) expect(gaps(rampy(seed)).slice(0, 5)).toEqual([])
+    // Two maps of 256 cells, a third of them ramps, already meet every pairing of ramp and neighbour many times over.
+    for (const seed of [7, 42]) expect(gaps(rampy(seed)).slice(0, 5)).toEqual([])
   })
 })

@@ -498,11 +498,18 @@ export class RuntimeScene {
     this.finishStats(start, this.doc.structureOrder.length)
   }
 
-  /** Rebuild what the store marked: chunks of voxel volumes by key, structures whole by id. */
-  rebuild(dirty: { chunks: readonly string[]; structures: readonly string[] }): void {
+  /**
+   * Rebuild what the store marked: chunks of voxel volumes by key, structures whole by id. Structures that only moved
+   * are re-placed — their group follows their frame, their meshes are untouched.
+   */
+  rebuild(dirty: { chunks: readonly string[]; structures: readonly string[]; moved?: readonly string[] }): void {
     const start = performance.now()
     const whole = new Set(dirty.structures)
     for (const id of whole) this.buildStructure(id)
+    for (const id of dirty.moved ?? []) {
+      const view = this.structures.get(id)
+      if (view && !whole.has(id)) this.placeGroup(view.group, id)
+    }
     let built = whole.size
     const touched = new Map<string, { view: StructureView; voxel: ReadonlyVoxel }>()
     for (const key of dirty.chunks) {

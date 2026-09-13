@@ -196,7 +196,27 @@ function signedArea(points: readonly Vec2[]): number {
  * orientation normalised (positive signed area in x, z) so whichever way the
  * points were clicked, "outward" means the same thing to everyone.
  */
+/**
+ * Outlines already rounded, per points array and per number of rounds. A sketch's points are replaced, never edited in
+ * place — every edit writes a new array — so the array is the version, and a pick, a height query or a mesh asking for
+ * the same sketch's outline gets the one it already has instead of rounding it again every call.
+ */
+const outlines = new WeakMap<object, Map<number, Outline>>()
+
 export function outlineOf(points: readonly DeepReadonly<ProfilePoint>[], rounds = 3): Outline {
+  let byRounds = outlines.get(points)
+  const cached = byRounds?.get(rounds)
+  if (cached) return cached
+  const outline = computeOutline(points, rounds)
+  if (!byRounds) {
+    byRounds = new Map()
+    outlines.set(points, byRounds)
+  }
+  byRounds.set(rounds, outline)
+  return outline
+}
+
+function computeOutline(points: readonly DeepReadonly<ProfilePoint>[], rounds: number): Outline {
   let pts: Vec2[] = round(points, rounds).map((p) => [p.x, p.z] as const)
   const area = signedArea(pts)
   if (area < 0) pts = pts.reverse()

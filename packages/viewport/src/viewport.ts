@@ -422,13 +422,16 @@ export class Viewport {
       this.drawnGeneration = this.reader.generation
       this.reader.takeDirtyChunks()
       this.reader.takeDirtyStructures()
+      this.reader.takeMovedStructures()
       this.reset()
       return
     }
     const structures = this.reader.takeDirtyStructures()
-    if (!this.reader.hasDirtyChunks() && structures.length === 0) return
+    const moved = this.reader.takeMovedStructures()
+    if (!this.reader.hasDirtyChunks() && structures.length === 0 && moved.length === 0) return
     const chunks = this.reader.takeDirtyChunks()
-    this.scene.rebuild({ chunks, structures })
+    // A structure that only moved is re-placed, not remeshed: dragging a sketch moves its group and nothing more.
+    this.scene.rebuild({ chunks, structures, moved })
     // The grid follows the terrain, chunk for chunk: the same dirty keys rewrite the same chunks' lines, and a structure
     // that changed as a whole — moved, resized — is re-placed or rebuilt with it.
     this.grid.update(this.reader.doc, chunks, structures)

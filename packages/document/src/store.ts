@@ -115,7 +115,15 @@ export interface DocumentReader {
    */
   hasDirtyChunks(): boolean
   takeDirtyChunks(): string[]
+  /** Structures whose shape changed: remeshed. */
   takeDirtyStructures(): string[]
+  /**
+   * Structures that only moved — a placement or a parent changed, theirs or
+   * an ancestor's — whose meshes are still right where they stand in their
+   * own frame: re-placed, not remeshed. A structure both moved and reshaped
+   * is only in `takeDirtyStructures`.
+   */
+  takeMovedStructures(): string[]
   canUndo(): boolean
   canRedo(): boolean
   undoLabel(): string | null
@@ -159,6 +167,7 @@ export class EditorStore implements DocumentWriter {
   private listeners = new Set<Listener>()
   private dirtyChunks = new Set<string>()
   private dirtyStructures = new Set<string>()
+  private movedStructures = new Set<string>()
   private stroke: OpenStroke | null = null
 
   /**
@@ -192,6 +201,7 @@ export class EditorStore implements DocumentWriter {
       hasDirtyChunks: () => this.hasDirtyChunks(),
       takeDirtyChunks: () => this.takeDirtyChunks(),
       takeDirtyStructures: () => this.takeDirtyStructures(),
+      takeMovedStructures: () => this.takeMovedStructures(),
       // False while a stroke is open: the entry it will produce does not exist
       // yet, so an undo now would skip past the drag in progress and leave its
       // applied patches with no record to unwind them.
@@ -236,7 +246,7 @@ export class EditorStore implements DocumentWriter {
     for (const id of this.doc.structureOrder) {
       const structure = this.doc.structures[id]
       if (!structure) continue
-      this.dirtyStructures.add(id)
+      this.reshaped(id)
       if (structure.kind !== 'voxel') continue
       const { width, height } = structure.size
       for (let cy = 0; cy < Math.ceil(height / CHUNK_SIZE); cy++) {
@@ -247,11 +257,27 @@ export class EditorStore implements DocumentWriter {
     }
   }
 
-  /** Structures whose own data changed since last taken — a sketch's points, a placement, an add or a remove. */
+  /** Structures whose shape changed since last taken — a sketch's data, an add, a remove. */
   takeDirtyStructures(): string[] {
     const out = [...this.dirtyStructures]
     this.dirtyStructures.clear()
     return out
+  }
+
+  takeMovedStructures(): string[] {
+    const out = [...this.movedStructures]
+    this.movedStructures.clear()
+    return out
+  }
+
+  /** Reshaped wins over moved, decided as the patches land, so it does not matter which queue is taken first. */
+  private reshaped(id: string): void {
+    this.dirtyStructures.add(id)
+    this.movedStructures.delete(id)
+  }
+
+  private moved(id: string): void {
+    if (!this.dirtyStructures.has(id)) this.movedStructures.add(id)
   }
 
   takeDirtyChunks(): string[] {
@@ -307,12 +333,22 @@ export class EditorStore implements DocumentWriter {
         const [x, y] = patch.key.split(',').map(Number)
         this.dirtyCell(patch.id, x, y)
       }
-    } else if (patch.t === 'sketch' || patch.t === 'structure' || patch.t === 'structure.meta') {
-      this.dirtyStructures.add(patch.id)
-      // A moved or removed structure moves everything standing on it.
-      for (const id of descendantsOf(this.doc, patch.id)) this.dirtyStructures.add(id)
+    } else if (patch.t === 'structure.meta') {
+      // A name is not drawn. A placement or a parent is a transform: the structure and everything standing on it move,
+      // and nothing about their shapes changed.
+      if (patch.field === 'name') return
+      this.moved(patch.id)
+      for (const id of descendantsOf(this.doc, patch.id)) this.moved(id)
+    } else if (patch.t === 'sketch') {
+      // The sketch's shape changed; what stands on it only moved, if its height did.
+      this.reshaped(patch.id)
+      for (const id of descendantsOf(this.doc, patch.id)) this.moved(id)
+    } else if (patch.t === 'structure') {
+      // Added, removed or replaced whole: it and everything standing on it are drawn again.
+      this.reshaped(patch.id)
+      for (const id of descendantsOf(this.doc, patch.id)) this.reshaped(id)
     } else if (patch.t === 'structureOrder') {
-      for (const id of patch.value) this.dirtyStructures.add(id)
+      for (const id of patch.value) this.reshaped(id)
     } else if (patch.t === 'doc' && (patch.field === 'materials' || patch.field === 'texelDensity' || patch.field === 'surfaceMaterials')) {
       this.markAllDirty()
     }
