@@ -12,18 +12,24 @@
  */
 
 import {
+  DIR_VECTORS,
   cellIndex,
   cliffKey,
+  columnTopAt,
   createMap,
+  createSketch,
   defaultFacing,
+  fillColumn,
   groundHeight,
   newId,
+  rampShape,
   tintKey,
+  topHeight,
   topKey,
+  voxelIndex,
   type MapDoc,
   type MapObject,
   type VoxelStructure,
-  createSketch,
 } from '@papercut/document'
 import { sheetLayoutFor, cliffTile, defaultTopTile } from '@papercut/geometry'
 
@@ -81,13 +87,12 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
 
       let h = Math.round(rolling + ridge * (1 - distance) - river * 2.4)
       h = Math.max(0, Math.min(18, h))
-      ground.terrain.height[index] = h
 
-      // Material follows height: sand low, grass mid, stone high.
-      ground.terrain.material[index] = h <= 1 ? 3 : h >= 8 ? 2 : hash(x, y, 1) > 0.88 ? 1 : 0
+      // Material follows height: sand low, grass mid, stone high. Every voxel of a column takes it.
+      fillColumn(ground, x, y, h, h <= 1 ? 3 : h >= 8 ? 2 : hash(x, y, 1) > 0.88 ? 1 : 0)
 
       // Water pools in the river bed.
-      if (h <= 1) ground.terrain.water[index] = 2
+      if (h <= 1) ground.water[index] = 2
     }
   }
 
@@ -100,25 +105,18 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   const stepDowns: Array<[number, number, number]> = []
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      const h = ground.terrain.height[cellIndex(ground.size, x, y)]
+      const h = topHeight(ground, x, y)
       if (h < 3) continue
       for (let dir = 0; dir < 4; dir++) {
-        const [dx, dy] = [
-          [1, 0],
-          [0, 1],
-          [-1, 0],
-          [0, -1],
-        ][dir]
-        if (ground.terrain.height[cellIndex(ground.size, x + dx, y + dy)] === h - 2) {
-          stepDowns.push([x, y, dir])
-        }
+        const [dx, dy] = DIR_VECTORS[dir]
+        if (topHeight(ground, x + dx, y + dy) === h - 2) stepDowns.push([x, y, dir])
       }
     }
   }
   // Spread a handful around the map instead of clustering them.
   for (let i = 0; i < stepDowns.length; i += Math.max(1, Math.floor(stepDowns.length / 14))) {
     const [x, y, dir] = stepDowns[i]
-    ground.terrain.ramp[cellIndex(ground.size, x, y)] = dir
+    ground.voxels.shape[voxelIndex(ground, x, y, columnTopAt(ground, x, y))] = rampShape(dir)
   }
 
   // --- painted overrides ---------------------------------------------------
@@ -137,15 +135,14 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   // sculpting nearby demonstrates that the paint stays put.
   const stoneBand = cliffTile(layout, 2, 'middle')
   for (let x = 0; x < width; x++) {
-    const index = cellIndex(ground.size, x, Math.round(centreY - 8))
-    const h = ground.terrain.height[index]
+    const h = topHeight(ground, x, Math.round(centreY - 8))
     if (h > 5) ground.paint.cliff[cliffKey(x, Math.round(centreY - 8), 1, h - 2)] = stoneBand
   }
 
   // A cool tint in the river bed, quantised per cell rather than blended.
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (ground.terrain.height[cellIndex(ground.size, x, y)] <= 2) {
+      if (topHeight(ground, x, y) <= 2) {
         ground.paint.tint[tintKey(x, y)] = 0xa8c4d8
       }
     }

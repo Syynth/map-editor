@@ -3,7 +3,9 @@
  * pure function over data, or the actor that owns the one write path.
  */
 export {
+  AIR,
   ATMOSPHERE_PRESETS,
+  DEFAULT_LAYERS,
   DEFAULT_MATERIALS,
   DIR_NAMES,
   DIR_VECTORS,
@@ -13,18 +15,44 @@ export {
   NO_RAMP,
   NO_WATER,
   PRESET_REFERENCE_SPAN,
+  SHAPE_BLOCK,
+  SHAPE_HALF_RAMP,
+  SHAPE_HALF_RAMP_UP,
+  SHAPE_RAMP,
+  SHAPE_SLAB,
   cellIndex,
   createMap,
   createVoxel,
   defaultCameraRig,
   defaultFacing,
-  heightAt,
   inBounds,
   makeAtmosphere,
-  materialAt,
   newId,
   worldHeight,
 } from './document'
+export {
+  columnHeights,
+  columnShapes,
+  columnTopAt,
+  fillColumn,
+  halfRampShape,
+  halfRampUpShape,
+  heightAt,
+  isHalfRampShape,
+  isRampShape,
+  isSlopedShape,
+  materialAt,
+  maxHeightOf,
+  rampDirAt,
+  rampShape,
+  shapeHeight,
+  shapeLowHeight,
+  shapeRampDir,
+  topHeight,
+  topShapeAt,
+  voxelIndex,
+} from './voxels'
+export type { VoxelBox } from './voxels'
 export type {
   Atmosphere,
   BackdropCard,
@@ -43,7 +71,7 @@ export type {
   MaterialDef,
   PaintLayers,
   ReadonlyMapDoc,
-  TerrainData,
+  VoxelData,
 } from './document'
 export { DEFAULT_SURFACE_MATERIALS, ancestorsOf, childrenOf, defaultSurfaceMaterials, descendantsOf, outlineOf, pointInOutline, structureOf } from './structure'
 export type {
@@ -78,7 +106,9 @@ export {
   addSketchPoint,
   addStructure,
   brushCells,
+  clearRampRun,
   closeSketch,
+  columnPatches,
   createSketch,
   deleteSketchPoint,
   fillCells,
@@ -91,6 +121,8 @@ export {
   placeStructure,
   placeStructureOnto,
   raise,
+  rampRun,
+  rampRunLength,
   rectCells,
   regroundObjects,
   removeObject,
@@ -98,13 +130,13 @@ export {
   renameStructure,
   reparentStructure,
   setMaterial,
-  setRamp,
   setSketch,
   setWater,
+  smooth,
   updateObject,
   updateSketchPoint,
 } from './ops'
-export type { Brush, BrushShape, Cell, SketchChanges } from './ops'
+export type { Brush, BrushShape, Cell, RampEdge, SketchChanges } from './ops'
 export {
   cliffKey,
   cliffPaint,

@@ -5,8 +5,9 @@ import { createDocumentActorLogic, documentLogic } from './actor'
 import { cellIndex, createMap, type MapDoc, type ReadonlyMapDoc } from './document'
 import { structureOf, type ReadonlyVoxel, type VoxelStructure } from './structure'
 import { inversePatch, type Patch } from './edits'
-import { raise } from './ops'
+import { columnPatches, raise } from './ops'
 import { createDocumentStore, EditorStore, type DocumentReader, type DocumentWriter } from './store'
+import { columnHeights, topHeight } from './voxels'
 
 /**
  * A writer that only counts. The guard tests below are about how many times
@@ -34,8 +35,8 @@ function countingWriter(): { writer: DocumentWriter; reader: DocumentReader; cal
 }
 
 const ground = (doc: MapDoc | ReadonlyMapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
-// Never applied to a real store: the counting writer only counts, so the id is nominal.
-const onePatch = (index: number) => [{ t: 'voxel' as const, id: 'g', field: 'height' as const, index, value: 5 }]
+// Never applied to a real store: the counting writer only counts, so the id and the voxel are nominal.
+const onePatch = (index: number) => [{ t: 'voxel' as const, id: 'g', field: 'material' as const, index, value: 5 }]
 
 /**
  * The standing guard #22 asked for. On xstate 6.0.0-alpha.53 a transition
@@ -118,22 +119,21 @@ describe('document actor over a real store', () => {
   it('moves a cell by exactly the sum of the patches it was sent', () => {
     const store = new EditorStore(createMap(8, 8))
     const actor = createActor(createDocumentActorLogic(store)).start()
-    const index = cellIndex(ground(store.reader.doc).size, 2, 2)
-    const before = ground(store.reader.doc).terrain.height[index]
+    const before = topHeight(ground(store.reader.doc), 2, 2)
 
     for (let i = 0; i < 3; i++) {
       actor.send({ type: 'patch', label: 'Raise', patches: raise(store.reader.doc, ground(store.reader.doc), [[2, 2]], 1) })
     }
 
     // +3, not +6: the same claim as the counting test, seen through `reader`.
-    expect(ground(store.reader.doc).terrain.height[index]).toBe(before + 3)
+    expect(topHeight(ground(store.reader.doc), 2, 2)).toBe(before + 3)
   })
 
   it('closes one Edit per stroke — the record it is handed — so one undo unwinds every tick', () => {
     const store = new EditorStore(createMap(8, 8))
     const actor = createActor(createDocumentActorLogic(store)).start()
     const doc = store.reader.doc
-    const before = ground(doc).terrain.height.slice()
+    const before = columnHeights(ground(doc))
 
     // The record is the sender's: inverses read before each patch lands, as
     // the stroke actor in `editor-host` does per tick (#11).
@@ -146,7 +146,7 @@ describe('document actor over a real store', () => {
       inverse.push(...tick.map((patch) => inversePatch(doc, patch)))
       actor.send({ type: 'strokePatch', patches: tick })
       // Applied on arrival: the drag is visible before it is an undo entry.
-      expect(ground(doc).terrain.height[cellIndex(ground(doc).size, i, 0)]).toBe(before[i] + 1)
+      expect(topHeight(ground(doc), i, 0)).toBe(before[cellIndex(ground(doc).size, i, 0)] + 1)
       expect(store.reader.canUndo()).toBe(false)
     }
     actor.send({ type: 'endStroke', patches, inverse })
@@ -154,12 +154,12 @@ describe('document actor over a real store', () => {
     expect(store.reader.undoLabel()).toBe('Raise')
 
     actor.send({ type: 'undo' })
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
     expect(store.reader.canUndo()).toBe(false)
     expect(store.reader.canRedo()).toBe(true)
 
     actor.send({ type: 'redo' })
-    for (let i = 0; i < 5; i++) expect(ground(doc).terrain.height[cellIndex(ground(doc).size, i, 0)]).toBe(before[i] + 1)
+    for (let i = 0; i < 5; i++) expect(topHeight(ground(doc), i, 0)).toBe(before[cellIndex(ground(doc).size, i, 0)] + 1)
   })
 })
 
@@ -170,9 +170,9 @@ describe('the read and write paths', () => {
     let notified = 0
     reader.subscribe(() => void (notified += 1))
 
-    writer.apply('Raise', [{ t: 'voxel', id: ground(reader.doc).id, field: 'height', index: 0, value: 9 }])
+    writer.apply('Raise', columnPatches(ground(reader.doc), 0, 0, 9))
 
-    expect(ground(reader.doc).terrain.height[0]).toBe(9)
+    expect(topHeight(ground(reader.doc), 0, 0)).toBe(9)
     expect(reader.revision).toBe(revision + 1)
     expect(reader.getSnapshot()).toBe(reader.revision)
     expect(notified).toBe(1)
@@ -195,7 +195,7 @@ describe('the read and write paths', () => {
     const { reader, writer } = createDocumentStore(createMap(4, 4, 'First'))
     expect(reader.generation).toBe(0)
 
-    writer.apply('Raise', [{ t: 'voxel', id: ground(reader.doc).id, field: 'height', index: 0, value: 3 }])
+    writer.apply('Raise', columnPatches(ground(reader.doc), 0, 0, 3))
     expect(reader.revision).toBeGreaterThan(0)
     expect(reader.generation).toBe(0)
 
@@ -214,7 +214,7 @@ describe('the read and write paths', () => {
     const doc: ReadonlyMapDoc = createMap(2, 2)
     const g = structureOf(doc, 'ground', 'voxel') as ReadonlyVoxel
     // @ts-expect-error indexed assignment
-    g.terrain.height[0] = 1
+    g.voxels.material[0] = 1
     // @ts-expect-error record assignment
     g.paint.top['0,0'] = 1
     // @ts-expect-error array mutation

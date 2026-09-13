@@ -39,6 +39,7 @@ import {
   type RgbaImage,
   type SpriteAsset,
   type DocumentTarget,
+  columnHeights,
 } from '@papercut/document'
 import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@papercut/geometry'
 import { ObjectView, releaseReplaced, releaseTexture, rgbaTexture, spriteImages, type ObjectViewContext } from './billboard'
@@ -344,7 +345,7 @@ export class RuntimeScene {
       view.group.add(cap.mesh)
       view.cap = cap
     }
-    cap.update(voxel.terrain.height, view.group.position.y)
+    cap.update(columnHeights(voxel), view.group.position.y)
   }
 
   private placeGroup(group: THREE.Group, id: string): void {

@@ -1,9 +1,15 @@
 import {
+  NO_RAMP,
+  SHAPE_BLOCK,
   SURFACE_CLIFF,
   SURFACE_TOP,
-  cellIndex,
   createMap,
+  fillColumn,
+  rampDirAt,
+  rampShape,
+  topHeight,
   topKey,
+  voxelIndex,
   type Patch,
   type ReadonlyMapDoc,
   type SurfaceAddress,
@@ -18,6 +24,18 @@ import type { TerrainParams } from './verbs'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
 const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
+
+/** Every map in this file is 8 by 8. */
+const SIZE = 8
+
+/**
+ * How many columns a tick edited. A sculpt patch addresses one voxel's
+ * field, and a half-tile up from a whole cube is two of them (the new top
+ * voxel's material and its shape) while the next half-tile is one (that
+ * voxel's shape), so what a tick is asked about is the cells it touched.
+ */
+const cellsTouched = (patches: readonly Patch[] | undefined): number =>
+  new Set((patches ?? []).flatMap((patch) => (patch.t === 'voxel' && patch.field !== 'water' ? [patch.index % (SIZE * SIZE)] : []))).size
 
 
 /**
@@ -35,7 +53,6 @@ const defaults: TerrainParams = {
   material: 0,
   tile: 0,
   tint: 0xffffff,
-  rampDir: -1,
   sculptDeadZone: 0.2,
 }
 
@@ -68,7 +85,7 @@ describe('a sculpt stroke steers by the press plane, with a dead zone', () => {
     const doc = createMap(8, 8)
     const { deps } = stub(doc)
     const handler = terrainContract(deps).stroke(sample(top(1, 1)))
-    expect(handler?.begin(sample(top(1, 1)))).toHaveLength(1)
+    expect(cellsTouched(handler?.begin(sample(top(1, 1))))).toBe(1)
     // The pointer has barely moved; the pick now says "cliff face of (1,1)".
     const face: SurfaceAddress = { structure: 'ground', x: 1, y: 1, kind: SURFACE_CLIFF, dir: 2, level: 1 }
     expect(handler?.move(planeSample(1.5, 1.6, face))).toEqual([])
@@ -81,10 +98,10 @@ describe('a sculpt stroke steers by the press plane, with a dead zone', () => {
     const handler = terrainContract(deps).stroke(sample(top(1, 1)))
     handler?.begin(sample(top(1, 1)))
     expect(handler?.move(planeSample(2.1, 1.5))).toEqual([]) // over the line, inside the dead zone
-    expect(handler?.move(planeSample(2.25, 1.5))).toHaveLength(1) // past it
+    expect(cellsTouched(handler?.move(planeSample(2.25, 1.5)))).toBe(1) // past it
     // Back across the same line: the dead zone applies in both directions.
     expect(handler?.move(planeSample(1.9, 1.5))).toEqual([])
-    expect(handler?.move(planeSample(1.7, 1.5))).toHaveLength(1)
+    expect(cellsTouched(handler?.move(planeSample(1.7, 1.5)))).toBe(1)
   })
 
   it('a dead zone of zero is the exact boundary, and a corner crossing must clear both edges', () => {
@@ -92,12 +109,12 @@ describe('a sculpt stroke steers by the press plane, with a dead zone', () => {
     const { deps } = stub(doc, { sculptDeadZone: 0 })
     const handler = terrainContract(deps).stroke(sample(top(1, 1)))
     handler?.begin(sample(top(1, 1)))
-    expect(handler?.move(planeSample(2.0, 1.5))).toHaveLength(1)
+    expect(cellsTouched(handler?.move(planeSample(2.0, 1.5)))).toBe(1)
     const { deps: deps2 } = stub(createMap(8, 8), { sculptDeadZone: 0.25 })
     const handler2 = terrainContract(deps2).stroke(sample(top(1, 1)))
     handler2?.begin(sample(top(1, 1)))
     expect(handler2?.move(planeSample(2.3, 2.1))).toEqual([]) // past x's zone, not z's
-    expect(handler2?.move(planeSample(2.3, 2.3))).toHaveLength(1)
+    expect(cellsTouched(handler2?.move(planeSample(2.3, 2.3)))).toBe(1)
   })
 
   it('ramp and paint keep steering by the pick, since they target faces', () => {
@@ -108,7 +125,8 @@ describe('a sculpt stroke steers by the press plane, with a dead zone', () => {
     // The plane says (1,1) still; the pick says (3,3). Paint follows the pick.
     const patches = handler?.move(planeSample(1.5, 1.5, top(3, 3)))
     expect(patches).toHaveLength(1)
-    expect(patches?.[0]).toMatchObject({ t: 'voxel', id: 'ground', field: 'material', index: cellIndex(ground(doc).size, 3, 3), value: 1 })
+    // The top voxel of a one-cube column is on the first layer.
+    expect(patches?.[0]).toMatchObject({ t: 'voxel', id: 'ground', field: 'material', index: voxelIndex(ground(doc), 3, 3, 0), value: 1 })
   })
 })
 
@@ -118,9 +136,9 @@ describe('the terrain tool contract', () => {
     const { deps, applied } = stub(doc)
     const handler = terrainContract(deps).stroke(sample(top(1, 1)))
 
-    expect(handler?.begin(sample(top(1, 1)))).toHaveLength(1)
+    expect(cellsTouched(handler?.begin(sample(top(1, 1))))).toBe(1)
     expect(applied).toEqual([])
-    expect(ground(doc).terrain.height[cellIndex(ground(doc).size, 1, 1)]).toBe(2)
+    expect(topHeight(ground(doc), 1, 1)).toBe(2)
   })
 
   it('skips a move that stays on the cell the last tick edited', () => {
@@ -129,7 +147,7 @@ describe('the terrain tool contract', () => {
     handler?.begin(sample(top(1, 1)))
 
     expect(handler?.move(sample(top(1, 1)))).toEqual([])
-    expect(handler?.move(sample(top(2, 1)))).toHaveLength(1)
+    expect(cellsTouched(handler?.move(sample(top(2, 1))))).toBe(1)
   })
 
   it('holds a rectangle open until release, and grows it from the press', () => {
@@ -140,17 +158,17 @@ describe('the terrain tool contract', () => {
     expect(handler?.move(sample(top(3, 2)))).toEqual([])
     // 3x2 cells, anchored where the press landed — the anchor is the
     // handler's, which is what makes it die with the stroke.
-    expect(handler?.end(sample(top(3, 2)))).toHaveLength(6)
+    expect(cellsTouched(handler?.end(sample(top(3, 2))))).toBe(6)
   })
 
   it('reads the brush width per tick, so widening mid-drag takes effect', () => {
     const { deps } = stub(createMap(8, 8))
     const handler = terrainContract(deps).stroke(sample(top(1, 1)))
-    expect(handler?.begin(sample(top(1, 1)))).toHaveLength(1)
+    expect(cellsTouched(handler?.begin(sample(top(1, 1))))).toBe(1)
 
     deps.setParams({ brush: { size: 3, shape: 'square' } })
 
-    expect(handler?.move(sample(top(4, 4)))).toHaveLength(9)
+    expect(cellsTouched(handler?.move(sample(top(4, 4))))).toBe(9)
   })
 
   it('alt picks a tile up instead of editing, and only on the press', () => {
@@ -169,14 +187,34 @@ describe('the terrain tool contract', () => {
     expect(current().tile).toBe(9)
   })
 
-  it('turns a clicked cliff face into a ramp descending the way it points', () => {
+  it('cuts a ramp back from a clicked cliff face, descending the way it points', () => {
     const cliff: SurfaceAddress = { structure: 'ground', x: 2, y: 2, kind: SURFACE_CLIFF, dir: 3, level: 1 }
     const doc = createMap(8, 8)
+    // (2,2) stands one cube above (2,1), its neighbour to the north: a drop of
+    // one tile, which a run of one full ramp cell takes.
+    fillColumn(ground(doc), 2, 2, 4)
     const { deps } = stub(doc, { sculptVerb: 'ramp' })
     const handler = terrainContract(deps).stroke(sample(cliff))
 
-    // `rampDir` is -1 — "click a cliff" — so the direction comes from the face.
-    expect(handler?.begin(sample(cliff))).toEqual([{ t: 'voxel', id: 'ground', field: 'ramp', index: cellIndex(ground(doc).size, 2, 2), value: 3 }])
+    // The direction comes from the face; the `rampDir` parameter no longer
+    // steers anything. The run is as long as the drop needs, so the one cell
+    // is re-stood at its own height with its top voxel sloped north.
+    expect(handler?.begin(sample(cliff))).toEqual([{ t: 'voxel', id: 'ground', field: 'shape', index: voxelIndex(ground(doc), 2, 2, 1), value: rampShape(3) }])
+  })
+
+  it('removes the run under a clicked ramp top', () => {
+    const doc = createMap(8, 8)
+    fillColumn(ground(doc), 2, 2, 4, 0, rampShape(3))
+    expect(rampDirAt(ground(doc), 2, 2)).toBe(3)
+    const { deps } = stub(doc, { sculptVerb: 'ramp' })
+    const handler = terrainContract(deps).stroke(sample(top(2, 2)))
+
+    // The heights stay and only the slope goes: a full ramp back to a block.
+    expect(handler?.begin(sample(top(2, 2)))).toEqual([{ t: 'voxel', id: 'ground', field: 'shape', index: voxelIndex(ground(doc), 2, 2, 1), value: SHAPE_BLOCK }])
+    // And a flat top has no run to remove.
+    const flat = createMap(8, 8)
+    expect(rampDirAt(ground(flat), 2, 2)).toBe(NO_RAMP)
+    expect(terrainContract(stub(flat, { sculptVerb: 'ramp' }).deps).stroke(sample(top(2, 2)))?.begin(sample(top(2, 2)))).toEqual([])
   })
 
   it('declines a press that missed the terrain', () => {

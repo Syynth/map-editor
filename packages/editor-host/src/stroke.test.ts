@@ -1,10 +1,16 @@
 import {
+  SHAPE_BLOCK,
+  SHAPE_SLAB,
   brushCells,
   cellIndex,
+  columnHeights,
   createDocument,
   createMap,
+  fillColumn,
   patchAddress,
   raise,
+  topHeight,
+  voxelIndex,
   type Patch,
   type SurfaceAddress,
   type MapDoc,
@@ -75,6 +81,27 @@ function raiseContract(deps: StrokeDeps): ToolContract<StrokeSample, Patch> {
   }
 }
 
+/** The voxel arrays as they stand, copied, so a stroke's net effect can be judged against them. */
+function snapshot(voxel: VoxelStructure): Record<'material' | 'shape' | 'water', number[]> {
+  return { material: voxel.voxels.material.slice(), shape: voxel.voxels.shape.slice(), water: voxel.water.slice() }
+}
+
+/**
+ * The addresses an Edit should hold once a stroke's ticks are compacted: each
+ * one the last tick left at a value other than the one it started with. An
+ * address is one voxel's field, and a shape that went slab, block, slab, block
+ * over four half-tiles is back where it began, so it is not one of them.
+ */
+function changedAddresses(before: ReturnType<typeof snapshot>, sent: Patch[]): Set<string> {
+  const last = new Map<string, Patch>()
+  for (const patch of sent) last.set(patchAddress(patch), patch)
+  const changed = new Set<string>()
+  for (const [address, patch] of last) {
+    if (patch.t === 'voxel' && patch.value !== before[patch.field][patch.index]) changed.add(address)
+  }
+  return changed
+}
+
 function rig(tools: ToolsSnapshot = SCULPT, contract: (deps: StrokeDeps) => ToolContract<StrokeSample, Patch> | undefined = raiseContract) {
   const { reader, logic } = createDocument(createMap(16, 16))
   const document = createActor(logic).start()
@@ -140,8 +167,9 @@ describe('the stroke actor', () => {
   it('applies every tick immediately, then commits one Edit with one patch per address', () => {
     const { reader, document, start, patchEvents, record } = rig()
     const doc = reader.doc
-    const before = ground(doc).terrain.height.slice()
-    const at = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
+    const before = columnHeights(ground(doc))
+    const arrays = snapshot(ground(doc))
+    const at = (x: number, y: number) => topHeight(ground(doc), x, y)
 
     // A size-3 brush dragged right two cells and back again: every tick lands
     // on cells earlier ticks already raised, which is the redundancy measured
@@ -159,52 +187,73 @@ describe('the stroke actor', () => {
 
     stroke.send({ type: 'end', sample: sample(6, 4) })
 
+    // An address is one voxel's field: a half-tile up from a whole cube is the
+    // new top voxel's material and its shape, and the next half-tile is that
+    // voxel's shape alone, so a cell raised n times spans about n addresses
+    // rather than one. The redundancy is what the compaction is measured
+    // against, so it is asserted over addresses, not cells.
     const sentPatches = patchEvents().flatMap((event) => event.patches)
     const unique = new Set(sentPatches.map(patchAddress))
-    expect(sentPatches.length, 'the drag really was redundant').toBeGreaterThan(unique.size * 2)
+    expect(sentPatches.length, 'the drag really was redundant').toBeGreaterThan(unique.size)
+    // One patch per address that ended somewhere other than it began — the
+    // addresses a cell's even number of half-tiles put back are dropped, as
+    // the test below pins — and never more than one per address touched.
+    const changed = changedAddresses(arrays, sentPatches)
+    expect(changed.size).toBeGreaterThan(0)
+    expect(changed.size).toBeLessThan(unique.size)
     const edit = record()
-    expect(edit.patches).toHaveLength(unique.size)
-    expect(edit.inverse).toHaveLength(unique.size)
+    expect(edit.patches).toHaveLength(changed.size)
+    expect(new Set(edit.patches.map(patchAddress))).toEqual(changed)
+    expect(edit.inverse).toHaveLength(changed.size)
     expect(stroke.getSnapshot().status).toBe('done')
 
     // One Edit, and undoing it restores every cell to before the press.
     expect(reader.canUndo()).toBe(true)
     expect(reader.undoLabel()).toBe('Raise')
-    const after = ground(doc).terrain.height.slice()
+    const after = columnHeights(ground(doc))
     document.send({ type: 'undo' })
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
     expect(reader.canUndo()).toBe(false)
     // And the compacted forward values reproduce the final state exactly.
     document.send({ type: 'redo' })
-    expect(ground(doc).terrain.height).toEqual(after)
+    expect(columnHeights(ground(doc))).toEqual(after)
   })
 
   it('keeps the first inverse and the last value: raise, raise, lower undoes to the start in one step', () => {
     const { reader, document, start, record } = rig(withBrush(1))
     const doc = reader.doc
-    const index = cellIndex(ground(doc).size, 3, 3)
-    const before = ground(doc).terrain.height[index]
+    const before = topHeight(ground(doc), 3, 3)
+    // The fresh map is one cube high, so the writes land on the voxel of the
+    // second layer: a slab, then a block, then a slab again.
+    expect(before).toBe(2)
+    const index = voxelIndex(ground(doc), 3, 3, 1)
 
     const stroke = start(sample(3, 3))
     stroke.send({ type: 'move', sample: sample(4, 3) })
     stroke.send({ type: 'move', sample: sample(3, 3) })
     stroke.send({ type: 'move', sample: sample(4, 3) })
     stroke.send({ type: 'move', sample: sample(3, 3, { shift: true }) })
-    // +1, +1, -1 on (3,3): three writes, a net of one.
-    expect(ground(doc).terrain.height[index]).toBe(before + 1)
+    // +1, +1, -1 on (3,3): three writes to that voxel's shape, a net of one.
+    expect(topHeight(ground(doc), 3, 3)).toBe(before + 1)
     stroke.send({ type: 'end', sample: sample(3, 3) })
 
     const edit = record()
-    const mine = edit.patches.find((patch) => patch.t === 'voxel' && patch.index === index)
-    const inverse = edit.inverse.find((patch) => patch.t === 'voxel' && patch.index === index)
-    expect(mine?.value).toBe(before + 1)
-    expect(inverse?.value).toBe(before)
+    const mine = edit.patches.find((patch) => patch.t === 'voxel' && patch.field === 'shape' && patch.index === index)
+    const inverse = edit.inverse.find((patch) => patch.t === 'voxel' && patch.field === 'shape' && patch.index === index)
+    expect(mine?.value).toBe(SHAPE_SLAB)
+    expect(inverse?.value).toBe(SHAPE_BLOCK)
     document.send({ type: 'undo' })
-    expect(ground(doc).terrain.height[index]).toBe(before)
+    expect(topHeight(ground(doc), 3, 3)).toBe(before)
   })
 
   it('drops an address put back where it started, and commits no Edit when nothing remains', () => {
     const { reader, start, patchEvents, record } = rig(withBrush(1))
+    // Both cells stand on a slab, so a half-tile up and back down writes the
+    // one voxel's shape twice and leaves the column exactly as it was. (From
+    // a whole cube the way up adds a voxel and the way down clears it to
+    // air, and the slab shape it was given stays written on the air.)
+    fillColumn(ground(reader.doc), 2, 2, 3)
+    fillColumn(ground(reader.doc), 3, 2, 3)
     const stroke = start(sample(2, 2))
     stroke.send({ type: 'move', sample: sample(3, 2) })
     stroke.send({ type: 'move', sample: sample(2, 2, { shift: true }) })
@@ -229,11 +278,11 @@ describe('the stroke actor', () => {
     const doc = reader.doc
     const stroke = start(sample(1, 1))
     stroke.send({ type: 'end', sample: sample(1, 1) })
-    const settled = ground(doc).terrain.height.slice()
+    const settled = columnHeights(ground(doc))
 
     stroke.send({ type: 'move', sample: sample(2, 1) })
 
-    expect(ground(doc).terrain.height).toEqual(settled)
+    expect(columnHeights(ground(doc))).toEqual(settled)
     expect(dead).toHaveLength(1)
     expect(dead[0]).toMatchObject({ reason: 'stopped', event: { type: 'move' } })
   })
@@ -244,7 +293,8 @@ describe('the stroke actor', () => {
     const { start, patchEvents } = rig(withBrush(1))
     const stroke = start(sample(0, 0))
     stroke.send({ type: 'end', sample: sample(0, 0) })
+    // A half-tile up from a cube: the new top voxel's material comes first, then its shape.
     const patch: Patch | undefined = patchEvents()[0]?.patches[0]
-    expect(patch).toMatchObject({ t: 'voxel', id: 'ground', field: 'height' })
+    expect(patch).toMatchObject({ t: 'voxel', id: 'ground', field: 'material' })
   })
 })

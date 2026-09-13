@@ -31,6 +31,9 @@ import {
   HALF,
   NO_RAMP,
   NO_WATER,
+  materialAt,
+  rampDirAt,
+  topHeight,
   SURFACE_CLIFF,
   SURFACE_TOP,
   SURFACE_WATER,
@@ -222,7 +225,7 @@ function neighbourEdge(voxel: ReadonlyVoxel, x: number, y: number, dir: number):
 
 function heightOutside(voxel: ReadonlyVoxel, x: number, y: number): number {
   if (!inBounds(voxel.size, x, y)) return OUTSIDE_HEIGHT
-  return voxel.terrain.height[cellIndex(voxel.size, x, y)]
+  return topHeight(voxel, x, y)
 }
 
 /** A point on a wall: `t` along the side from its start corner (0) to its end corner (1), `h` its height in half-tiles. */
@@ -354,9 +357,8 @@ function resolveTopTile(voxel: ReadonlyVoxel, layout: SheetLayout, x: number, y:
   const painted = topPaint(voxel.paint, x, y)
   if (painted !== undefined) return painted
 
-  const index = cellIndex(voxel.size, x, y)
-  const material = voxel.terrain.material[index]
-  if (voxel.terrain.ramp[index] !== NO_RAMP) return rampTile(layout, material)
+  const material = materialAt(voxel, x, y)
+  if (rampDirAt(voxel, x, y) !== NO_RAMP) return rampTile(layout, material)
   return defaultTopTile(layout, material, autotileMask(voxel, x, y))
 }
 
@@ -371,8 +373,7 @@ function resolveCliffTile(
 ): number {
   const painted = cliffPaint(voxel.paint, x, y, dir, level)
   if (painted !== undefined) return painted
-  const material = voxel.terrain.material[cellIndex(voxel.size, x, y)]
-  return cliffTile(layout, material, band)
+  return cliffTile(layout, materialAt(voxel, x, y), band)
 }
 
 export function meshTerrainChunk(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, key: string): TerrainChunkMesh {
@@ -464,7 +465,7 @@ export function meshTerrainChunk(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, key:
       }
 
       // --- water ------------------------------------------------------------
-      const waterLevel = voxel.terrain.water[index]
+      const waterLevel = voxel.water[index]
       if (waterLevel !== NO_WATER) {
         const wy = waterLevel * HALF
         water.quad(

@@ -23,7 +23,7 @@
  * the command form of a verb cannot drift from each other either.
  */
 
-import { SURFACE_TOP, cellIndex, inBounds, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@papercut/document'
+import { SURFACE_TOP, inBounds, topHeight, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@papercut/document'
 import type { FeatureDeps, StrokeHandler, ToolContract } from './deps'
 import { eyedrop, paintPatches, sculptPatches, strokeCells, terrainLabel, type TerrainModifiers } from './verbs'
 
@@ -73,7 +73,7 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
   /** Anchor cell for rectangle strokes, and the corner a rectangle preview grows from. */
   const anchor: Cell | null = address ? [address.x, address.y] : null
   /** Height sampled when the stroke began, for flatten. */
-  const anchorHeight = address && inBounds(voxel.size, address.x, address.y) ? voxel.terrain.height[cellIndex(voxel.size, address.x, address.y)] : 0
+  const anchorHeight = address && inBounds(voxel.size, address.x, address.y) ? topHeight(voxel, address.x, address.y) : 0
   /** Cell last edited, so a drag does not re-apply to the same cell. */
   let lastCell: string | null = null
   /** The cell a sculpt stroke is on, steered by the press plane; `null` until a tick lands one. */

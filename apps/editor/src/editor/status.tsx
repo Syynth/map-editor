@@ -12,7 +12,7 @@
 
 import { useMemo, useSyncExternalStore } from 'react'
 
-import { SURFACE_CLIFF, cellIndex, countDormant, describeSurface, inBounds, type ReadonlyMapDoc } from '@papercut/document'
+import { SURFACE_CLIFF, countDormant, describeSurface, inBounds, topHeight, type ReadonlyMapDoc } from '@papercut/document'
 import { sameSurface, useDocumentSelector, useHost, useToolsSelector, useViewSelector, useViewportSelector } from '@papercut/editor-host'
 import { Hint, StatusHints, StatusRight } from '@papercut/ui'
 
@@ -83,7 +83,7 @@ function dormantPaint(doc: ReadonlyMapDoc): number {
       if (!inBounds(voxel.size, x, y)) return false
       if (kind === 'top') return true
       const level = Number(key.split(',')[3])
-      return level < voxel.terrain.height[cellIndex(voxel.size, x, y)]
+      return level < topHeight(voxel, x, y)
     })
     total += counts.top + counts.cliff
   }

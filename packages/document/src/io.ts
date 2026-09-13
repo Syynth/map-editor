@@ -58,15 +58,21 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
   if (raw.kind === 'voxel') {
     const size = must(raw.size as VoxelStructure['size'], `Structure ${id} has no size.`)
     const count = size.width * size.height
-    const terrain = must(raw.terrain as VoxelStructure['terrain'], `Structure ${id} has no terrain.`)
-    for (const field of ['height', 'material', 'ramp', 'water'] as const) {
-      const arr = terrain[field]
-      if (!Array.isArray(arr) || arr.length !== count) {
-        throw new LoadError(`${id}.terrain.${field} should hold ${count} entries, found ${Array.isArray(arr) ? arr.length : 'none'}.`)
+    const layers = raw.layers
+    if (typeof layers !== 'number' || !Number.isInteger(layers) || layers < 1) throw new LoadError(`Structure ${id} has no layers.`)
+    const voxels = must(raw.voxels as VoxelStructure['voxels'], `Structure ${id} has no voxels.`)
+    for (const field of ['material', 'shape'] as const) {
+      const arr = voxels[field]
+      if (!Array.isArray(arr) || arr.length !== count * layers) {
+        throw new LoadError(`${id}.voxels.${field} should hold ${count * layers} entries, found ${Array.isArray(arr) ? arr.length : 'none'}.`)
       }
     }
+    const water = raw.water
+    if (!Array.isArray(water) || water.length !== count) {
+      throw new LoadError(`${id}.water should hold ${count} entries, found ${Array.isArray(water) ? water.length : 'none'}.`)
+    }
     const paint = (raw.paint ?? {}) as Partial<VoxelStructure['paint']>
-    return { ...base, kind: 'voxel', size, terrain, paint: { top: paint.top ?? {}, cliff: paint.cliff ?? {}, tint: paint.tint ?? {} } }
+    return { ...base, kind: 'voxel', size, layers, voxels, water: water as number[], paint: { top: paint.top ?? {}, cliff: paint.cliff ?? {}, tint: paint.tint ?? {} } }
   }
   if (raw.kind === 'sketch') {
     const wall = (raw.wall ?? {}) as Partial<SketchStructure['wall']>

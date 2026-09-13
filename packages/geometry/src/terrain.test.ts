@@ -5,11 +5,14 @@ import {
   DIR_VECTORS,
   HALF,
   NO_RAMP,
-  cellIndex,
   cliffKey,
   cornerHeights,
   createMap,
+  fillColumn,
+  materialAt,
+  rampShape,
   readAddress,
+  topHeight,
   SURFACE_CLIFF,
   SURFACE_TOP,
   type MapDoc,
@@ -22,8 +25,15 @@ import { meshTerrainChunk } from './terrain'
 const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
 
+/** Stand a column at `h` half-tiles, level on top: the voxel model's "set the height here". */
 function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
-  ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)] = h
+  fillColumn(ground(doc), x, y, h)
+}
+
+/** Make a column's top voxel a full ramp descending toward `dir`, keeping its height and material. */
+function setRamp(doc: MapDoc, x: number, y: number, dir: number): void {
+  const g = ground(doc)
+  fillColumn(g, x, y, topHeight(g, x, y), materialAt(g, x, y), rampShape(dir))
 }
 
 describe('paint survives sculpt', () => {
@@ -100,7 +110,7 @@ describe('mesher', () => {
   it('suppresses the cliff on a ramp’s descending side', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 4)
-    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 1, 1)] = 0
+    setRamp(doc, 1, 1, 0)
     const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
     for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
       const address = readAddress(mesh.solid.faceAddr, tri, 'ground')
@@ -118,7 +128,7 @@ describe('mesher', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 4)
     setHeight(doc, 1, 0, 4)
-    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 1, 1)] = 0
+    setRamp(doc, 1, 1, 0)
     const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
     const south = new Set<number>()
     let rampNorth = 0
@@ -137,7 +147,7 @@ describe('mesher', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 1, 1, 4)
     setHeight(doc, 2, 1, 0)
-    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 1, 1)] = 0
+    setRamp(doc, 1, 1, 0)
     const mesh = meshTerrainChunk(doc, ground(doc), '0,0')
     const east = new Set<number>()
     for (let tri = 0; tri < mesh.solid.triangleCount; tri++) {
@@ -189,7 +199,7 @@ describe('mesher', () => {
   it('produces finite, consistent buffers', () => {
     const doc = createMap(8, 8)
     setHeight(doc, 2, 2, 7)
-    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 3, 2)] = 1
+    setRamp(doc, 3, 2, 1)
     const { solid } = meshTerrainChunk(doc, ground(doc), '0,0')
     expect(solid.positions.length / 3).toBe(solid.normals.length / 3)
     expect(solid.positions.length / 3).toBe(solid.uvs.length / 2)
@@ -209,7 +219,11 @@ describe('walls are watertight', () => {
     [3, 0],
   ] as const
 
-  /** A 16 × 16 map of random heights with a ramp on a third of the cells, from a fixed seed. */
+  /**
+   * A 16 × 16 map of random heights with a ramp on a third of the cells, from a fixed seed. A ramp is the top voxel's
+   * shape, so a ramp cell is stood at an even height of at least one cube: its high edge is then the drawn height and
+   * its low corners sit RAMP_DROP below, as the heightmap's ramps did.
+   */
   function rampy(seed: number): MapDoc {
     const doc = createMap(16, 16)
     const g = ground(doc)
@@ -218,9 +232,13 @@ describe('walls are watertight', () => {
       state = (state * 1664525 + 1013904223) % 4294967296
       return state / 4294967296
     }
-    for (let i = 0; i < g.terrain.height.length; i++) {
-      g.terrain.height[i] = Math.floor(next() * 10)
-      g.terrain.ramp[i] = next() < 0.35 ? Math.floor(next() * 4) : NO_RAMP
+    for (let y = 0; y < g.size.height; y++) {
+      for (let x = 0; x < g.size.width; x++) {
+        const h = Math.floor(next() * 10)
+        const dir = next() < 0.35 ? Math.floor(next() * 4) : NO_RAMP
+        if (dir === NO_RAMP) fillColumn(g, x, y, h)
+        else fillColumn(g, x, y, Math.max(2, h - (h % 2)), 0, rampShape(dir))
+      }
     }
     return doc
   }
@@ -311,9 +329,9 @@ describe('walls are watertight', () => {
     // (9, 19) on the sample map: a 5 ramping south to 3, a flat 3 to its east.
     const doc = createMap(4, 4)
     const g = ground(doc)
-    g.terrain.height.fill(3)
-    g.terrain.height[cellIndex(g.size, 1, 1)] = 5
-    g.terrain.ramp[cellIndex(g.size, 1, 1)] = 1
+    for (let y = 0; y < g.size.height; y++) for (let x = 0; x < g.size.width; x++) fillColumn(g, x, y, 3)
+    setHeight(doc, 1, 1, 5)
+    setRamp(doc, 1, 1, 1)
     expect(gaps(doc).slice(0, 5)).toEqual([])
   })
 

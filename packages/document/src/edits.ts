@@ -13,7 +13,7 @@
  * nothing else. No tool writes an `undo()` method.
  *
  * Patches are intentionally addressed at the same granularity as the document:
- * one cell field of one voxel volume, one paint key, one field of one sketch,
+ * one field of one voxel (or one column's water), one paint key, one field of one sketch,
  * one object, one structure. That keeps the inverse exact and makes a brush
  * stroke a flat list of small writes which coalesce cleanly. A sketch's
  * `points` is one address on purpose: a point drag is a stroke over that one
@@ -23,7 +23,7 @@
 import type { MapDoc, MapObject, ReadonlyMapDoc } from './document'
 import type { SketchStructure, Structure, StructureBase, VoxelStructure } from './structure'
 
-export type TerrainField = 'height' | 'material' | 'ramp' | 'water'
+export type TerrainField = 'material' | 'shape' | 'water'
 export type PaintLayer = 'top' | 'cliff' | 'tint'
 export type DocField = 'name' | 'texelDensity' | 'filtering' | 'camera' | 'atmosphere' | 'materials' | 'surfaceMaterials'
 export type SketchField = 'points' | 'closed' | 'layers' | 'wall' | 'lip' | 'capMaterial' | 'wallMaterial'
@@ -88,6 +88,11 @@ function voxelOf(doc: ReadonlyMapDoc | MapDoc, id: string): VoxelStructure {
   return s as VoxelStructure
 }
 
+/** The flat array a voxel field is: per voxel for material and shape, per column for water. */
+function voxelField(voxel: VoxelStructure, field: TerrainField): number[] {
+  return field === 'water' ? voxel.water : voxel.voxels[field]
+}
+
 function sketchOf(doc: ReadonlyMapDoc | MapDoc, id: string): SketchStructure {
   const s = doc.structures[id]
   if (!s || s.kind !== 'sketch') throw new Error(`Patch addresses sketch ${id}, which the level does not have.`)
@@ -114,7 +119,7 @@ function keep<T>(value: T): T {
 export function inversePatch(doc: ReadonlyMapDoc, patch: Patch): Patch {
   switch (patch.t) {
     case 'voxel':
-      return { t: 'voxel', id: patch.id, field: patch.field, index: patch.index, value: voxelOf(doc, patch.id).terrain[patch.field][patch.index] }
+      return { t: 'voxel', id: patch.id, field: patch.field, index: patch.index, value: voxelField(voxelOf(doc, patch.id), patch.field)[patch.index] }
     case 'voxelPaint':
       return { t: 'voxelPaint', id: patch.id, layer: patch.layer, key: patch.key, value: voxelOf(doc, patch.id).paint[patch.layer][patch.key] }
     case 'sketch':
@@ -139,7 +144,7 @@ function applyPatch(doc: MapDoc, patch: Patch): Patch {
   const inverse = inversePatch(doc, patch)
   switch (patch.t) {
     case 'voxel':
-      voxelOf(doc, patch.id).terrain[patch.field][patch.index] = patch.value
+      voxelField(voxelOf(doc, patch.id), patch.field)[patch.index] = patch.value
       break
     case 'voxelPaint': {
       const layer = voxelOf(doc, patch.id).paint[patch.layer]
@@ -199,7 +204,7 @@ export function pruneNoops(doc: MapDoc, patches: Patch[]): Patch[] {
   return patches.filter((patch) => {
     switch (patch.t) {
       case 'voxel':
-        return voxelOf(doc, patch.id).terrain[patch.field][patch.index] !== patch.value
+        return voxelField(voxelOf(doc, patch.id), patch.field)[patch.index] !== patch.value
       case 'voxelPaint':
         return voxelOf(doc, patch.id).paint[patch.layer][patch.key] !== patch.value
       case 'sketch':

@@ -16,7 +16,7 @@
  * mesher in `geometry`, the scene in `runtime`, the tools in a `feature-*`.
  */
 
-import type { DeepReadonly, MapSize, PaintLayers, TerrainData } from './document'
+import type { DeepReadonly, MapSize, PaintLayers, VoxelData } from './document'
 
 /** A quarter-turn count: 0 east, 1 south, 2 west, 3 north. Voxel kinds turn in quarters or every cell-based tool breaks. */
 export type QuarterTurn = 0 | 1 | 2 | 3
@@ -41,14 +41,19 @@ export interface StructureBase {
 }
 
 /**
- * Cells stacked in layers on a grid — the ground the Terrain tool sculpts
- * and paints. One height per column today; to hold true voxel occupancy per
- * #100. Its `size` is its own, resizable at its edges; the level has no size.
+ * Cubes on a grid — the ground the Terrain tool sculpts and paints. Each
+ * voxel is air or a material with a shape; every height is derived from the
+ * column (`voxels.ts`). Its `size` is its own, resizable at its edges; the
+ * level has no size.
  */
 export interface VoxelStructure extends StructureBase {
   kind: 'voxel'
   size: MapSize
-  terrain: TerrainData
+  /** Cubes along y. */
+  layers: number
+  voxels: VoxelData
+  /** Water surface per column in half-tiles, or NO_WATER; interim until the Water tool makes water a structure. */
+  water: number[]
   paint: PaintLayers
 }
 

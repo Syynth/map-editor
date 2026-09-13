@@ -8,10 +8,11 @@
  */
 
 import type { Patch } from './edits'
-import { NO_RAMP, NO_WATER, cellIndex, inBounds, newId, worldHeight, type DeepReadonly, type MapObject, type ReadonlyMapDoc } from './document'
+import { AIR, DEFAULT_LAYERS, DIR_VECTORS, NO_RAMP, NO_WATER, SHAPE_BLOCK, SHAPE_HALF_RAMP, SHAPE_SLAB, cellIndex, inBounds, newId, worldHeight, type DeepReadonly, type MapObject, type ReadonlyMapDoc } from './document'
 import { cliffKey, tintKey, topKey } from './paint'
 import { descendantsOf, type Placement, type ProfilePoint, type QuarterTurn, type ReadonlySketch, type ReadonlyVoxel, type SketchStructure, type Structure } from './structure'
 import { frameOf, groundHeight, toLocal, type Frame } from './terrain'
+import { columnShapes, columnTopAt, halfRampShape, halfRampUpShape, materialAt, maxHeightOf, rampDirAt, rampShape, topHeight, voxelIndex } from './voxels'
 
 export type BrushShape = 'square' | 'circle'
 
@@ -52,31 +53,26 @@ export function rectCells(voxel: ReadonlyVoxel, ax: number, ay: number, bx: numb
   return cells
 }
 
-/** Flood fill over cells of the same material and height, capped so a runaway fill stays interactive. */
+/** Flood fill over cells of the same top material and height, capped so a runaway fill stays interactive. */
 export function fillCells(voxel: ReadonlyVoxel, sx: number, sy: number, limit = 4096): Cell[] {
   if (!inBounds(voxel.size, sx, sy)) return []
   const seed = cellIndex(voxel.size, sx, sy)
-  const material = voxel.terrain.material[seed]
-  const height = voxel.terrain.height[seed]
+  const material = materialAt(voxel, sx, sy)
+  const height = topHeight(voxel, sx, sy)
   const seen = new Set<number>([seed])
   const out: Cell[] = []
   const queue: Cell[] = [[sx, sy]]
   while (queue.length > 0 && out.length < limit) {
     const [x, y] = queue.shift() as Cell
     out.push([x, y])
-    for (const [dx, dy] of [
-      [1, 0],
-      [-1, 0],
-      [0, 1],
-      [0, -1],
-    ]) {
+    for (const [dx, dy] of DIR_VECTORS) {
       const nx = x + dx
       const ny = y + dy
       if (!inBounds(voxel.size, nx, ny)) continue
       const index = cellIndex(voxel.size, nx, ny)
       if (seen.has(index)) continue
-      if (voxel.terrain.material[index] !== material) continue
-      if (voxel.terrain.height[index] !== height) continue
+      if (materialAt(voxel, nx, ny) !== material) continue
+      if (topHeight(voxel, nx, ny) !== height) continue
       seen.add(index)
       queue.push([nx, ny])
     }
@@ -87,55 +83,173 @@ export function fillCells(voxel: ReadonlyVoxel, sx: number, sy: number, limit = 
 // --- sculpt ------------------------------------------------------------------
 
 export const MIN_HEIGHT = 0
-export const MAX_HEIGHT = 40
+/** The default ceiling in half-tiles; a volume's own is `maxHeightOf`. */
+export const MAX_HEIGHT = DEFAULT_LAYERS * 2
+
+/**
+ * The patches that stand one column's top at `height` half-tiles. Voxels the
+ * column gains take its top voxel's material (the first material when it was
+ * empty); voxels it keeps become blocks where a slab or a ramp would now be
+ * buried; voxels above the new top are cleared. `topShape` puts a sloped
+ * shape on the top voxel, for a ramp cell. Water at or below the new top
+ * drains (ruling of 2026-09-12).
+ */
+export function columnPatches(voxel: ReadonlyVoxel, x: number, z: number, height: number, topShape?: number): Patch[] {
+  const clamped = Math.min(maxHeightOf(voxel), Math.max(MIN_HEIGHT, height))
+  const wanted = columnShapes(voxel.layers, clamped, topShape)
+  const fill = materialAt(voxel, x, z)
+  const patches: Patch[] = []
+  for (let y = 0; y < voxel.layers; y++) {
+    const index = voxelIndex(voxel, x, z, y)
+    const material = voxel.voxels.material[index]
+    const want = wanted[y]
+    if (want === AIR) {
+      // Air keeps no shape: cleared voxels go back to blocks, so a raise undone by a lower nets to nothing.
+      if (material !== AIR) patches.push({ t: 'voxel', id: voxel.id, field: 'material', index, value: AIR })
+      if (voxel.voxels.shape[index] !== SHAPE_BLOCK) patches.push({ t: 'voxel', id: voxel.id, field: 'shape', index, value: SHAPE_BLOCK })
+      continue
+    }
+    if (material === AIR) patches.push({ t: 'voxel', id: voxel.id, field: 'material', index, value: fill })
+    if (voxel.voxels.shape[index] !== want) patches.push({ t: 'voxel', id: voxel.id, field: 'shape', index, value: want })
+  }
+  return [...patches, ...drainedBy(voxel, cellIndex(voxel.size, x, z), clamped)]
+}
 
 export function raise(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], delta: number): Patch[] {
-  const patches: Patch[] = []
-  for (const [x, y] of cells) {
-    const index = cellIndex(voxel.size, x, y)
-    const next = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, voxel.terrain.height[index] + delta))
-    patches.push({ t: 'voxel', id: voxel.id, field: 'height', index, value: next }, ...drainedBy(voxel, index, next))
-  }
+  const patches = cells.flatMap(([x, y]) => columnPatches(voxel, x, y, topHeight(voxel, x, y) + delta))
   return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
 }
 
 /** Water cannot sit at or below the terrain under it (ruling of 2026-09-12): a column raised to its water line drains. */
 function drainedBy(voxel: ReadonlyVoxel, index: number, height: number): Patch[] {
-  const water = voxel.terrain.water[index]
+  const water = voxel.water[index]
   return water !== NO_WATER && height >= water ? [{ t: 'voxel', id: voxel.id, field: 'water', index, value: NO_WATER }] : []
 }
 
 export function flatten(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], height: number): Patch[] {
-  const clamped = Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, height))
-  const patches: Patch[] = cells.flatMap(([x, y]) => {
-    const index = cellIndex(voxel.size, x, y)
-    return [{ t: 'voxel', id: voxel.id, field: 'height', index, value: clamped }, ...drainedBy(voxel, index, clamped)]
+  const patches = cells.flatMap(([x, y]) => columnPatches(voxel, x, y, height))
+  return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
+}
+
+/** Each column moves toward the mean of its in-bounds neighbours' tops by at most `strength` half-tiles. */
+export function smooth(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], strength: number): Patch[] {
+  const patches = cells.flatMap(([x, y]) => {
+    let sum = 0
+    let count = 0
+    for (const [dx, dy] of DIR_VECTORS) {
+      if (!inBounds(voxel.size, x + dx, y + dy)) continue
+      sum += topHeight(voxel, x + dx, y + dy)
+      count += 1
+    }
+    if (count === 0) return []
+    const current = topHeight(voxel, x, y)
+    const step = Math.max(-strength, Math.min(strength, Math.round(sum / count) - current))
+    return step === 0 ? [] : columnPatches(voxel, x, y, current + step)
   })
   return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
 }
 
+/** The top voxel's material; an empty column has no top to paint. */
 export function setMaterial(voxel: ReadonlyVoxel, cells: Cell[], material: number): Patch[] {
-  return cells.map(([x, y]) => ({
-    t: 'voxel',
-    id: voxel.id,
-    field: 'material',
-    index: cellIndex(voxel.size, x, y),
-    value: material,
-  }))
+  const patches: Patch[] = []
+  for (const [x, y] of cells) {
+    const top = columnTopAt(voxel, x, y)
+    if (top < 0) continue
+    patches.push({ t: 'voxel', id: voxel.id, field: 'material', index: voxelIndex(voxel, x, y, top), value: material })
+  }
+  return patches
 }
 
-export function setRamp(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], dir: number): Patch[] {
-  const patches: Patch[] = cells.map(([x, y]) => {
-    const index = cellIndex(voxel.size, x, y)
-    const current = voxel.terrain.ramp[index]
-    return {
-      t: 'voxel',
-      id: voxel.id,
-      field: 'ramp',
-      index,
-      value: current === dir ? NO_RAMP : dir,
+/** The cliff edge a ramp is cut from: the cell whose side `dir` stands above its neighbour. */
+export interface RampEdge {
+  x: number
+  z: number
+  dir: number
+}
+
+/**
+ * How many ramp cells a drop needs at 45°: one per tile, and one more for
+ * an odd half-tile, which a half ramp finishes. `null` when there is no drop
+ * to ramp.
+ */
+export function rampRunLength(voxel: ReadonlyVoxel, edge: RampEdge): number | null {
+  const [dx, dz] = DIR_VECTORS[edge.dir]
+  if (!inBounds(voxel.size, edge.x, edge.z) || !inBounds(voxel.size, edge.x + dx, edge.z + dz)) return null
+  const drop = topHeight(voxel, edge.x, edge.z) - topHeight(voxel, edge.x + dx, edge.z + dz)
+  return drop <= 0 ? null : Math.ceil(drop / 2)
+}
+
+/**
+ * Cut a ramp of `run` cells back from a cliff edge, descending toward the
+ * edge's side. Every cell of the run is re-stood at the height a 45° slope
+ * needs there, with a sloped top voxel; an odd drop is finished by a half
+ * ramp, at the top of the run when the low side sits on a whole tile, at
+ * the bottom when it sits on a slab. Refused (empty) when `run` is not what
+ * the drop needs, or the run would leave the volume.
+ */
+export function rampRun(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, edge: RampEdge, run: number): Patch[] {
+  const needed = rampRunLength(voxel, edge)
+  if (needed === null || run !== needed) return []
+  const [dx, dz] = DIR_VECTORS[edge.dir]
+  const low = topHeight(voxel, edge.x + dx, edge.z + dz)
+  const high = topHeight(voxel, edge.x, edge.z)
+  const odd = (high - low) % 2 === 1
+  const cells: Cell[] = []
+  const patches: Patch[] = []
+  for (let k = 0; k < needed; k++) {
+    const x = edge.x - k * dx
+    const z = edge.z - k * dz
+    if (!inBounds(voxel.size, x, z)) return []
+    cells.push([x, z])
+    let height: number
+    let shape: number
+    if (!odd) {
+      height = low + 2 * (k + 1)
+      shape = rampShape(edge.dir)
+    } else if (low % 2 === 1) {
+      // The low side sits on a slab: the half ramp rides one at the bottom of the run.
+      height = low + 1 + 2 * k
+      shape = k === 0 ? halfRampUpShape(edge.dir) : rampShape(edge.dir)
+    } else {
+      // The odd half is at the top of the run, hugging the floor.
+      const last = k === needed - 1
+      height = last ? high : low + 2 * (k + 1)
+      shape = last ? halfRampShape(edge.dir) : rampShape(edge.dir)
     }
-  })
+    patches.push(...columnPatches(voxel, x, z, height, shape))
+  }
+  return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
+}
+
+/**
+ * Remove the ramp under a cell: every connected cell whose top slopes the
+ * same way goes level, a full ramp to a block and a half ramp to what it
+ * rode on, so the heights stay and only the slope goes.
+ */
+export function clearRampRun(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, x: number, z: number): Patch[] {
+  const dir = rampDirAt(voxel, x, z)
+  if (dir === NO_RAMP) return []
+  const seen = new Set<number>([cellIndex(voxel.size, x, z)])
+  const queue: Cell[] = [[x, z]]
+  const cells: Cell[] = []
+  const patches: Patch[] = []
+  while (queue.length > 0) {
+    const [cx, cz] = queue.shift() as Cell
+    cells.push([cx, cz])
+    const top = columnTopAt(voxel, cx, cz)
+    const index = voxelIndex(voxel, cx, cz, top)
+    const shape = voxel.voxels.shape[index]
+    patches.push({ t: 'voxel', id: voxel.id, field: 'shape', index, value: shape >= SHAPE_HALF_RAMP && shape < SHAPE_HALF_RAMP + 4 ? SHAPE_SLAB : SHAPE_BLOCK })
+    for (const [dx, dz] of DIR_VECTORS) {
+      const nx = cx + dx
+      const nz = cz + dz
+      if (!inBounds(voxel.size, nx, nz)) continue
+      const key = cellIndex(voxel.size, nx, nz)
+      if (seen.has(key) || rampDirAt(voxel, nx, nz) !== dir) continue
+      seen.add(key)
+      queue.push([nx, nz])
+    }
+  }
   return [...patches, ...regroundObjects(doc, voxel, cells, patches)]
 }
 
@@ -144,7 +258,7 @@ export function setWater(voxel: ReadonlyVoxel, cells: Cell[], level: number | nu
   const patches: Patch[] = []
   for (const [x, y] of cells) {
     const index = cellIndex(voxel.size, x, y)
-    if (level !== null && level <= voxel.terrain.height[index]) continue
+    if (level !== null && level <= topHeight(voxel, x, y)) continue
     patches.push({ t: 'voxel', id: voxel.id, field: 'water', index, value: level === null ? NO_WATER : level })
   }
   return patches
@@ -212,28 +326,26 @@ function cloneObject(object: DeepReadonly<MapObject>): MapObject {
 
 /**
  * Objects anchored to cells a sculpt is about to change follow the ground:
- * the pending height/ramp patches are applied to a scratch copy of the
- * voxel and every anchored object on a touched cell is re-grounded against
- * the level as it will be.
+ * the pending voxel patches are applied to a scratch copy of the volume and
+ * every anchored object on a touched cell is re-grounded against the level
+ * as it will be.
  */
 export function regroundObjects(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, cells: Cell[], pending: Patch[]): Patch[] {
   if (doc.objectOrder.length === 0) return []
   const touched = new Set(cells.map(([x, y]) => `${x},${y}`))
-  const heightOverride = new Map<number, number>()
-  const rampOverride = new Map<number, number>()
+  const overrides: Record<'material' | 'shape', Map<number, number>> = { material: new Map(), shape: new Map() }
   for (const patch of pending) {
-    if (patch.t !== 'voxel' || patch.id !== voxel.id) continue
-    if (patch.field === 'height') heightOverride.set(patch.index, patch.value)
-    if (patch.field === 'ramp') rampOverride.set(patch.index, patch.value)
+    if (patch.t !== 'voxel' || patch.id !== voxel.id || patch.field === 'water') continue
+    overrides[patch.field].set(patch.index, patch.value)
   }
-  if (heightOverride.size === 0 && rampOverride.size === 0) return []
-  const height = voxel.terrain.height.slice()
-  const ramp = voxel.terrain.ramp.slice()
-  for (const [index, value] of heightOverride) height[index] = value
-  for (const [index, value] of rampOverride) ramp[index] = value
+  if (overrides.material.size === 0 && overrides.shape.size === 0) return []
+  const material = voxel.voxels.material.slice()
+  const shape = voxel.voxels.shape.slice()
+  for (const [index, value] of overrides.material) material[index] = value
+  for (const [index, value] of overrides.shape) shape[index] = value
   const after: ReadonlyMapDoc = {
     ...doc,
-    structures: { ...doc.structures, [voxel.id]: { ...voxel, terrain: { ...voxel.terrain, height, ramp } } },
+    structures: { ...doc.structures, [voxel.id]: { ...voxel, voxels: { material, shape } } },
   }
   const patches: Patch[] = []
   for (const id of doc.objectOrder) {

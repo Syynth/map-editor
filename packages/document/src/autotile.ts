@@ -6,8 +6,9 @@
  * the edge of a volume reads as ground running on, not as a cliff-top rim.
  */
 
-import { DIR_VECTORS, cellIndex, inBounds } from './document'
+import { DIR_VECTORS, inBounds } from './document'
 import type { ReadonlyVoxel } from './structure'
+import { materialAt, topHeight } from './voxels'
 
 export const MASK_NORTH = 1
 export const MASK_EAST = 2
@@ -17,9 +18,8 @@ export const MASK_WEST = 8
 const DIR_TO_BIT = [MASK_EAST, MASK_SOUTH, MASK_WEST, MASK_NORTH]
 
 export function autotileMask(voxel: ReadonlyVoxel, x: number, y: number): number {
-  const index = cellIndex(voxel.size, x, y)
-  const material = voxel.terrain.material[index]
-  const height = voxel.terrain.height[index]
+  const material = materialAt(voxel, x, y)
+  const height = topHeight(voxel, x, y)
   let mask = 0
   for (let dir = 0; dir < 4; dir++) {
     const [dx, dy] = DIR_VECTORS[dir]
@@ -29,9 +29,8 @@ export function autotileMask(voxel: ReadonlyVoxel, x: number, y: number): number
       mask |= DIR_TO_BIT[dir]
       continue
     }
-    const neighbour = cellIndex(voxel.size, nx, ny)
-    const sameMaterial = voxel.terrain.material[neighbour] === material
-    const sameHeight = voxel.terrain.height[neighbour] === height
+    const sameMaterial = materialAt(voxel, nx, ny) === material
+    const sameHeight = topHeight(voxel, nx, ny) === height
     if (sameMaterial && sameHeight) mask |= DIR_TO_BIT[dir]
   }
   return mask

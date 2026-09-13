@@ -4,6 +4,7 @@ import {
   createMap,
   defaultCameraRig,
   defaultFacing,
+  fillColumn,
   type CameraRig,
   type MapObject,
   type MapDoc,
@@ -231,7 +232,8 @@ describe('coverage readout', () => {
   it('counts cliff faces no permitted angle can ever see', () => {
     const locked = rig({ yawMin: 0, yawMax: 0 })
     const doc = createMap(8, 8)
-    ground(doc).terrain.height[27] = 8
+    // Cell 27 of an 8-wide map: (3, 3), stood at 8 half-tiles.
+    fillColumn(ground(doc), 3, 3, 8)
     const report = analyseCoverage(doc, locked)
     expect(report.hiddenSurfaces.totalFaces).toBeGreaterThan(0)
     expect(report.hiddenSurfaces.hiddenFaces).toBeGreaterThan(0)

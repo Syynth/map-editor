@@ -1,7 +1,7 @@
 import {
+  FORMAT_VERSION,
   HALF,
   addObject,
-  cellIndex,
   createDocument,
   createMap,
   frameOf,
@@ -10,6 +10,7 @@ import {
   raise,
   removeObject,
   serialize,
+  topHeight,
   type MapObject,
   type Patch,
   type SurfaceAddress,
@@ -74,16 +75,17 @@ function raiseOnce(host: Host, x: number, y: number, by = 1): void {
 describe('the document commands, routed to the document actor', () => {
   it('undoes and redoes what the write path recorded, seen through reader', () => {
     const { host, dispatch } = makeHost()
-    const index = cellIndex(ground(host.reader.doc).size, 2, 2)
-    const before = ground(host.reader.doc).terrain.height[index]
+    // A column's height is derived from its voxels, so it is read, never indexed.
+    const height = () => topHeight(ground(host.reader.doc), 2, 2)
+    const before = height()
     raiseOnce(host, 2, 2, 3)
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 3)
+    expect(height()).toBe(before + 3)
 
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before)
+    expect(height()).toBe(before)
 
     expect(dispatch('redo')).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 3)
+    expect(height()).toBe(before + 3)
   })
 
   it('undoes exactly once per dispatch, not twice', () => {
@@ -185,7 +187,8 @@ describe('the document commands, routed to the document actor', () => {
     // keeps the open document open.
     const { host, dispatch } = makeHost()
     const name = host.reader.doc.name
-    expect(dispatch('document.load', { json: '{ "formatVersion": 2 }' })).toMatchObject({
+    // The current format, so the failure is the missing structures and not the version gate in front of them.
+    expect(dispatch('document.load', { json: JSON.stringify({ formatVersion: FORMAT_VERSION }) })).toMatchObject({
       ok: false,
       kind: 'invalid-args',
       issues: [{ path: ['json'], message: expect.stringContaining('no structures') as string }],

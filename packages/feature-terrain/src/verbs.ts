@@ -16,19 +16,22 @@ import {
   SURFACE_TOP,
   autotileMask,
   brushCells,
-  cellIndex,
+  clearRampRun,
   cliffPaint,
   fillCells,
   flatten,
+  materialAt,
   paintCliff,
   paintTint,
   paintTop,
   raise,
+  rampRun,
+  rampRunLength,
   rectCells,
   setMaterial,
-  setRamp,
   setWater,
   tintPaint,
+  topHeight,
   topPaint,
   type Brush,
   type Cell,
@@ -61,7 +64,6 @@ export interface TerrainParams {
   readonly material: number
   readonly tile: number
   readonly tint: number
-  readonly rampDir: number
   /** Cells past a boundary before a sculpt stroke moves to the next cell; the prototype's dial. */
   readonly sculptDeadZone: number
 }
@@ -77,7 +79,6 @@ export const TERRAIN_DEFAULTS: TerrainParams = {
   material: 0,
   tile: 0,
   tint: 0xffffff,
-  rampDir: -1,
   sculptDeadZone: 0.2,
 }
 
@@ -137,8 +138,7 @@ export function terrainLabel(params: TerrainParams, modifiers: TerrainModifiers)
 /** The tile the template would use at a cell with nothing painted over it. */
 export function templateTileAt(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, x: number, y: number): number {
   const layout = sheetLayoutFor(doc)
-  const material = voxel.terrain.material[cellIndex(voxel.size, x, y)]
-  return defaultTopTile(layout, material, autotileMask(voxel, x, y))
+  return defaultTopTile(layout, materialAt(voxel, x, y), autotileMask(voxel, x, y))
 }
 
 /**
@@ -152,7 +152,7 @@ export function eyedrop(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, params: Terra
     return tint === undefined ? {} : { tint }
   }
   if (params.terrainMode === 'paint' && params.paintVerb === 'material') {
-    return { material: voxel.terrain.material[cellIndex(voxel.size, address.x, address.y)] }
+    return { material: materialAt(voxel, address.x, address.y) }
   }
   if (address.kind === SURFACE_CLIFF) {
     const painted = cliffPaint(voxel.paint, address.x, address.y, address.dir, address.level)
@@ -182,11 +182,15 @@ export function sculptPatches(
     case 'flatten':
       return flatten(doc, voxel, cells, anchorHeight)
     case 'ramp': {
-      // Clicking a cliff face turns that edge into a ramp descending the way
-      // the face points, which is the most direct reading of "toggle an edge
-      // between cliff and ramp".
-      const dir = address.kind === SURFACE_CLIFF ? address.dir : params.rampDir
-      return dir < 0 ? [] : setRamp(doc, voxel, cells, dir)
+      // A cliff face cuts a ramp back from that edge, as long a run as the
+      // drop needs (the drag that chooses the run is the tool rework's); a
+      // ramp's own top removes the run it belongs to.
+      if (address.kind === SURFACE_CLIFF) {
+        const edge = { x: address.x, z: address.y, dir: address.dir }
+        const run = rampRunLength(voxel, edge)
+        return run === null ? [] : rampRun(doc, voxel, edge, run)
+      }
+      return clearRampRun(doc, voxel, address.x, address.y)
     }
     case 'water':
       if (modifiers.shift) return setWater(voxel, cells, null)
@@ -194,7 +198,7 @@ export function sculptPatches(
       // the verb does something visible on flat ground now that water is
       // never level with its ground. The verb is to be redesigned with the
       // layer view — water painted at the active layer — and this goes then.
-      return setWater(voxel, cells, voxel.terrain.height[cellIndex(voxel.size, address.x, address.y)] + 1)
+      return setWater(voxel, cells, topHeight(voxel, address.x, address.y) + 1)
   }
 }
 

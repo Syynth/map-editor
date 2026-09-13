@@ -20,9 +20,9 @@
  *     rule in this file.
  */
 
-import { defaultSurfaceMaterials, type FillEdgeMaterial, type ReadonlyVoxel, type Structure, type VoxelStructure } from './structure'
+import { defaultSurfaceMaterials, type FillEdgeMaterial, type Structure, type VoxelStructure } from './structure'
 
-export const FORMAT_VERSION = 2
+export const FORMAT_VERSION = 3
 
 export type Direction = 0 | 1 | 2 | 3
 /** +X east, +Z south, -X west, -Z north. Index order used everywhere. */
@@ -34,10 +34,24 @@ export const DIR_VECTORS: ReadonlyArray<readonly [number, number]> = [
 ]
 export const DIR_NAMES = ['East', 'South', 'West', 'North'] as const
 
-/** No ramp on this cell. */
+/** No ramp: the answer of `rampDirAt` for a level top. */
 export const NO_RAMP = -1
 /** No water in this column. */
 export const NO_WATER = -32768
+
+/** No voxel here. */
+export const AIR = -1
+/** Voxel shapes. A sloped shape's direction (the way it descends) is added to its base value. See `voxels.ts`. */
+export const SHAPE_BLOCK = 0
+export const SHAPE_SLAB = 1
+/** `SHAPE_RAMP + dir`: a 45° slope, one tile of drop over the cell. */
+export const SHAPE_RAMP = 2
+/** `SHAPE_HALF_RAMP + dir`: one half-tile of drop over half the cell from the floor, then flat; finishes an odd drop. */
+export const SHAPE_HALF_RAMP = 6
+/** `SHAPE_HALF_RAMP_UP + dir`: the same wedge riding a slab, for an odd drop whose low side is a half-tile up. */
+export const SHAPE_HALF_RAMP_UP = 10
+/** How many layers a new volume gets: 20 cubes, the old 40-half-tile ceiling. */
+export const DEFAULT_LAYERS = 20
 
 export interface MapSize {
   width: number
@@ -45,20 +59,17 @@ export interface MapSize {
 }
 
 /**
- * Parallel arrays, one entry per cell, indexed `y * width + x`.
- * Plain number arrays rather than typed arrays so the document is JSON without
- * a serializer. If profiling ever demands typed arrays, that is a change to
- * `io.ts` and this interface, not to any tool.
+ * Parallel arrays, one entry per voxel, indexed by `voxelIndex` in
+ * `voxels.ts`: `(y * height + z) * width + x`. Plain number arrays rather
+ * than typed arrays so the document is JSON without a serializer. If
+ * profiling ever demands typed arrays, that is a change to `io.ts` and this
+ * interface, not to any tool.
  */
-export interface TerrainData {
-  /** Integer half-tiles. */
-  height: number[]
-  /** Index into `materials`. The default look before anything is painted. */
+export interface VoxelData {
+  /** Index into `materials`, or AIR. */
   material: number[]
-  /** Direction the ramp descends toward, or NO_RAMP. */
-  ramp: number[]
-  /** Water surface height in half-tiles, or NO_WATER. */
-  water: number[]
+  /** A shape (SHAPE_*); meaningless where the material is AIR. */
+  shape: number[]
 }
 
 /**
@@ -238,7 +249,7 @@ export interface MapDoc {
  *
  * A structural, recursive `readonly` over `MapDoc`: every property, every
  * array and every nested object. Verified during prototyping to reject all
- * four write shapes — indexed assignment (`doc.terrain.height[i] = h`),
+ * four write shapes — indexed assignment (`voxel.voxels.material[i] = m`),
  * record assignment (`doc.paint.top[key] = t`), array mutation (`push`,
  * `splice`) and property replacement (`doc.name = …`) — while leaving reads
  * untouched. No branding is needed because the arrays are plain `number[]`
@@ -269,19 +280,6 @@ export function cellIndex(size: MapSize, x: number, y: number): number {
 
 export function inBounds(size: MapSize, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < size.width && y < size.height
-}
-
-/** Height in half-tiles, or the edge value clamped, for out-of-bounds reads. */
-export function heightAt(voxel: ReadonlyVoxel, x: number, y: number): number {
-  const cx = Math.min(Math.max(x, 0), voxel.size.width - 1)
-  const cy = Math.min(Math.max(y, 0), voxel.size.height - 1)
-  return voxel.terrain.height[cellIndex(voxel.size, cx, cy)]
-}
-
-export function materialAt(voxel: ReadonlyVoxel, x: number, y: number): number {
-  const cx = Math.min(Math.max(x, 0), voxel.size.width - 1)
-  const cy = Math.min(Math.max(y, 0), voxel.size.height - 1)
-  return voxel.terrain.material[cellIndex(voxel.size, cx, cy)]
 }
 
 /** Half-tile units to world units. */
@@ -411,9 +409,11 @@ export function newId(prefix = 'obj'): string {
   return `${prefix}_${rand}${idCounter.toString(36)}`
 }
 
-/** A flat voxel volume of `width` × `height` cells at height 2, standing on `parent` (or the ground). */
-export function createVoxel(width: number, height: number, name = 'Ground', parent: string | null = null, id = newId('vox')): VoxelStructure {
+/** A flat voxel volume of `width` × `height` cells, one cube tall in the first material, standing on `parent` (or the ground). */
+export function createVoxel(width: number, height: number, name = 'Ground', parent: string | null = null, id = newId('vox'), layers = DEFAULT_LAYERS): VoxelStructure {
   const count = width * height
+  const material = new Array<number>(count * layers).fill(AIR)
+  material.fill(0, 0, count)
   return {
     id,
     kind: 'voxel',
@@ -421,12 +421,9 @@ export function createVoxel(width: number, height: number, name = 'Ground', pare
     parent,
     placement: { x: 0, z: 0, yaw: 0 },
     size: { width, height },
-    terrain: {
-      height: new Array<number>(count).fill(2),
-      material: new Array<number>(count).fill(0),
-      ramp: new Array<number>(count).fill(NO_RAMP),
-      water: new Array<number>(count).fill(NO_WATER),
-    },
+    layers,
+    voxels: { material, shape: new Array<number>(count * layers).fill(SHAPE_BLOCK) },
+    water: new Array<number>(count).fill(NO_WATER),
     paint: { top: {}, cliff: {}, tint: {} },
   }
 }

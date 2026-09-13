@@ -23,7 +23,6 @@ import { FrameProfile, GpuTimer, type FrameProfileReport } from './profile'
 import {
   SURFACE_CLIFF,
   SURFACE_TOP,
-  cellIndex,
   cornerHeights,
   groundHeight,
   inBounds,
@@ -37,6 +36,7 @@ import {
   levelCentre,
   toWorld,
   type DocumentTarget,
+  topHeight,
 } from '@papercut/document'
 import {
   Character,
@@ -1235,6 +1235,6 @@ export class Viewport {
     if (!address) return null
     const voxel = structureOf(this.reader.doc, address.structure, 'voxel')
     if (!voxel || !inBounds(voxel.size, address.x, address.y)) return null
-    return voxel.terrain.height[cellIndex(voxel.size, address.x, address.y)]
+    return topHeight(voxel, address.x, address.y)
   }
 }

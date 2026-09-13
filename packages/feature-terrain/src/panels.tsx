@@ -8,9 +8,9 @@
  * Two slots (2026-09-12 frame): the BAR is the tool's mode switch, verbs and
  * parameters in one icon-only row — mode first, because it changes what a
  * drag means, then the verb, then the stroke shape and the brush — and the
- * INSPECTOR holds what needs more room than a row: the ramp direction when
- * the ramp verb is up, and the material or tint picker when painting. The
- * tile picker is not here: it needs the loaded sheet, which is the app's.
+ * INSPECTOR holds what needs more room than a row: the sculpt dial while the
+ * feel is settled, and the material or tint picker when painting. The tile
+ * picker is not here: it needs the loaded sheet, which is the app's.
  *
  * Panels take their state as PROPS rather than reading an actor: the tool
  * parameters live on the host's tools actor, and a feature may not import the
@@ -19,7 +19,7 @@
  * keymap rather than from a string written here.
  */
 
-import { DIR_NAMES, type ReadonlyMapDoc } from '@papercut/document'
+import type { ReadonlyMapDoc } from '@papercut/document'
 import { chordFor, panels, type OwnerId, type Platform } from '@papercut/registry'
 import { BarDivider, BarLabel, BarSlider, ColorInput, Field, IconSegmented, Select, Slider } from '@papercut/ui'
 
@@ -55,7 +55,7 @@ export function TerrainBar({ params, set, platform }: TerrainPanelProps) {
           options={[
             { value: 'raise', icon: 'raise', title: 'Raise — shift lowers' },
             { value: 'flatten', icon: 'flatten', title: 'Flatten to the height under the press' },
-            { value: 'ramp', icon: 'ramp', title: 'Ramp — click a cliff face' },
+            { value: 'ramp', icon: 'ramp', title: 'Ramp — click a cliff face to cut one, a ramp to remove it' },
             { value: 'water', icon: 'water', title: 'Water — shift removes it' },
           ]}
         />
@@ -115,18 +115,6 @@ export function TerrainSculptPanel({ params, set }: TerrainPanelProps) {
   )
 }
 
-export function TerrainRampPanel({ params, set }: TerrainPanelProps) {
-  return (
-    <Field label="Ramp faces" hint="Or just click a cliff face directly">
-      <Select
-        value={String(params.rampDir)}
-        onChange={(value) => set({ rampDir: Number(value) })}
-        options={[{ value: '-1', label: 'Click a cliff' }, ...DIR_NAMES.map((name, index) => ({ value: String(index), label: name }))]}
-      />
-    </Field>
-  )
-}
-
 export function TerrainPaintPanel({ doc, params, set }: TerrainPanelProps) {
   if (params.paintVerb === 'tint') {
     return (
@@ -152,6 +140,5 @@ export function TerrainPaintPanel({ doc, params, set }: TerrainPanelProps) {
 export function declareTerrainPanels(owner: OwnerId): void {
   panels.declare(owner, { id: 'terrain.bar', title: 'Terrain', slot: 'bar', component: TerrainBar })
   panels.declare(owner, { id: 'terrain.sculpt', title: 'Sculpt', component: TerrainSculptPanel, when: terrainKeys.mode.is('sculpt') })
-  panels.declare(owner, { id: 'terrain.ramp', title: 'Ramp', component: TerrainRampPanel, when: terrainKeys.verb.is('ramp') })
   panels.declare(owner, { id: 'terrain.paint', title: 'Paint', component: TerrainPaintPanel, when: terrainKeys.mode.is('paint') })
 }

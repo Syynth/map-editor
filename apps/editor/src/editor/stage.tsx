@@ -29,6 +29,7 @@ import {
   type ReadonlyMapDoc,
   type ReadonlyVoxel,
   type SurfaceAddress,
+  columnHeights,
 } from '@papercut/document'
 import {
   selectionSubject,
@@ -286,8 +287,8 @@ function tallestPoint(doc: ReadonlyMapDoc): number {
     if (!s) continue
     const base = Math.round(frameOf(doc, id).y / HALF)
     if (s.kind === 'voxel') {
-      for (const height of s.terrain.height) if (base + height > top) top = base + height
-      for (const water of s.terrain.water) if (water !== NO_WATER && base + water > top) top = base + water
+      for (const height of columnHeights(s)) if (base + height > top) top = base + height
+      for (const water of s.water) if (water !== NO_WATER && base + water > top) top = base + water
     } else if (s.closed) top = Math.max(top, base + s.layers)
   }
   return top

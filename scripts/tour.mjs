@@ -196,13 +196,29 @@ async function counts() {
     const doc = window.__host.reader.doc
     // The root voxel volume; the tour reads the grid as it always did.
     const ground = /** @type {import('@papercut/document').VoxelStructure} */ (doc.structures[doc.structureOrder[0]])
+    // The column tops, derived the way `topHeight` derives them: the page has the raw document, not the helpers.
+    const { width, height } = ground.size
+    let ramps = 0
+    let heightSum = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        for (let layer = ground.layers - 1; layer >= 0; layer--) {
+          const i = (layer * height + y) * width + x
+          if (ground.voxels.material[i] === -1) continue
+          const shape = ground.voxels.shape[i]
+          if (shape >= 2) ramps += 1
+          heightSum += layer * 2 + (shape === 1 || (shape >= 6 && shape < 10) ? 1 : 2)
+          break
+        }
+      }
+    }
     return {
-      ramps: ground.terrain.ramp.filter((r) => r !== -1).length,
+      ramps,
       topPaint: Object.keys(ground.paint.top).length,
       cliffPaint: Object.keys(ground.paint.cliff).length,
       tint: Object.keys(ground.paint.tint).length,
       objects: doc.objectOrder.length,
-      heightSum: ground.terrain.height.reduce((a, b) => a + b, 0),
+      heightSum,
     }
   })
 }
@@ -271,11 +287,22 @@ async function faceCamera(distance = 10, pitch = 10) {
     const doc = window.__host.reader.doc
     // The root voxel volume; the tour reads the grid as it always did.
     const ground = /** @type {import('@papercut/document').VoxelStructure} */ (doc.structures[doc.structureOrder[0]])
+    const { width, height } = ground.size
+    /** @param {number} x @param {number} y */
+    const columnTop = (x, y) => {
+      for (let layer = ground.layers - 1; layer >= 0; layer--) {
+        const i = (layer * height + y) * width + x
+        if (ground.voxels.material[i] === -1) continue
+        const shape = ground.voxels.shape[i]
+        return layer * 2 + (shape === 1 || (shape >= 6 && shape < 10) ? 1 : 2)
+      }
+      return 0
+    }
     let best = { x: 0, y: 0, drop: -1, top: 0, bottom: 0 }
     for (let y = 2; y < ground.size.height - 2; y++) {
       for (let x = 2; x < ground.size.width - 2; x++) {
-        const top = ground.terrain.height[y * ground.size.width + x]
-        const bottom = ground.terrain.height[(y + 1) * ground.size.width + x]
+        const top = columnTop(x, y)
+        const bottom = columnTop(x, y + 1)
         if (top - bottom > best.drop) best = { x, y, drop: top - bottom, top, bottom }
       }
     }

@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { HALF, SURFACE_SKETCH_CAP, SURFACE_TOP, allChunkKeys, cellIndex, createMap, createSketch, type RgbaImage, type SpriteAsset, type VoxelStructure } from '@papercut/document'
+import { HALF, SURFACE_SKETCH_CAP, SURFACE_TOP, allChunkKeys, createMap, createSketch, fillColumn, topHeight, type RgbaImage, type SpriteAsset, type VoxelStructure } from '@papercut/document'
 import { Picker } from './picking'
 import { rgbaTexture } from './billboard'
 import { RuntimeScene } from './scene'
@@ -78,7 +78,7 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
   function level() {
     const doc = createMap(6, 6)
     const g = doc.structures.ground as VoxelStructure
-    g.terrain.height[cellIndex(g.size, 4, 4)] = 12
+    fillColumn(g, 4, 4, 12)
     const island = createSketch('ground', 'Island', { x: 0, z: 0, yaw: 0 })
     island.points = [
       { x: 0, z: 0, smooth: false },
@@ -126,7 +126,7 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
 
   it('finds the cap a pick lands on: the top of whatever the ceiling passes through, the highest standing one first', () => {
     const { runtime, island, ground } = level()
-    const base = ground.terrain.height[0]
+    const base = topHeight(ground, 0, 0)
     expect(runtime.capAt(4.5, 4.5)).toBeNull()
 
     runtime.setLayerRange({ lo: 0, hi: base + 2 })
@@ -140,7 +140,7 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
 
   it('a pick straight down into a cut lands on the ceiling, on the cap', () => {
     const { runtime, ground } = level()
-    const base = ground.terrain.height[0]
+    const base = topHeight(ground, 0, 0)
     runtime.setLayerRange({ lo: 0, hi: base + 2 })
     runtime.scene.updateMatrixWorld(true)
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 500)

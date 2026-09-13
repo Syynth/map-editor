@@ -1,10 +1,10 @@
 import {
   createDocument,
   addObject,
-  cellIndex,
   createMap,
   defaultFacing,
   raise,
+  topHeight,
   type MapObject,
   type Patch,
   type MapDoc,
@@ -107,14 +107,14 @@ const OBJECT: MapObject = {
 describe('the one keyboard dispatcher', () => {
   it('turns the undo chord into a dispatch the reader reflects', () => {
     const { host, keys } = editor()
-    const index = cellIndex(ground(host.reader.doc).size, 2, 2)
-    const before = ground(host.reader.doc).terrain.height[index]
+    const height = () => topHeight(ground(host.reader.doc), 2, 2)
+    const before = height()
     apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[2, 2]], 3))
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 3)
+    expect(height()).toBe(before + 3)
 
     keys.send('keydown', 'z', { ctrlKey: true })
 
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before)
+    expect(height()).toBe(before)
     // Consumed, so the browser's own undo does not also fire.
     expect(keys.prevented).toEqual(['z'])
   })

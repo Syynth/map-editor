@@ -12,8 +12,8 @@ import { describe, test } from 'vitest'
 
 import {
   allChunkKeys,
-  cellIndex,
   createMap,
+  fillColumn,
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
@@ -28,12 +28,11 @@ function hilly(width: number, height: number): MapDoc {
   const doc = createMap(width, height)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const index = cellIndex(ground(doc).size, x, y)
       const h =
         4 +
         Math.round(3 * Math.sin(x * 0.22) + 3 * Math.cos(y * 0.19) + 2 * Math.sin((x + y) * 0.11))
-      ground(doc).terrain.height[index] = Math.max(0, h)
-      ground(doc).terrain.material[index] = (x + y) % 4
+      // The whole column takes the material: a voxel carries its own, and fillColumn writes them all.
+      fillColumn(ground(doc), x, y, Math.max(0, h), (x + y) % 4)
     }
   }
   return doc

@@ -111,20 +111,22 @@ issue tracker.
 
 ## Half-tile
 
-The unit of terrain height. Heights are integers counted in half-tiles, never
-fractions, so terrain snaps and cliff faces have exact integer extents.
+The unit of terrain height. A voxel is a full cube, one tile on every
+side, and a slab is half a cube, so every height the editor speaks of is a
+whole number of half-tiles: a column's top, a cliff band's level, the layer
+view's range. Nothing stores a height; they are derived from the voxels.
 
 One tile is one world unit, always.
 
 ## Cliff face
 
-The vertical surface exposed where two adjacent cells differ in height. A cliff
-face is addressed by the cell it belongs to, the side it faces, and the
-absolute half-tile level it occupies — never by a triangle or a mesh face.
+The vertical surface exposed where a voxel's side has no neighbour at its
+level. A cliff face is addressed by the cell it belongs to, the side it
+faces, and the layer it occupies — never by a triangle or a mesh face.
 
-This is what lets paint survive sculpting: raising the terrain beneath a
-painted face does not move the paint, because the paint was never attached to
-the geometry.
+This is what lets paint survive sculpting: a face override is keyed by
+that address, so removing the voxel and putting it back finds the override
+waiting, because it was never attached to the geometry.
 
 ## Stroke
 
@@ -134,15 +136,37 @@ span many frames and touch a cell many times, but it produces exactly one
 
 ## Sheet
 
-The terrain texture atlas: a grid of square tiles laid out
-material-by-material, where position on the sheet defines what a tile is,
-the way RPG Maker autotile sheets work. The current terrain template gives
-each material a block of autotile variants plus a row of cliff and ramp
-tiles; exact sheet layouts are still open and expected to change as the
-artist works with them.
+A texture image of square tiles that a [Terrain set](#terrain-set)
+describes. Position on the sheet means nothing to the renderer; the terrain
+set's tags do. The placeholder sheet is generated; the artist's is loaded
+from a file with its terrain set beside it.
 
-The sheet is generated as a placeholder or supplied by the artist, and is
-what lets the artist never tag tiles by hand.
+## Terrain set
+
+A [Sheet](#sheet) plus a sidecar file that tags every tile on it with the
+terrain at each of its four corners, or nothing. That is the whole model of
+what a tile is: a tile is authored as the transition it shows, half grass
+and half path, and tagged so. The **template** fills a 4×4 block's tags from
+position for a pair of terrains, which is how art drawn to the template is
+wired in one placement; art that was not is tagged one corner at a time.
+
+A terrain whose partner is nothing has an **edge set**: the tiles drawn at
+the edge of the ground or the top of a cliff, and the pieces a composited
+corner is built from.
+
+## Corner
+
+Where four faces of the same grid meet — four cells of the ground, or four
+bands of a cliff. The tile drawn there is looked up from the four terrains
+around it and drawn whole, centred on the corner: the dual grid. Any number
+of terrains may meet at a corner. Where the terrain set has no tile for the
+combination, the corner is **composited** from edge sets in material order
+and shown as missing, so the transition can be drawn on demand.
+
+## Shape
+
+What a voxel is besides its material: a block, a slab, a 45° ramp that
+descends toward one side, or a half ramp that finishes an odd half-tile.
 
 ## Sprite
 
@@ -198,10 +222,10 @@ are the [Voxel volume](#voxel-volume) and the [Sketch](#sketch).
 
 ## Voxel volume
 
-A [Structure](#structure) made of cells stacked in layers on a grid — the
-ground the Terrain tool sculpts and paints. Resizable at its edges. Today it
-holds one height per column; it is meant to hold true voxel occupancy so that
-overhangs and caves are possible.
+A [Structure](#structure) made of cubes on a grid — the ground the Terrain
+tool sculpts and paints. Each voxel is air or a material with a
+[Shape](#shape); every height is derived from the column. Resizable at its
+edges.
 
 ## Sketch
 
@@ -223,8 +247,10 @@ with the extrusion following.
 
 ## Material kind
 
-Which language a material speaks. A **sheet material** is a block of tiles
-on a template sheet, chosen per cell — the [Voxel volume](#voxel-volume)'s
-kind. A **fill-and-edge material** is a fill texture tiled across a face and
-edge textures run along its outline with their own width, repeat and cap
-rules — the [Sketch](#sketch)'s kind, in the manner of Ferr2D.
+Which language a material speaks. A **terrain material** names a terrain in
+a [Terrain set](#terrain-set) for its top faces and, optionally, another for
+its sides, so grass-topped dirt is one material — the
+[Voxel volume](#voxel-volume)'s kind. A **fill-and-edge material** is a fill
+texture tiled across a face and edge textures run along its outline with
+their own width, repeat and cap rules — the [Sketch](#sketch)'s kind, in the
+manner of Ferr2D.
