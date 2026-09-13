@@ -305,3 +305,11 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** The editor is named "Papercut", replacing the placeholder "papercut". This entry records the name only. Renaming the repo, packages, or app is a separate step.
 - **WHY:** The name fits the vision: flat 2D art cut out and arranged in 3D space, in a Paper Mario style. Developers use "papercuts" to mean small annoying bugs, and that meaning is a welcome joke, not a drawback. Other names were rejected: Foldout (Unity already uses the word for a UI control), Proscenium (hard to spell and say), Terrarium (too close to Terraria), and Papercraft (Papercraft Games already makes a level tool, Folded Paper Engine; the word is a generic hobby term; and it suggests the reverse workflow, 3D model to flat paper). Accepted trade-offs: PaperCut Software, the print-management company, owns papercut.com and dominates search results, and `papercut` is taken on npm.
+
+## The project is Papercut
+- **WHEN:** 2026-09-12
+- **PROJECT:** papercut
+- **SYSTEM:** cross-system
+- **SCOPE:** moderate
+- **WHAT:** The project is named Papercut. The GitHub repository is `Syynth/papercut` (renamed in place; the old name redirects for git and the API, but not for the Pages site, which now lives at https://syynth.github.io/papercut/), the package scope is `@papercut/*`, and the header and page title carry the name. The checkout folder on disk keeps its old name.
+- **WHY:** The owner's choice of name; no rationale recorded.
