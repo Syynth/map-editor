@@ -52,6 +52,10 @@ export const SHAPE_HALF_RAMP = 6
 export const SHAPE_HALF_RAMP_UP = 10
 /** How many layers a new volume gets: 20 cubes, the old 40-half-tile ceiling. */
 export const DEFAULT_LAYERS = 20
+/** The most layers a volume may have: the mesher keys a band by its half-tile level in eight bits. */
+export const MAX_LAYERS = 128
+/** The shapes a voxel may take: SHAPE_BLOCK up to the last half-ramp direction. */
+export const SHAPE_COUNT = SHAPE_HALF_RAMP_UP + 4
 
 export interface MapSize {
   width: number

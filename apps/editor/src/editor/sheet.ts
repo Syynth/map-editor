@@ -54,5 +54,5 @@ export async function loadTerrainSetFiles(files: readonly File[], doc: ReadonlyM
     set.tile === doc.texelDensity
       ? null
       : `${sidecar.name} has ${set.tile}px tiles; this map is ${doc.texelDensity}px per tile. Set the map's texel density to ${set.tile} to match the art.`
-  return { set: { set: { ...set, sheet: set.sheet || image.name }, image: pixels }, warning }
+  return { set: { set, image: pixels }, warning }
 }

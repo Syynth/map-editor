@@ -241,9 +241,11 @@ export function rampRun(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, edge: RampEdg
 }
 
 /**
- * Remove the ramp under a cell: every connected cell whose top slopes the
- * same way goes level, a full ramp to a block and a half ramp to what it
- * rode on, so the heights stay and only the slope goes.
+ * Remove the ramp under a cell: the run it belongs to — the cells along its
+ * own axis whose tops slope the same way — goes level, a full ramp to a
+ * block and a half ramp to what it rode on, so the heights stay and only
+ * the slope goes. A run is one cell wide, as it was cut; a ramp beside it
+ * is another run and stays.
  */
 export function clearRampRun(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, x: number, z: number): Patch[] {
   const dir = rampDirAt(voxel, x, z)
@@ -259,7 +261,11 @@ export function clearRampRun(doc: ReadonlyMapDoc, voxel: ReadonlyVoxel, x: numbe
     const index = voxelIndex(voxel, cx, cz, top)
     const shape = voxel.voxels.shape[index]
     patches.push({ t: 'voxel', id: voxel.id, field: 'shape', index, value: shape >= SHAPE_HALF_RAMP && shape < SHAPE_HALF_RAMP + 4 ? SHAPE_SLAB : SHAPE_BLOCK })
-    for (const [dx, dz] of DIR_VECTORS) {
+    const [ax, az] = DIR_VECTORS[dir]
+    for (const [dx, dz] of [
+      [ax, az],
+      [-ax, -az],
+    ]) {
       const nx = cx + dx
       const nz = cz + dz
       if (!inBounds(voxel.size, nx, nz)) continue

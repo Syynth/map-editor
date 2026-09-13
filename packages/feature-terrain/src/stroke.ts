@@ -196,7 +196,7 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
   }
 
   return {
-    label: terrainLabel(deps.params(), press.modifiers),
+    label: terrainLabel(deps.params(), press.modifiers, press.pick.surface),
     begin: (sample) => tick(sample, 'start'),
     move: (sample) => tick(sample, 'move'),
     end: (sample) => tick(sample, 'end'),

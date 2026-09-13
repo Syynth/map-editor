@@ -175,7 +175,7 @@ export function Inspector({
       ) : null}
 
       {isTerrain ? (
-        <Section title={params.terrainMode === 'sculpt' ? 'Sculpt' : 'Paint'} summary={`${params.brush.size} · ${params.brush.shape}`}>
+        <Section title={params.terrainMode === 'sculpt' ? 'Sculpt' : 'Paint'} summary={params.terrainMode === 'sculpt' && params.sculptVerb === 'ramp' ? 'ramp' : `${params.brush.size} · ${params.brush.shape}`}>
           <FeaturePanels slot="inspector" tool={params.tool} doc={doc} params={params} platform={platform} selection={selection} />
         </Section>
       ) : null}
@@ -183,7 +183,8 @@ export function Inspector({
 
       {/* The terrain set is the app's: an artist loads a sheet and its sidecar
           here, and the generated fallback comes from the composition root
-          (#47). The Materials section the spec describes (§4) replaces this. */}
+          (#47). Authoring a sidecar in the editor is a follow-up; until then
+          this is the one door for the artist's own art. */}
       {isTerrain ? (
         <Section title="Terrain set" summary={materialById(doc.materials, params.material)?.top.sheet ?? '—'} defaultOpen={false}>
           <Note>Every material draws from a terrain set: a sheet and the sidecar that tags its tiles. Pick both files together.</Note>

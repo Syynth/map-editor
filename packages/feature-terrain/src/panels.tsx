@@ -21,7 +21,7 @@
  * keymap rather than from a string written here.
  */
 
-import type { ReadonlyMapDoc } from '@papercut/document'
+import { MAX_HEIGHT, maxHeightOf, type ReadonlyMapDoc } from '@papercut/document'
 import { chordFor, panels, type OwnerId, type Platform } from '@papercut/registry'
 import { BarDivider, BarLabel, BarScrub, Chip, ColorInput, Field, IconSegmented, Note, Scrub, Verb } from '@papercut/ui'
 
@@ -38,6 +38,16 @@ export interface TerrainPanelProps {
 }
 
 const cssColor = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
+
+/** The tallest any of the map's volumes can stand, in half-tiles: the ceiling of a height field. */
+function ceilingOf(doc: ReadonlyMapDoc): number {
+  let ceiling = 0
+  for (const id of doc.structureOrder) {
+    const s = doc.structures[id]
+    if (s?.kind === 'voxel') ceiling = Math.max(ceiling, maxHeightOf(s))
+  }
+  return ceiling || MAX_HEIGHT
+}
 
 function StrokeControls({ params, set, platform }: TerrainPanelProps) {
   return (
@@ -74,11 +84,11 @@ function StrokeControls({ params, set, platform }: TerrainPanelProps) {
 }
 
 /** The number a sculpt verb takes: half-tiles per pass for Raise and Smooth, the height Flatten sets, nothing for Ramp. */
-function SculptNumber({ params, set }: TerrainPanelProps) {
+function SculptNumber({ doc, params, set }: TerrainPanelProps) {
   if (params.sculptVerb === 'flatten') {
     return (
       <>
-        <BarScrub label="Height" title="The height Flatten sets, in half-tiles: sampled where you press, or typed and pinned" unit="½" value={params.height} min={0} max={40} onChange={(height) => set({ height, heightPinned: true })} />
+        <BarScrub label="Height" title="The height Flatten sets, in half-tiles: sampled where you press, or typed and pinned" unit="½" value={params.height} min={0} max={ceilingOf(doc)} onChange={(height) => set({ height, heightPinned: true })} />
         <Verb
           icon={params.heightPinned ? 'lock' : 'unlock'}
           title={params.heightPinned ? 'Height is pinned — click to sample it at each press again' : 'Height follows the press — click to pin the value'}
@@ -157,12 +167,12 @@ export function TerrainBar(props: TerrainPanelProps) {
 }
 
 /** The sculpt numbers with room to read, plus the stroke's dial while the feel is settled (tentative ruling of 2026-09-12). */
-export function TerrainSculptPanel({ params, set }: TerrainPanelProps) {
+export function TerrainSculptPanel({ doc, params, set }: TerrainPanelProps) {
   return (
     <>
       <Scrub label="Size" value={params.brush.size} min={1} max={12} onChange={(size) => set({ brush: { ...params.brush, size } })} />
       {params.sculptVerb === 'flatten' ? (
-        <Scrub label="Height" unit="½" value={params.height} min={0} max={40} onChange={(height) => set({ height, heightPinned: true })} />
+        <Scrub label="Height" unit="½" value={params.height} min={0} max={ceilingOf(doc)} onChange={(height) => set({ height, heightPinned: true })} />
       ) : params.sculptVerb === 'ramp' ? null : (
         <Scrub label="Strength" unit="½" value={params.strength} min={1} max={8} onChange={(strength) => set({ strength })} />
       )}

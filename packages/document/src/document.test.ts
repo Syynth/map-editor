@@ -446,6 +446,20 @@ describe('ramps', () => {
     expect(cornerHeights(ground(doc), 0, 1)).toEqual([5, 5, 4, 4])
   })
 
+  it('clears the run under a click and leaves the run beside it', () => {
+    const doc = createMap(4, 4)
+    for (const z of [1, 2]) for (const x of [1, 2]) setHeight(doc, x, z, 6)
+    // Two runs cut side by side, both descending east from x = 2.
+    for (const z of [1, 2]) applyPatches(doc, rampRun(doc, ground(doc), { x: 2, z, dir: 0 }, 2))
+    expect([1, 2].map((z) => [rampDirAt(ground(doc), 1, z), rampDirAt(ground(doc), 2, z)])).toEqual([
+      [0, 0],
+      [0, 0],
+    ])
+    applyPatches(doc, clearRampRun(doc, ground(doc), 2, 1))
+    expect([rampDirAt(ground(doc), 1, 1), rampDirAt(ground(doc), 2, 1)]).toEqual([NO_RAMP, NO_RAMP])
+    expect([rampDirAt(ground(doc), 1, 2), rampDirAt(ground(doc), 2, 2)]).toEqual([0, 0])
+  })
+
   it('refuses a run through ground that is not level with the edge, or that leaves the volume', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 2, 1, 6)
@@ -766,5 +780,27 @@ describe('structures', () => {
     applyPatches(doc, deleteSketchPoint(doc, id, 0))
     applyPatches(doc, deleteSketchPoint(doc, id, 0))
     expect((doc.structures[id] as { closed: boolean }).closed).toBe(false)
+  })
+})
+
+describe('a map file is checked before it is believed', () => {
+  const raw = () => JSON.parse(serialize(createMap(2, 2))) as { structures: Record<string, { voxels: { material: number[]; shape: number[] }; layers: number }>; materials: unknown[] }
+
+  it('refuses a voxel whose material or shape is not one', () => {
+    const material = raw()
+    material.structures.ground.voxels.material[0] = -5
+    expect(() => deserialize(JSON.stringify(material))).toThrow(/material\[0\] is -5/)
+    const shape = raw()
+    shape.structures.ground.voxels.shape[1] = 99
+    expect(() => deserialize(JSON.stringify(shape))).toThrow(/shape\[1\] is 99/)
+  })
+
+  it('refuses a volume taller than a band level can name, and a map with no materials', () => {
+    const tall = raw()
+    tall.structures.ground.layers = 129
+    expect(() => deserialize(JSON.stringify(tall))).toThrow(/at most 128/)
+    const bare = raw()
+    bare.materials = []
+    expect(() => deserialize(JSON.stringify(bare))).toThrow(/at least one material/)
   })
 })

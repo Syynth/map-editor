@@ -128,7 +128,7 @@ export function strokeCells(voxel: ReadonlyVoxel, params: Pick<TerrainParams, 's
  * label a terrain drag shows, and it names the verb rather than a blanket
  * "Edit".
  */
-export function terrainLabel(params: TerrainParams, modifiers: TerrainModifiers): string {
+export function terrainLabel(params: TerrainParams, modifiers: TerrainModifiers, surface: SurfaceAddress | null = null): string {
   if (params.terrainMode === 'sculpt') {
     switch (params.sculptVerb) {
       case 'raise':
@@ -145,7 +145,8 @@ export function terrainLabel(params: TerrainParams, modifiers: TerrainModifiers)
   }
   switch (params.paintVerb) {
     case 'material':
-      return modifiers.shift ? 'Clear face' : 'Set material'
+      if (surface?.kind === SURFACE_CLIFF) return modifiers.shift ? 'Clear face' : 'Paint face'
+      return 'Set material'
     case 'tint':
       return modifiers.shift ? 'Clear tint' : 'Tint'
   }

@@ -7,7 +7,10 @@
  */
 
 import {
+  AIR,
   DEFAULT_MATERIALS,
+  MAX_LAYERS,
+  SHAPE_COUNT,
   FORMAT_VERSION,
   createMap,
   defaultCameraRig,
@@ -62,12 +65,18 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
     const count = size.width * size.height
     const layers = raw.layers
     if (typeof layers !== 'number' || !Number.isInteger(layers) || layers < 1) throw new LoadError(`Structure ${id} has no layers.`)
+    if (layers > MAX_LAYERS) throw new LoadError(`Structure ${id} has ${layers} layers; a volume holds at most ${MAX_LAYERS}.`)
     const voxels = must(raw.voxels as VoxelStructure['voxels'], `Structure ${id} has no voxels.`)
     for (const field of ['material', 'shape'] as const) {
       const arr = voxels[field]
       if (!Array.isArray(arr) || arr.length !== count * layers) {
         throw new LoadError(`${id}.voxels.${field} should hold ${count * layers} entries, found ${Array.isArray(arr) ? arr.length : 'none'}.`)
       }
+      // Every entry is a whole number in range: a material id or AIR, a shape the mesher knows.
+      const low = field === 'material' ? AIR : 0
+      const high = field === 'material' ? Number.MAX_SAFE_INTEGER : SHAPE_COUNT - 1
+      const bad = (arr as unknown[]).findIndex((v) => typeof v !== 'number' || !Number.isInteger(v) || v < low || v > high)
+      if (bad >= 0) throw new LoadError(`${id}.voxels.${field}[${bad}] is ${String((arr as unknown[])[bad])}, which is not a ${field}.`)
     }
     const water = raw.water
     if (!Array.isArray(water) || water.length !== count) {
@@ -96,6 +105,7 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
 /** A material names its terrains or it is not a material; the rest defaults. */
 function normaliseMaterials(raw: unknown): MapDoc['materials'] {
   if (!Array.isArray(raw)) return DEFAULT_MATERIALS.map((m) => ({ ...m }))
+  if (raw.length === 0) throw new LoadError('A map has at least one material.')
   const ids = new Set<number>()
   return raw.map((value, index) => {
     const m = value as Partial<MaterialDef>

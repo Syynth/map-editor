@@ -62,6 +62,10 @@ stands on a whole tile the run ends at the top with a `halfRamp`; when the
 low side stands on a slab the run starts at the bottom with a `halfRampUp`,
 so every full ramp in the run still has a whole-tile floor.
 
+Until the mesher draws the wedge, a half ramp meshes as the plane through its
+high and low edges, and `cornerHeights` reports that same plane, so walking,
+grounding and rendering agree.
+
 ### Heights are derived
 
 Nothing stores a height. The column top at `(x, z)` is the highest non-air
@@ -173,7 +177,8 @@ connected and its high edge continues the plateau.
 From a side face's point of view the four bands around a corner are the
 bands above, below and beside it on the same side of the same or adjacent
 cell; the top surface above the top band and the ground below the bottom
-one are nothing; a bend in the face counts as connected through the corner.
+one are nothing; a bend in the face counts as connected through the corner
+(deferred: the mesher treats a bend as an edge for now).
 
 ### The lookup
 
@@ -261,7 +266,7 @@ All under the `terrain` owner, plain data, no ambient state:
 | `terrain.flatten` | `structure, cells, height` |
 | `terrain.smooth` | `structure, cells, strength` |
 | `terrain.ramp` | `structure, edge: { x, z, dir }, run` |
-| `terrain.ramp.clear` | `structure, cells` |
+| `terrain.ramp.clear` | `structure, cell` |
 | `terrain.material` | `structure, cells, material` |
 | `terrain.face` | `structure, faces: [{ x, z, y, dir }], material \| null` |
 | `terrain.tint` | `structure, cells, tint \| null` |

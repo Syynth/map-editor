@@ -218,8 +218,8 @@ class Cells {
     if (info) return info
     const corners = cornerHeights(this.voxel, x, y)
     const top = topHeight(this.voxel, x, y)
-    const layer = Math.max(0, Math.ceil(top / 2) - 1)
-    const override = facePaint(this.voxel.paint, x, y, layer, FACE_TOP)
+    // An empty column draws the floor in the first material; an override left on a voxel that is gone stays dormant.
+    const override = top === 0 ? undefined : facePaint(this.voxel.paint, x, y, Math.ceil(top / 2) - 1, FACE_TOP)
     info = { corners, top, topKey: this.look.keyOf(override ?? materialAt(this.voxel, x, y), false) }
     this.cells.set(key, info)
     return info
