@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { autotileMask, MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST } from './autotile'
 import { applyPatches, History, inversePatch, patchAddress, type Patch, type StrokeRecord } from './edits'
 import { cellIndex, createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
-import { childrenOf, descendantsOf, type VoxelStructure } from './structure'
+import { childrenOf, descendantsOf, outlineOf, type VoxelStructure } from './structure'
 import { deserialize, LoadError, serialize } from './io'
 import { addObject, addSketchPoint, addStructure, brushCells, closeSketch, createSketch, deleteSketchPoint, fillCells, flatten, paintTop, placeStructureOnto, raise, removeObject, removeStructure, reparentStructure, setRamp, setSketch, updateObject } from './ops'
 import { cliffKey, countDormant, topKey } from './paint'
@@ -139,6 +139,52 @@ function compactingStroke(store: EditorStore, label: string): { apply(patches: P
 }
 
 describe('store', () => {
+  it('tells a structure that moved from one whose shape changed, and names nothing for a rename', () => {
+    const store = new EditorStore(createMap(8, 8))
+    const island = createSketch('ground', 'Island')
+    const tier = createSketch(island.id, 'Tier')
+    store.apply('Add', addStructure(store.reader.doc, island))
+    store.apply('Add', addStructure(store.reader.doc, tier))
+    store.reader.takeDirtyStructures()
+    store.reader.takeMovedStructures()
+
+    // Moving the island moves the tier with it; neither is reshaped.
+    store.apply('Move', [{ t: 'structure.meta', id: island.id, field: 'placement', value: { x: 2, z: 1, yaw: 0 } }])
+    expect(store.reader.takeDirtyStructures()).toEqual([])
+    expect(store.reader.takeMovedStructures().sort()).toEqual([island.id, tier.id].sort())
+
+    store.apply('Rename', [{ t: 'structure.meta', id: island.id, field: 'name', value: 'Isle' }])
+    expect(store.reader.takeDirtyStructures()).toEqual([])
+    expect(store.reader.takeMovedStructures()).toEqual([])
+
+    // A new height reshapes the island and moves the tier standing on it.
+    store.apply('Height', setSketch(store.reader.doc, island.id, { layers: island.layers + 3 }))
+    expect(store.reader.takeDirtyStructures()).toEqual([island.id])
+    expect(store.reader.takeMovedStructures()).toEqual([tier.id])
+
+    // Moved and reshaped in the same breath is reshaped only.
+    store.apply('Both', [
+      { t: 'structure.meta', id: tier.id, field: 'placement', value: { x: 1, z: 1, yaw: 0 } },
+      ...setSketch(store.reader.doc, tier.id, { layers: tier.layers + 1 }),
+    ])
+    expect(store.reader.takeDirtyStructures()).toEqual([tier.id])
+    expect(store.reader.takeMovedStructures()).toEqual([])
+  })
+
+  it('rounds a sketch outline once per version of its points', () => {
+    const points = [
+      { x: 0, z: 0, smooth: true },
+      { x: 4, z: 0, smooth: true },
+      { x: 4, z: 4, smooth: false },
+    ]
+    expect(outlineOf(points)).toBe(outlineOf(points))
+    expect(outlineOf(points, 1)).not.toBe(outlineOf(points))
+    // An edit writes a new array, and the new array is rounded afresh.
+    const edited = points.map((p, i) => (i === 0 ? { ...p, x: 1 } : p))
+    expect(outlineOf(edited)).not.toBe(outlineOf(points))
+    expect(outlineOf(edited).points).not.toEqual(outlineOf(points).points)
+  })
+
   it('records a stroke as the one entry its record describes', () => {
     const store = new EditorStore(createMap(8, 8))
     const stroke = compactingStroke(store, 'Raise')

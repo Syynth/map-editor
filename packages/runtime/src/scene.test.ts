@@ -159,6 +159,43 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
   })
 })
 
+describe('a structure that moved is re-placed, not remeshed', () => {
+  it('moves its group and everything standing on it, and disposes no geometry', () => {
+    const doc = createMap(8, 8)
+    const island = createSketch('ground', 'Island', { x: 1, z: 1, yaw: 0 })
+    island.points = [
+      { x: 0, z: 0, smooth: false },
+      { x: 3, z: 0, smooth: false },
+      { x: 3, z: 3, smooth: false },
+    ]
+    island.closed = true
+    const tier = createSketch(island.id, 'Tier', { x: 1, z: 1, yaw: 0 })
+    tier.points = island.points
+    tier.closed = true
+    for (const s of [island, tier]) {
+      doc.structures[s.id] = s
+      doc.structureOrder.push(s.id)
+    }
+    const runtime = new RuntimeScene(doc, { sheet: solid(16, 5, [0, 255, 0, 255]), sprites, textures: {} })
+    runtime.rebuildAll()
+    const before = runtime.terrainMeshes()
+    const disposed: THREE.BufferGeometry[] = []
+    for (const mesh of before) mesh.geometry.addEventListener('dispose', () => disposed.push(mesh.geometry))
+
+    island.placement = { x: 4, z: 2, yaw: 1 }
+    runtime.rebuild({ chunks: [], structures: [], moved: [island.id, tier.id] })
+
+    expect(runtime.terrainMeshes()).toEqual(before)
+    expect(disposed).toEqual([])
+    const groupOf = (id: string) => before.find((mesh) => mesh.userData.structureId === id)?.parent
+    expect(groupOf(island.id)?.position.x).toBe(4)
+    expect(groupOf(island.id)?.rotation.y).toBeCloseTo(-Math.PI / 2)
+    // The tier stands on the island, a quarter turn with it.
+    expect(groupOf(tier.id)?.rotation.y).toBeCloseTo(-Math.PI / 2)
+    expect(groupOf(tier.id)?.position.x).not.toBe(2)
+  })
+})
+
 describe('bounds of a target', () => {
   it('frames an object or a structure of any kind, and answers null for what is not in the scene', () => {
     const doc = createMap(6, 6)
