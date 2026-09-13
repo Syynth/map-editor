@@ -1,4 +1,4 @@
-import { createDocument, createMap, type SurfaceAddress } from '@map-editor/document'
+import { createDocument, createMap, type SurfaceAddress } from '@papercut/document'
 import { describe, expect, it } from 'vitest'
 import { createActor } from 'xstate'
 

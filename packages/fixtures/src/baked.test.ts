@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { BLOCK_COLUMNS, BLOCK_ROWS } from '@map-editor/geometry'
+import { BLOCK_COLUMNS, BLOCK_ROWS } from '@papercut/geometry'
 import manifest from '../baked/manifest.json'
 import { createSampleMap } from './sample'
 import { spriteFootprints } from './textures'

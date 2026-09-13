@@ -30,7 +30,7 @@ import {
   type ReadonlyMapDoc,
   type ReadonlySketch,
   type SurfaceAddress,
-} from '@map-editor/document'
+} from '@papercut/document'
 
 import type { FeatureDeps, StrokeHandler, ToolContract } from './deps'
 import { snapTo, type SketchSnap } from './params'

@@ -5,8 +5,8 @@
  * value is what an app hands the host.
  */
 
-import type { Patch } from '@map-editor/document'
-import { defineFeature, provideFeature, tools, type FeatureInstance, type HotHandle } from '@map-editor/registry'
+import type { Patch } from '@papercut/document'
+import { defineFeature, provideFeature, tools, type FeatureInstance, type HotHandle } from '@papercut/registry'
 
 import { declareSketchCommands } from './commands'
 import type { FeatureDeps } from './deps'

@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
  * here the day its barrel is meant to be narrow.
  *
  * "Consumer" means a file outside `packages/runtime` that imports the name
- * from `@map-editor/runtime`. Matching import statements rather than grepping
+ * from `@papercut/runtime`. Matching import statements rather than grepping
  * for the bare identifier is what keeps a comment or a same-named local in
  * another package from counting as a use. The shapes understood are the two
  * the barrel is written in — `export { a, b } from './x'` and
@@ -27,7 +27,7 @@ import { describe, expect, it } from 'vitest'
 const ROOT = new URL('..', import.meta.url).pathname
 const PACKAGE = 'packages/runtime'
 const BARREL = `${PACKAGE}/src/index.ts`
-const SPECIFIER = '@map-editor/runtime'
+const SPECIFIER = '@papercut/runtime'
 
 function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')

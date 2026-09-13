@@ -1,4 +1,4 @@
-# map-editor pump configuration
+# papercut pump configuration
 
 Fill `pump.js`'s CONFIG from these. Replaces brink's `BRINK-CONFIG.md`; nothing in that
 file applies here.
@@ -72,7 +72,7 @@ package (`packages/eslint-rules`) is a wired-in **empty** skeleton until #22 and
 
 **CACHE prefix** (once Turborepo is installed):
 ```
-export TURBO_CACHE_DIR=/tmp/pump-turbo-cache-map-editor
+export TURBO_CACHE_DIR=/tmp/pump-turbo-cache-papercut
 ```
 There is no Rust here, so the multi-gigabyte `target/` problem brink fought does not
 apply. Peak disk is `node_modules` per worktree, which pnpm hard-links from its
@@ -88,7 +88,7 @@ say this; the one deviation to avoid is running everything on the session model.
 
 ## Repo
 
-- **Repo:** `Syynth/map-editor` · **default branch:** `main` · **assignee:** `Syynth`
+- **Repo:** `Syynth/papercut` · **default branch:** `main` · **assignee:** `Syynth`
 - **Trailer:** `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`
 - **PR footer:** `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 - **CI is live.** `.github/workflows/gate.yml` runs the gate above (plus a build) on every
@@ -108,7 +108,7 @@ the Mantine theme; never invent a token or write a raw colour.
 
 Unlike brink's, this seed is **not** empty — these are earned, most of them verified
 empirically in this repo, and all of them are on the wayfinder map
-([#2](https://github.com/Syynth/map-editor/issues/2)) as standing constraints.
+([#2](https://github.com/Syynth/papercut/issues/2)) as standing constraints.
 
 - **Nothing writes the store in an XState transition body; every effect goes through
   `enq`.** A v6 transition body re-runs from the top the moment it calls any `enq` method,
@@ -222,7 +222,7 @@ empirically in this repo, and all of them are on the wayfinder map
 
 ```
 pnpm browsers                              # once, to fetch Playwright's matching Chromium
-pnpm --filter @map-editor/editor dev      # http://localhost:5173
+pnpm --filter @papercut/editor dev      # http://localhost:5173
 pnpm tour --gpu                            # 25-step guided walkthrough to shots/tour/
 pnpm probe --gpu                           # whether post-processing survives on this GPU
 ```

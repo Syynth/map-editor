@@ -10,9 +10,9 @@
  * a tool changes the tooltip without touching this.
  */
 
-import type { ToolId } from '@map-editor/editor-host'
-import { chordFor, tools, type Platform } from '@map-editor/registry'
-import { RailButton, RailGap, RailRule, isIconName, type IconName } from '@map-editor/ui'
+import type { ToolId } from '@papercut/editor-host'
+import { chordFor, tools, type Platform } from '@papercut/registry'
+import { RailButton, RailGap, RailRule, isIconName, type IconName } from '@papercut/ui'
 
 /** Named in the design (Buildings, Fences) and drawn dimmer until a feature declares them. */
 const PLANNED: ReadonlyArray<{ title: string; icon: IconName }> = [

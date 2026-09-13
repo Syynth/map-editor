@@ -10,9 +10,9 @@ import {
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
-import { createHost, type Host } from '@map-editor/editor-host'
-import type { TerrainParams } from '@map-editor/feature-terrain'
+} from '@papercut/document'
+import { createHost, type Host } from '@papercut/editor-host'
+import type { TerrainParams } from '@papercut/feature-terrain'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { features } from '../features'

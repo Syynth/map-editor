@@ -40,23 +40,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Two halves, not `turbo run build --filter=@map-editor/editor`: the
+      # Two halves, not `turbo run build --filter=@papercut/editor`: the
       # editor's own bundle has to be built with a different `base`, and a
       # flag cannot ride through turbo into `vite build`. The workspace
       # packages build through turbo as usual (the bundle is assembled from
       # their `dist/`, see apps/editor/vite.config.ts), then Vite runs
       # directly.
       #
-      # `--base=./` because a project site is served from `/map-editor/`,
+      # `--base=./` because a project site is served from `/papercut/`,
       # not `/`, and the default absolute base would request `/assets/...`
-      # from the domain root. Relative rather than `/map-editor/` so the same
+      # from the domain root. Relative rather than `/papercut/` so the same
       # output works on a fork, a custom domain, or any other subpath. It is
       # a flag here rather than in vite.config.ts so the dev server, the tour
       # and the gate's build are untouched.
       - name: Build
         run: |
-          pnpm turbo run build --filter='@map-editor/editor^...'
-          pnpm --filter @map-editor/editor exec vite build --base=./
+          pnpm turbo run build --filter='@papercut/editor^...'
+          pnpm --filter @papercut/editor exec vite build --base=./
 
       - uses: actions/configure-pages@v6.0.0
 

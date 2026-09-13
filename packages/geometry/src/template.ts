@@ -34,7 +34,7 @@
  * material.
  */
 
-import type { ReadonlyMapDoc } from '@map-editor/document'
+import type { ReadonlyMapDoc } from '@papercut/document'
 
 export const BLOCK_COLUMNS = 4
 export const BLOCK_ROWS = 5

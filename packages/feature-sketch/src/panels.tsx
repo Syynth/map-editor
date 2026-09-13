@@ -8,10 +8,10 @@
  * by the app's `dispatch` prop; the tool's parameters go through `set`.
  */
 
-import { HALF, type ReadonlyMapDoc, type ReadonlySketch, type WallProfile, type WallProfilePoint } from '@map-editor/document'
-import { wallProfilePolyline } from '@map-editor/geometry'
-import { chordFor, panels, type FeatureSelection, type OwnerId, type Platform } from '@map-editor/registry'
-import { BarDivider, BarLabel, BarSlider, Field, IconSegmented, Note, Row, Segmented, Select, Slider, Toggle, Verb, colors } from '@map-editor/ui'
+import { HALF, type ReadonlyMapDoc, type ReadonlySketch, type WallProfile, type WallProfilePoint } from '@papercut/document'
+import { wallProfilePolyline } from '@papercut/geometry'
+import { chordFor, panels, type FeatureSelection, type OwnerId, type Platform } from '@papercut/registry'
+import { BarDivider, BarLabel, BarSlider, Field, IconSegmented, Note, Row, Segmented, Select, Slider, Toggle, Verb, colors } from '@papercut/ui'
 import { useEffect, useRef, useState } from 'react'
 
 import type { SketchParams } from './params'

@@ -3,7 +3,7 @@
  * `sprites` `exportGltf` now requires as inputs (#47).
  *
  * The editor builds these live with `generateTerrainSheet` / `generateSprites`
- * (`@map-editor/fixtures`), which draw with a 2D canvas — the one thing this
+ * (`@papercut/fixtures`), which draw with a 2D canvas — the one thing this
  * app is proving it does not need (#48). The bake is that same output,
  * pre-rendered to PNG for exactly this situation; decoding it back to raw
  * RGBA is `fast-png`'s job, the pure-JS PNG codec this app carries so that
@@ -14,8 +14,8 @@ import { readFile } from 'node:fs/promises'
 
 import { decode } from 'fast-png'
 
-import type { RgbaImage, SpriteAsset } from '@map-editor/document'
-import { bakedDir } from '@map-editor/fixtures'
+import type { RgbaImage, SpriteAsset } from '@papercut/document'
+import { bakedDir } from '@papercut/fixtures'
 
 /** The slice of `baked/manifest.json` this loader reads; see `baked.test.ts` for the rest of its shape. */
 interface BakedManifest {

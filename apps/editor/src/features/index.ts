@@ -15,8 +15,8 @@
  * neither package imports the other.
  */
 
-import type { Feature } from '@map-editor/editor-host'
-import { sketchFeature } from '@map-editor/feature-sketch'
-import { terrainFeature } from '@map-editor/feature-terrain'
+import type { Feature } from '@papercut/editor-host'
+import { sketchFeature } from '@papercut/feature-sketch'
+import { terrainFeature } from '@papercut/feature-terrain'
 
 export const features: readonly Feature[] = [terrainFeature, sketchFeature]

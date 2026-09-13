@@ -21,7 +21,7 @@ import {
   type ReadonlyMapDoc,
   type MapObject,
   type SpriteAsset,
-} from '@map-editor/document'
+} from '@papercut/document'
 import { ObjectView, type ObjectViewContext } from './billboard'
 
 const SPEED = 6

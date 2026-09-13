@@ -1,5 +1,5 @@
 /**
- * `@map-editor/feature-terrain`: the terrain tools as a feature module — the
+ * `@papercut/feature-terrain`: the terrain tools as a feature module — the
  * first one, and the proof that the import surface #35 drew is real.
  *
  * What a feature is, concretely (#9): a module that declares through the
@@ -27,8 +27,8 @@
  * the values for the keys minted in step 2.
  */
 
-import type { Patch } from '@map-editor/document'
-import { defineFeature, provideFeature, tools, type FeatureInstance, type HotHandle } from '@map-editor/registry'
+import type { Patch } from '@papercut/document'
+import { defineFeature, provideFeature, tools, type FeatureInstance, type HotHandle } from '@papercut/registry'
 
 import { declareTerrainCommands } from './commands'
 import type { FeatureDeps } from './deps'

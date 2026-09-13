@@ -6,10 +6,10 @@ this file is the task list, not the rationale. Technology choices live in
 [`stack.md`](stack.md).
 
 **The decisions behind this file now live on the wayfinder map,
-[#2](https://github.com/Syynth/map-editor/issues/2), and its closed tickets. Where this
+[#2](https://github.com/Syynth/papercut/issues/2), and its closed tickets. Where this
 file and a ticket disagree, the ticket wins.**
 
-Target layout, decided by [#3](https://github.com/Syynth/map-editor/issues/3). This
+Target layout, decided by [#3](https://github.com/Syynth/papercut/issues/3). This
 replaces the original five-package sketch; **`core` no longer exists as a name**, having
 held three unrelated things and named none of them.
 
@@ -50,7 +50,7 @@ The rule that produced it: **a package exists when there is a consumer that must
 able to reach past it — not when there is a topic.** `exporter` and `schema` were both
 candidates and both failed that test.
 
-Note [#20](https://github.com/Syynth/map-editor/issues/20)'s correction: pnpm's strict
+Note [#20](https://github.com/Syynth/papercut/issues/20)'s correction: pnpm's strict
 `node_modules` blocks *undeclared* imports but does **not** enforce direction, so the
 dependency direction needs a test as well as the workspace structure.
 
@@ -67,7 +67,7 @@ dependency direction needs a test as well as the workspace structure.
 
 ## Phase 1 — Workspace skeleton
 
-Blocked on [#24](https://github.com/Syynth/map-editor/issues/24), which brings the
+Blocked on [#24](https://github.com/Syynth/papercut/issues/24), which brings the
 toolchain to the baseline this phase installs against — React 19, Vite 8, Vitest 5,
 TypeScript 6.0.3, plus ESLint, XState and Mantine. React 18 → 19 across 2,640 untested
 lines of `src/editor` is the real risk there, not the version numbers.
@@ -78,7 +78,7 @@ lines of `src/editor` is the real risk there, not the version numbers.
 - [x] Add Turborepo with a `turbo.json` pipeline covering `build`, `test`,
       `typecheck`, `lint`.
 - [x] **Install ESLint 10 + typescript-eslint 8 here, not in Phase 3.**
-      [#20](https://github.com/Syynth/map-editor/issues/20) decided this deliberately, so
+      [#20](https://github.com/Syynth/papercut/issues/20) decided this deliberately, so
       the checks land *with* the code rather than being retrofitted onto it. Flat config,
       type-aware, custom rules in their own workspace package, `noInlineConfig: true`.
       Test files and `scripts/` are scoped out by `files:` globs; `packages/fixtures` is
@@ -97,13 +97,13 @@ move rather than to the whole restructure. Order follows the dependency directio
       names. They are declared twice — in `tsconfig.json` and `vite.config.ts` — and drift
       silently.
 - [x] ~~Per-package `tsconfig.json` with project references; the root config currently
-      covers everything with `noEmit: true`.~~ — [#46](https://github.com/Syynth/map-editor/issues/46),
-      implementing [#33](https://github.com/Syynth/map-editor/issues/33). Every `packages/*`
+      covers everything with `noEmit: true`.~~ — [#46](https://github.com/Syynth/papercut/issues/46),
+      implementing [#33](https://github.com/Syynth/papercut/issues/33). Every `packages/*`
       config is `composite` and emits; each carries `references` to its workspace
       dependencies; the root `tsconfig.json` is a solution file referencing all ten, so
       `tsc -b` builds the graph in one command. See "How a package is built" below.
 - [x] ~~Build emit (tsup or unbuild) where a package needs to be consumable.~~ —
-      [#46](https://github.com/Syynth/map-editor/issues/46): **tsup**, applied uniformly.
+      [#46](https://github.com/Syynth/papercut/issues/46): **tsup**, applied uniformly.
 
 ### How a package is built (#46)
 
@@ -145,7 +145,7 @@ cache hit on all twelve tasks; with it listed, the same edit misses on all twelv
 `references` to its dependencies, and excluding `*.test.ts` — a test is not part of the
 published surface, and `fixtures`' own test reaches `../baked/manifest.json`, outside
 `rootDir`. `tsconfig.typecheck.json` is the CHECKING config: `noEmit`, tests included, and
-deliberately **no** `references`, so it resolves `@map-editor/*` through the `exports`
+deliberately **no** `references`, so it resolves `@papercut/*` through the `exports`
 map's `types` condition and reads the declarations that were really emitted.
 
 ### What consumers resolve (#46)
@@ -168,7 +168,7 @@ map's `types` condition and reads the declarations that were really emitted.
   `default` — so the editor's production bundle and `apps/export-cli/dist/cli.js` are
   assembled from `packages/*/dist/*.js`. This is what makes turbo's
   `build -> ^build` edge load-bearing: with a dependency unbuilt, the app build fails with
-  `Rolldown failed to resolve import "@map-editor/document"`.
+  `Rolldown failed to resolve import "@papercut/document"`.
 - **`tsc`** resolves `types`. A batch `tsc -p` does *not* apply the project-reference
   source redirect, so every `typecheck` task reads real `.d.ts` and reports `TS2307` the
   moment a dependency's `dist/` is missing — `typecheck -> ^build` is load-bearing too.
@@ -214,13 +214,13 @@ needs an environment (`jsdom`, say) the root run does not give it.
       so a new package cannot be silently unchecked — which is the bug the
       deleted script had.
 - [x] **Delete `scripts/check-boundaries.mjs`.** Its header has always said to, and
-      [#20](https://github.com/Syynth/map-editor/issues/20) found it is regex-over-source
+      [#20](https://github.com/Syynth/papercut/issues/20) found it is regex-over-source
       and therefore blind to types. It had also started passing vacuously: it walked
       `src/{core,runtime,editor}`, which no longer exists, so it inspected zero files.
 
 ## Phase 3 — Development practices
 
-- [x] ~~ESLint~~ — moved to Phase 1 by [#20](https://github.com/Syynth/map-editor/issues/20). Prettier still to decide.
+- [x] ~~ESLint~~ — moved to Phase 1 by [#20](https://github.com/Syynth/papercut/issues/20). Prettier still to decide.
 - [x] ~~A rule for the stale-memo trap: the store mutates the document in place
       behind a revision counter, so any `useMemo`/`useEffect` keyed on `doc`
       never recomputes. This already shipped one bug (the frozen coverage
@@ -233,7 +233,7 @@ needs an environment (`jsdom`, say) the root run does not give it.
       coverage readout is a `useDocument` selector now rather than a `useMemo`
       keyed on a counter.
 - [x] ~~GitHub Actions: typecheck, lint, test, build on every PR.~~ —
-      [#25](https://github.com/Syynth/map-editor/issues/25): `.github/workflows/gate.yml`,
+      [#25](https://github.com/Syynth/papercut/issues/25): `.github/workflows/gate.yml`,
       build ordered before lint so a fresh runner exercises the case that would actually
       catch a broken `dist/` ignore (see the workflow's header comment).
 - [x] ~~Branch protection on `main` once CI is green.~~ — same PR: the `gate` check is
@@ -253,7 +253,7 @@ The largest gap, and not where it looks.
       (`react-glue.test.tsx`). The panels and `App` themselves are still
       untested as components; what they now hold is wiring, since every control
       dispatches a declared command that is tested where it is handled.
-- [x] ~~Put `scripts/tour.mjs` in CI as a smoke test.~~ — [#56](https://github.com/Syynth/map-editor/issues/56):
+- [x] ~~Put `scripts/tour.mjs` in CI as a smoke test.~~ — [#56](https://github.com/Syynth/papercut/issues/56):
       `.github/workflows/visual.yml` installs Chromium and runs `pnpm tour`, which fails
       on a console error, a below-floor luminance reading (the black-frame signature from
       "Bloom renders black under software GL" below) or too few triangles, on top of its
@@ -261,12 +261,12 @@ The largest gap, and not where it looks.
       or fail. Since 2026-09-12 it runs on `workflow_dispatch` only, not per PR — it took
       four minutes to the gate's one and was never a required check.
 - [x] ~~**Prerequisite:** make `tour.mjs` and `probe.mjs` portable.~~ —
-      [#26](https://github.com/Syynth/map-editor/issues/26): both resolve
+      [#26](https://github.com/Syynth/papercut/issues/26): both resolve
       Playwright's own bundled Chromium now (`CHROMIUM_PATH` stays as an
       override) and take a shared `--gpu` flag; see
       `scripts/chromium-launch.mjs`.
 - [x] ~~Decide where screenshot baselines live; `shots/` is gitignored today.~~ —
-      [#60](https://github.com/Syynth/map-editor/issues/60): no pixel baselines for now
+      [#60](https://github.com/Syynth/papercut/issues/60): no pixel baselines for now
       (SwiftShader-vs-Metal and run-to-run GL noise would make tolerance tuning a
       treadmill without a stable GPU runner); CI asserts structural signals instead and
       keeps `shots/` gitignored, uploading it as a workflow artifact per run.

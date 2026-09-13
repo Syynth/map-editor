@@ -32,8 +32,8 @@ import {
   type RgbaImage,
   type SpriteAsset,
   type DocumentTarget,
-} from '@map-editor/document'
-import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@map-editor/geometry'
+} from '@papercut/document'
+import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@papercut/geometry'
 import { ObjectView, rgbaTexture, type ObjectViewContext } from './billboard'
 import { CUT_TINT, GHOST_TINT, layerView, withinLayers, type LayerRange } from './layers'
 import { Sky, sunDirection } from './sky'

@@ -34,7 +34,7 @@
  * outlives it by design — so there is nothing to tear down here either.
  */
 
-import type { CommandEvent } from '@map-editor/registry'
+import type { CommandEvent } from '@papercut/registry'
 import { setup, types } from 'xstate'
 
 // Two imports of one module, and the bare one is not redundant: it is the

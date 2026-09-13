@@ -37,7 +37,7 @@ Numbers in brackets are item ids in the raw extract. Per the wayfinder-feed rule
 
 - `check-boundaries.mjs` vacuous (items 31.5, 44, 51, 54, 59, 66, 72, 84) — **deleted**, replaced.
 - Root `node_modules` hoisting leak (31.2, 53, 58, 65) — **closed** in wave 2b, verified by break-test.
-- `MAP-EDITOR-CONFIG.md` stale npm/gate lines (13, 93, 97.5) — **fixed** today.
+- `PAPERCUT-CONFIG.md` stale npm/gate lines (13, 93, 97.5) — **fixed** today.
 - Phase 1/2 checkboxes unticked (12, 16, 35, 42, 55) — **ticked** by task 5; Phase 1 boxes still need a sweep (B10-adjacent, trivial).
 - Decision-log names `packages/core` (56.1) — **pointer added** today.
 - Mantine conversion and `styles.css` entanglement (57, 60, 61) — this is #12's *implementation*, not new scope.

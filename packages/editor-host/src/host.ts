@@ -78,7 +78,7 @@ import {
   type Frame,
   type Patch,
   type ReadonlyMapDoc,
-} from '@map-editor/document'
+} from '@papercut/document'
 import {
   and,
   commands,
@@ -94,7 +94,7 @@ import {
   type FeatureInstance,
   type OwnerId,
   type ToolContract,
-} from '@map-editor/registry'
+} from '@papercut/registry'
 import { z } from 'zod'
 import {
   createActor,

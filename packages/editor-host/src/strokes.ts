@@ -55,8 +55,8 @@ import {
   type Patch,
   type SnapMode,
   type SurfaceAddress,
-} from '@map-editor/document'
-import type { StrokeHandler, ToolContract } from '@map-editor/registry'
+} from '@papercut/document'
+import type { StrokeHandler, ToolContract } from '@papercut/registry'
 
 import type { ToolSettings, ToolsContext } from './tools'
 import type { Selection } from './view'

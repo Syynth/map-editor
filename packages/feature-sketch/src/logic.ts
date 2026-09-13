@@ -3,7 +3,7 @@
  * labelled edit at the document, never a write of its own.
  */
 
-import { closeSketch, removeStructure, structureOf } from '@map-editor/document'
+import { closeSketch, removeStructure, structureOf } from '@papercut/document'
 import { setup, types } from 'xstate'
 
 import type { SketchParamsChange } from './commands'

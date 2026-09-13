@@ -3,7 +3,7 @@
     "target": "ES2022",
     // No `DOM`: the headless claim (#3, #48) is that this app never reaches
     // for a browser global, and with `DOM` out of `lib` the compiler is what
-    // says so, not a grep of the finished bundle. `@map-editor/runtime` made
+    // says so, not a grep of the finished bundle. `@papercut/runtime` made
     // the same call for the same reason once #47 gave it a canvas-free path;
     // this app is the other half of that claim, the one that actually runs
     // under plain `node`.

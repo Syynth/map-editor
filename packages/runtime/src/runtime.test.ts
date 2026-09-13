@@ -9,7 +9,7 @@ import {
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
+} from '@papercut/document'
 import { pickFacing, resolveDisplayMode } from './billboard'
 import {
   clampToBounds,

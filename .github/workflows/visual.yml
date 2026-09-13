@@ -44,11 +44,11 @@ jobs:
       # No separate "build workspace deps" step, but no longer because there is
       # nothing to build: before #46 every `packages/*` `exports`ed its
       # `./src/index.ts` directly and none declared a `build`, so
-      # `turbo run build --filter='@map-editor/editor^...'` reported 0 tasks;
+      # `turbo run build --filter='@papercut/editor^...'` reported 0 tasks;
       # it now reports 10, and `apps/editor`'s production bundle is assembled
       # from those packages' `dist/*.js` (the `default` condition), so this job
       # on a fresh checkout would fail at `vite build` with an unresolved
-      # `@map-editor/geometry`. scripts/tour.mjs runs that same filtered
+      # `@papercut/geometry`. scripts/tour.mjs runs that same filtered
       # `turbo run build` itself, immediately before its `vite build`, so
       # `pnpm tour` stays self-contained here and on a contributor's machine
       # alike rather than depending on a build step this job would have to

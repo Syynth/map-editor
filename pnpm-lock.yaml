@@ -112,16 +112,16 @@ importers:
       '@eslint/js':
         specifier: ^10.0.1
         version: 10.0.1(eslint@10.10.0)
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:packages/document
-      '@map-editor/editor-host':
+      '@papercut/editor-host':
         specifier: workspace:*
         version: link:packages/editor-host
-      '@map-editor/eslint-rules':
+      '@papercut/eslint-rules':
         specifier: workspace:*
         version: link:packages/eslint-rules
-      '@map-editor/viewport':
+      '@papercut/viewport':
         specifier: workspace:*
         version: link:packages/viewport
       '@types/node':
@@ -160,34 +160,34 @@ importers:
 
   apps/editor:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../../packages/document
-      '@map-editor/editor-host':
+      '@papercut/editor-host':
         specifier: workspace:*
         version: link:../../packages/editor-host
-      '@map-editor/feature-sketch':
+      '@papercut/feature-sketch':
         specifier: workspace:*
         version: link:../../packages/feature-sketch
-      '@map-editor/feature-terrain':
+      '@papercut/feature-terrain':
         specifier: workspace:*
         version: link:../../packages/feature-terrain
-      '@map-editor/fixtures':
+      '@papercut/fixtures':
         specifier: workspace:*
         version: link:../../packages/fixtures
-      '@map-editor/geometry':
+      '@papercut/geometry':
         specifier: workspace:*
         version: link:../../packages/geometry
-      '@map-editor/registry':
+      '@papercut/registry':
         specifier: workspace:*
         version: link:../../packages/registry
-      '@map-editor/runtime':
+      '@papercut/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
-      '@map-editor/ui':
+      '@papercut/ui':
         specifier: workspace:*
         version: link:../../packages/ui
-      '@map-editor/viewport':
+      '@papercut/viewport':
         specifier: workspace:*
         version: link:../../packages/viewport
       react:
@@ -215,13 +215,13 @@ importers:
 
   apps/export-cli:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../../packages/document
-      '@map-editor/fixtures':
+      '@papercut/fixtures':
         specifier: workspace:*
         version: link:../../packages/fixtures
-      '@map-editor/runtime':
+      '@papercut/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
       fast-png:
@@ -243,7 +243,7 @@ importers:
 
   packages/document:
     dependencies:
-      '@map-editor/registry':
+      '@papercut/registry':
         specifier: workspace:*
         version: link:../registry
       xstate:
@@ -265,10 +265,10 @@ importers:
 
   packages/editor-host:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../document
-      '@map-editor/registry':
+      '@papercut/registry':
         specifier: workspace:*
         version: link:../registry
       '@xstate/react':
@@ -311,16 +311,16 @@ importers:
 
   packages/feature-sketch:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../document
-      '@map-editor/geometry':
+      '@papercut/geometry':
         specifier: workspace:*
         version: link:../geometry
-      '@map-editor/registry':
+      '@papercut/registry':
         specifier: workspace:*
         version: link:../registry
-      '@map-editor/ui':
+      '@papercut/ui':
         specifier: workspace:*
         version: link:../ui
       xstate:
@@ -348,16 +348,16 @@ importers:
 
   packages/feature-terrain:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../document
-      '@map-editor/geometry':
+      '@papercut/geometry':
         specifier: workspace:*
         version: link:../geometry
-      '@map-editor/registry':
+      '@papercut/registry':
         specifier: workspace:*
         version: link:../registry
-      '@map-editor/ui':
+      '@papercut/ui':
         specifier: workspace:*
         version: link:../ui
       xstate:
@@ -385,10 +385,10 @@ importers:
 
   packages/fixtures:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../document
-      '@map-editor/geometry':
+      '@papercut/geometry':
         specifier: workspace:*
         version: link:../geometry
     devDependencies:
@@ -401,7 +401,7 @@ importers:
 
   packages/geometry:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../document
     devDependencies:
@@ -436,10 +436,10 @@ importers:
 
   packages/runtime:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../document
-      '@map-editor/geometry':
+      '@papercut/geometry':
         specifier: workspace:*
         version: link:../geometry
       three:
@@ -489,10 +489,10 @@ importers:
 
   packages/viewport:
     dependencies:
-      '@map-editor/document':
+      '@papercut/document':
         specifier: workspace:*
         version: link:../document
-      '@map-editor/runtime':
+      '@papercut/runtime':
         specifier: workspace:*
         version: link:../runtime
       three:

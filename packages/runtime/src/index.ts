@@ -6,10 +6,10 @@
  * coverage analysis. Creating a `WebGLRenderer` is not in here — issue #3
  * measured that and the export CLI depends on it staying true. Neither is any
  * DOM API (#47): the scene takes its sheet and sprites as raw `RgbaImage`s
- * from `@map-editor/document`, and this package's tsconfig compiles without
+ * from `@papercut/document`, and this package's tsconfig compiles without
  * `DOM` in `lib` to keep it that way.
  *
- * glTF export is deliberately NOT re-exported: it is `@map-editor/runtime/export`,
+ * glTF export is deliberately NOT re-exported: it is `@papercut/runtime/export`,
  * so a consumer that only previews a map does not pull `GLTFExporter` in with
  * the scene. That subpath is the package's second entry point and the only one.
  *

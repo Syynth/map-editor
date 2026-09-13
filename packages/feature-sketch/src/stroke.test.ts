@@ -1,5 +1,5 @@
-import { applyPatches, createMap, frameOf, structureOf, type MapDoc, type Patch, type ReadonlyMapDoc } from '@map-editor/document'
-import type { FeatureSelection } from '@map-editor/registry'
+import { applyPatches, createMap, frameOf, structureOf, type MapDoc, type Patch, type ReadonlyMapDoc } from '@papercut/document'
+import type { FeatureSelection } from '@papercut/registry'
 import { describe, expect, it } from 'vitest'
 
 import type { FeatureDeps } from './deps'

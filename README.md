@@ -10,7 +10,7 @@ kept. See [`FINDINGS.md`](FINDINGS.md) for what it measured, [`CONTEXT.md`](CONT
 for the vocabulary, and [`docs/decision-log.md`](docs/decision-log.md) for the
 decisions and their reasoning.
 
-**Try it in the browser:** <https://syynth.github.io/map-editor/> — rebuilt
+**Try it in the browser:** <https://syynth.github.io/papercut/> — rebuilt
 from `main` on every push by `.github/workflows/pages.yml`.
 
 ```bash
@@ -39,7 +39,7 @@ the PNGs with a pure-JS decoder (`fast-png`) and hands the pixels to
 `exportGltf` as `RgbaImage`s, since the runtime itself never touches a canvas.
 
 ```bash
-pnpm --filter @map-editor/export-cli build
+pnpm --filter @papercut/export-cli build
 node apps/export-cli/dist/cli.js in.json out.glb [--merge]
 ```
 

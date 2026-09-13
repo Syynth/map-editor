@@ -4,7 +4,7 @@
  * Mantine's base styles come first, imported from here and nowhere else:
  * only this package depends on `@mantine/core`, so only this package can name
  * that file, and an app loads both halves with one import of
- * `@map-editor/ui/styles.css`. Everything below it is the frame's own
+ * `@papercut/ui/styles.css`. Everything below it is the frame's own
  * vocabulary — the rail, the context bar, the inspector's sections, the
  * status bar — written against the `--ui-*` custom properties `UiProvider`
  * publishes from the tokens, so a colour or a bar height is changed in

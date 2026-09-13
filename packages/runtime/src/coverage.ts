@@ -24,7 +24,7 @@ import {
   type DeepReadonly,
   type ReadonlyMapDoc,
   type MapObject,
-} from '@map-editor/document'
+} from '@papercut/document'
 import { resolveDisplayMode } from './billboard'
 import { sampleYawEnvelope, wrapDegrees, yawIsFree } from './camera'
 

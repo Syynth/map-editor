@@ -13,11 +13,11 @@
  * to eyeball the art without the editor around it.
  */
 
-import type { RgbaImage } from '@map-editor/document'
-import { createSampleMap } from '@map-editor/fixtures'
+import type { RgbaImage } from '@papercut/document'
+import { createSampleMap } from '@papercut/fixtures'
 // See `App.tsx`'s import of the same package for why the generator sits
 // behind its own subpath.
-import { generateSprites, generateTerrainSheet } from '@map-editor/fixtures/textures'
+import { generateSprites, generateTerrainSheet } from '@papercut/fixtures/textures'
 import { rgbaToDataUrl } from '../editor/rgba'
 
 export interface BakedSprite {

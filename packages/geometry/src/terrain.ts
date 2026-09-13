@@ -44,7 +44,7 @@ import {
   tintPaint,
   topPaint,
   type ReadonlyMapDoc,
-} from '@map-editor/document'
+} from '@papercut/document'
 import {
   cliffTile,
   defaultTopTile,

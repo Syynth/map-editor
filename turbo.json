@@ -89,11 +89,11 @@
       "inputs": ["$TURBO_DEFAULT$", "!docs/**", "!*.md", "!.claude/**"]
     },
     // `^build` here is not decoration (#46): `scripts/global.ts` types the
-    // debug hooks the tour drives as `@map-editor/editor-host`'s `Host`, and
+    // debug hooks the tour drives as `@papercut/editor-host`'s `Host`, and
     // after #46 that name resolves through the package's `exports` map to
     // `dist/index.d.ts`. Verified by moving that one file aside: `tsc --noEmit
     // -p scripts` reports `TS2307: Cannot find module
-    // '@map-editor/editor-host'`. `^build` from the ROOT package means the
+    // '@papercut/editor-host'`. `^build` from the ROOT package means the
     // root's own workspace dependencies (`document`, `editor-host`,
     // `eslint-rules`, `viewport`) and everything beneath them.
     "//#typecheck": {

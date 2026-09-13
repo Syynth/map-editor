@@ -2,7 +2,7 @@ import js from '@eslint/js'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
-import { plugin as houseRules } from '@map-editor/eslint-rules'
+import { plugin as houseRules } from '@papercut/eslint-rules'
 
 // Plain `.js`, not `.ts`: ESLint only reads a TypeScript config through `jiti`,
 // and the config is the one file that must load before anything is configured.
@@ -104,7 +104,7 @@ export default tseslint.config(
     // here would be a no-op, and the whole point of #38 was that a *local*
     // ignore on just this block isn't enough.
     files: ['**/*.{ts,tsx}'],
-    plugins: { 'map-editor': houseRules },
+    plugins: { 'papercut': houseRules },
     rules: {},
   },
 

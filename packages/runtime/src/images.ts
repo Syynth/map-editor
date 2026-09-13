@@ -11,7 +11,7 @@
 import * as THREE from 'three'
 import type { GLTFExporterPlugin, GLTFWriter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
-import type { RgbaImage, SpriteAsset } from '@map-editor/document'
+import type { RgbaImage, SpriteAsset } from '@papercut/document'
 
 /**
  * The one operation the runtime cannot do over raw pixels. The editor passes a

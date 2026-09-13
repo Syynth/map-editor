@@ -9,14 +9,14 @@
  * name, the sprite library) are things only the app holds.
  */
 
-import type { Selection } from '@map-editor/editor-host'
+import type { Selection } from '@papercut/editor-host'
 import type { EditorParams } from './params'
-import { useHost } from '@map-editor/editor-host'
-import type { ReadonlyMapDoc, SnapMode } from '@map-editor/document'
-import { SPRITE_NAMES } from '@map-editor/fixtures/textures'
-import type { TerrainPanelProps } from '@map-editor/feature-terrain'
-import { always, chordFor, evaluate, panels, tools, type PanelSlot, type Platform } from '@map-editor/registry'
-import { BarDivider, BarGroup, BarLabel, BarValue, Chip, IconSegmented, Verb, type IconName } from '@map-editor/ui'
+import { useHost } from '@papercut/editor-host'
+import type { ReadonlyMapDoc, SnapMode } from '@papercut/document'
+import { SPRITE_NAMES } from '@papercut/fixtures/textures'
+import type { TerrainPanelProps } from '@papercut/feature-terrain'
+import { always, chordFor, evaluate, panels, tools, type PanelSlot, type Platform } from '@papercut/registry'
+import { BarDivider, BarGroup, BarLabel, BarValue, Chip, IconSegmented, Verb, type IconName } from '@papercut/ui'
 import type { ComponentType } from 'react'
 
 /**

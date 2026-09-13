@@ -14,7 +14,7 @@
 
 import * as THREE from 'three'
 
-import type { CameraRig, DeepReadonly, MapObject, RgbaImage, SpriteAsset } from '@map-editor/document'
+import type { CameraRig, DeepReadonly, MapObject, RgbaImage, SpriteAsset } from '@papercut/document'
 import { wrapDegrees, yawIsFree } from './camera'
 
 const DEG = Math.PI / 180

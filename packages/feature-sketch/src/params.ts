@@ -5,7 +5,7 @@
  * command that changes the first two, and the stroke sets `drawing` itself.
  */
 
-import { snapTo, type SnapMode } from '@map-editor/document'
+import { snapTo, type SnapMode } from '@papercut/document'
 
 export type SketchMode = 'draw' | 'edit'
 export type SketchSnap = SnapMode

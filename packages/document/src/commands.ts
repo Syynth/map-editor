@@ -30,7 +30,7 @@
  * disposed, so these two stand for the life of the process.
  */
 
-import { commands, defineContextKey, reserveOwner } from '@map-editor/registry'
+import { commands, defineContextKey, reserveOwner } from '@papercut/registry'
 import { z } from 'zod'
 
 import { deserialize } from './io'

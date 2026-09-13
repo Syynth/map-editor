@@ -1,6 +1,6 @@
 /**
  * Regression test for a review finding on #83: `bakedDir()`
- * (`@map-editor/fixtures`) used to return `new URL(...).pathname`, and a
+ * (`@papercut/fixtures`) used to return `new URL(...).pathname`, and a
  * `URL`'s `.pathname` is percent-encoded — a space becomes `%20`, `#` becomes
  * `%23`, and so on. `loadBakedAssets` then fed that encoded string straight
  * into `node:path`'s `join` and `fs.readFile` as if it were a real filesystem
@@ -14,10 +14,10 @@
  * This can't just clone the repo into a space-containing directory in CI —
  * the checkout path is not this test's to choose. Instead it reproduces the
  * exact shape of the bug: build the real CLI bundle (same as
- * `cli.build.test.ts`), but point its `@map-editor/fixtures` resolution at a
+ * `cli.build.test.ts`), but point its `@papercut/fixtures` resolution at a
  * copy of the real `baked/` directory sitting under a directory name that
  * contains a space, wired up as a real `node_modules` entry so the built
- * `cli.js`'s own `import.meta.resolve('@map-editor/fixtures/package.json')`
+ * `cli.js`'s own `import.meta.resolve('@papercut/fixtures/package.json')`
  * — unchanged, still the real production code — finds it there. Revert
  * `baked-dir.ts`'s fix and this fails the same way the real clone did.
  */
@@ -30,8 +30,8 @@ import { fileURLToPath } from 'node:url'
 import { build } from 'vite'
 import { describe, expect, it } from 'vitest'
 
-import { serialize } from '@map-editor/document'
-import { createSampleMap } from '@map-editor/fixtures'
+import { serialize } from '@papercut/document'
+import { createSampleMap } from '@papercut/fixtures'
 
 const PACKAGE_ROOT = fileURLToPath(new URL('..', import.meta.url))
 const FIXTURES_ROOT = fileURLToPath(new URL('../../../packages/fixtures/', import.meta.url))
@@ -50,7 +50,7 @@ describe('the built CLI, resolving its bake from a directory with a space in its
       // exists to put a space in. Copying `package.json` and `baked/` is
       // enough — `bakedDir()` only resolves `./package.json` from the
       // `exports` map and reads `baked/` next to it.
-      const fixturesCopy = join(spaceRoot, 'node_modules', '@map-editor', 'fixtures')
+      const fixturesCopy = join(spaceRoot, 'node_modules', '@papercut', 'fixtures')
       await mkdir(fixturesCopy, { recursive: true })
       await cp(join(FIXTURES_ROOT, 'package.json'), join(fixturesCopy, 'package.json'))
       await cp(join(FIXTURES_ROOT, 'baked'), join(fixturesCopy, 'baked'), { recursive: true })

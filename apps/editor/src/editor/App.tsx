@@ -24,7 +24,7 @@ import {
   toWorld,
   type Placement,
   type SnapMode,
-} from '@map-editor/document'
+} from '@papercut/document'
 import {
   useDocument,
   useHost,
@@ -33,20 +33,20 @@ import {
   useViewSelector,
   type Host,
   selectionSubject,
-} from '@map-editor/editor-host'
+} from '@papercut/editor-host'
 // The brush preview draws the cells a terrain stroke will touch, so it calls
 // the same function the stroke does (`feature-terrain`'s, the one
 // implementation). An app is the only thing that may import a feature (#35),
 // and this file is an app.
-import { strokeCells } from '@map-editor/feature-terrain'
-import { currentSketch, sketchPointHeight } from '@map-editor/feature-sketch'
+import { strokeCells } from '@papercut/feature-terrain'
+import { currentSketch, sketchPointHeight } from '@papercut/feature-sketch'
 import { mergeParams, type EditorParams } from './params'
 // The canvas-drawing generator lives behind its own subpath (#48): re-exporting it
 // from the package root would force `DOM` into every consumer's tsconfig, including
 // `apps/export-cli`'s, whose whole point is compiling without it.
-import { generateSketchTextures, generateSprites, generateTerrainSheet } from '@map-editor/fixtures/textures'
-import { chordFor } from '@map-editor/registry'
-import { exportGltf } from '@map-editor/runtime/export'
+import { generateSketchTextures, generateSprites, generateTerrainSheet } from '@papercut/fixtures/textures'
+import { chordFor } from '@papercut/registry'
+import { exportGltf } from '@papercut/runtime/export'
 import {
   Brand,
   FileButton,
@@ -62,8 +62,8 @@ import {
   TopGroup,
   TopGrow,
   TopSep,
-} from '@map-editor/ui'
-import { Viewport, type SketchOverlay } from '@map-editor/viewport'
+} from '@papercut/ui'
+import { Viewport, type SketchOverlay } from '@papercut/viewport'
 
 import { saveAutosave } from './autosave'
 import { FeaturePanels, ObjectBar, SelectBar } from './bars'
@@ -567,7 +567,7 @@ export default function App() {
     <Frame
       top={
         <>
-          <Brand name="map-editor" level={doc.name} />
+          <Brand name="papercut" level={doc.name} />
           <TopGrow />
           <TopGroup>
             <TopButton icon="undo" title="Undo" kbd={chordFor('undo', undefined, platform)} disabled={!reader.canUndo()} onClick={() => report('undo', host.dispatch('undo'))} />

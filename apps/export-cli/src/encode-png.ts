@@ -1,5 +1,5 @@
 /**
- * The pure-JS half of `ExportOptions.encodePng` (`@map-editor/runtime/export`).
+ * The pure-JS half of `ExportOptions.encodePng` (`@papercut/runtime/export`).
  *
  * The editor's own encoder wraps a canvas's `toBlob`; this one wraps
  * `fast-png`'s `encode`, whose only dependencies are `fflate` and `iobuffer`
@@ -12,11 +12,11 @@
 
 import { encode } from 'fast-png'
 
-import type { RgbaImage } from '@map-editor/document'
-import type { ExportOptions } from '@map-editor/runtime/export'
+import type { RgbaImage } from '@papercut/document'
+import type { ExportOptions } from '@papercut/runtime/export'
 
 // `PngEncoder` itself lives in runtime's `./images`, a module not on
-// `@map-editor/runtime`'s `exports` map (only `.` and `./export` are, per
+// `@papercut/runtime`'s `exports` map (only `.` and `./export` are, per
 // `tests/dependency-direction.test.ts`'s wildcard check) — indexing off
 // `ExportOptions`, which IS exported, gets the same type without reaching
 // past the boundary.

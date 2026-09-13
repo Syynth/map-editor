@@ -2,11 +2,11 @@
 
 `autonomous-pump` is **ours**, copied from `~/code/rs/brink` at brink commit `0692a12`
 (2026-07-29) — same author, no third-party licence. Its project-specific configuration
-lives in [`autonomous-pump/MAP-EDITOR-CONFIG.md`](autonomous-pump/MAP-EDITOR-CONFIG.md);
+lives in [`autonomous-pump/PAPERCUT-CONFIG.md`](autonomous-pump/PAPERCUT-CONFIG.md);
 re-copy `pump.js` from brink rather than editing it, so improvements there flow here cleanly.
 
 **`SKILL.md` has one local divergence**: a "Feeding the pump from a wayfinder map" section,
-added 2026-09-11. It is generic rather than map-editor-specific and is a candidate to
+added 2026-09-11. It is generic rather than papercut-specific and is a candidate to
 upstream to brink; until it is, a re-copy must re-apply it.
 
 Everything below concerns the **mattpocock/skills** copies only.

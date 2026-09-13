@@ -13,7 +13,7 @@
 
 import * as THREE from 'three'
 
-import type { Atmosphere, DeepReadonly, SpriteAsset } from '@map-editor/document'
+import type { Atmosphere, DeepReadonly, SpriteAsset } from '@papercut/document'
 import { rgbaTexture } from './billboard'
 
 const SKY_VERTEX = /* glsl */ `

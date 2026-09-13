@@ -8,10 +8,10 @@
  * functions, rather than the string spelled out in both files.
  */
 
-import { deserialize, serialize, type ReadonlyMapDoc } from '@map-editor/document'
-import { createSampleMap } from '@map-editor/fixtures'
+import { deserialize, serialize, type ReadonlyMapDoc } from '@papercut/document'
+import { createSampleMap } from '@papercut/fixtures'
 
-const AUTOSAVE_KEY = 'map-editor:autosave'
+const AUTOSAVE_KEY = 'papercut:autosave'
 
 export function loadAutosave() {
   try {

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest'
  *
  * pnpm's strict `node_modules` stops a package importing something it has not
  * DECLARED, which is real and free. It says nothing about a declaration that
- * points the wrong way: adding `"@map-editor/runtime": "workspace:*"` to
+ * points the wrong way: adding `"@papercut/runtime": "workspace:*"` to
  * `packages/document/package.json` resolves cleanly and inverts the graph with
  * no error anywhere. #20 recorded that correction to #3 and asked for a test;
  * this is it. It replaces `scripts/check-boundaries.mjs`, which matched import
@@ -78,34 +78,34 @@ function isPlanned(placement: Placement): boolean {
  * all: there is nothing left for one to bound.
  */
 const PLACEMENT: Record<string, Placement> = {
-  'map-editor': { kind: 'root' },
+  'papercut': { kind: 'root' },
 
-  '@map-editor/registry': { kind: 'layer', rank: 0 },
-  '@map-editor/document': { kind: 'layer', rank: 1 },
+  '@papercut/registry': { kind: 'layer', rank: 0 },
+  '@papercut/document': { kind: 'layer', rank: 1 },
   // Visible only to apps, features, and the editor host: the
   // chrome vocabulary is the editor's, not the runtime's. Entries are
   // PLACEMENT keys, except the literals 'app' and 'feature', which stand for
   // any package of that kind.
-  '@map-editor/ui': { kind: 'side', rank: 1, visibleTo: ['app', 'feature', '@map-editor/editor-host'] },
-  '@map-editor/geometry': { kind: 'layer', rank: 2 },
-  '@map-editor/runtime': { kind: 'layer', rank: 3 },
-  '@map-editor/viewport-contrib': { kind: 'layer', rank: 3, planned: true },
-  '@map-editor/viewport': { kind: 'layer', rank: 4 },
-  '@map-editor/fixtures': { kind: 'layer', rank: 4 },
-  '@map-editor/editor-host': { kind: 'layer', rank: 5 },
+  '@papercut/ui': { kind: 'side', rank: 1, visibleTo: ['app', 'feature', '@papercut/editor-host'] },
+  '@papercut/geometry': { kind: 'layer', rank: 2 },
+  '@papercut/runtime': { kind: 'layer', rank: 3 },
+  '@papercut/viewport-contrib': { kind: 'layer', rank: 3, planned: true },
+  '@papercut/viewport': { kind: 'layer', rank: 4 },
+  '@papercut/fixtures': { kind: 'layer', rank: 4 },
+  '@papercut/editor-host': { kind: 'layer', rank: 5 },
   // Sits beside editor-host, not under it: see the comment above PLACEMENT
   // for the two mechanisms (an allow-list one way, a kind-guard the other)
   // that keep the two from ever importing each other.
-  '@map-editor/feature-terrain': { kind: 'feature' },
-  '@map-editor/feature-sketch': { kind: 'feature' },
+  '@papercut/feature-terrain': { kind: 'feature' },
+  '@papercut/feature-sketch': { kind: 'feature' },
 
   // Tooling describes the system from outside it, so it sits off the ladder
   // entirely rather than at the bottom of it: a rung of 0 would let any layer
   // package depend on the lint rules.
-  '@map-editor/eslint-rules': { kind: 'tooling' },
+  '@papercut/eslint-rules': { kind: 'tooling' },
 
-  '@map-editor/editor': { kind: 'app' },
-  '@map-editor/export-cli': { kind: 'app' },
+  '@papercut/editor': { kind: 'app' },
+  '@papercut/export-cli': { kind: 'app' },
 }
 
 interface PackageJson {
@@ -207,12 +207,12 @@ function discover(): Project[] {
  * plain "strictly lower rung" rule, but never named by #35).
  */
 const FEATURE_MAY_DEPEND_ON = new Set([
-  '@map-editor/registry',
-  '@map-editor/document',
-  '@map-editor/geometry',
-  '@map-editor/runtime',
-  '@map-editor/ui',
-  '@map-editor/viewport-contrib',
+  '@papercut/registry',
+  '@papercut/document',
+  '@papercut/geometry',
+  '@papercut/runtime',
+  '@papercut/ui',
+  '@papercut/viewport-contrib',
 ])
 
 /** The reason `from` may not declare `to`, or null when the arrow is legal. */
@@ -384,14 +384,14 @@ describe('workspace dependency direction', () => {
   // feature reaching out, and something reaching in) without waiting for a
   // second feature package to exist.
   it('keeps a feature package on both sides of the line #35 drew', () => {
-    const FEATURE = '@map-editor/feature-terrain'
+    const FEATURE = '@papercut/feature-terrain'
 
     // Off the allow-list: two rungs a plain "strictly lower rung" rule would
     // admit (`viewport`, `fixtures`), the peer it may never reach
     // (`editor-host`, and a feature reaching a feature — there being only
     // one on disk, `FEATURE` stands in for both), and an app, which is not
     // reachable by any package.
-    for (const to of ['@map-editor/viewport', '@map-editor/fixtures', '@map-editor/editor-host', FEATURE, '@map-editor/editor'])
+    for (const to of ['@papercut/viewport', '@papercut/fixtures', '@papercut/editor-host', FEATURE, '@papercut/editor'])
       expect(violation(FEATURE, to), `${FEATURE} -> ${to}`).not.toBeNull()
 
     // On the allow-list: every one of these must be legal, or the feature
@@ -402,9 +402,9 @@ describe('workspace dependency direction', () => {
     // own branch rather than falling through to the generic "arrow from apps
     // to packages points one way" message, which would misname a feature as
     // an app.
-    expect(violation('@map-editor/editor-host', FEATURE)).toContain('#35')
-    expect(violation('@map-editor/ui', FEATURE)).toContain('#35')
-    expect(violation('@map-editor/editor-host', FEATURE)).not.toContain('the arrow from apps to packages points one way')
+    expect(violation('@papercut/editor-host', FEATURE)).toContain('#35')
+    expect(violation('@papercut/ui', FEATURE)).toContain('#35')
+    expect(violation('@papercut/editor-host', FEATURE)).not.toContain('the arrow from apps to packages points one way')
 
     // `violation` treats an unplaced package as a non-match (see the early
     // `if (!a || !b) return null`), so a name in the allow-list that a rename

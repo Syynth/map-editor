@@ -6,7 +6,7 @@ import {
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
+} from '@papercut/document'
 import { describe, expect, it } from 'vitest'
 
 import { CUT_TINT, GHOST_TINT, layerView, withinLayers } from './layers'

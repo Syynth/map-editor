@@ -32,7 +32,7 @@ import {
   levelCentre,
   toWorld,
   type DocumentTarget,
-} from '@map-editor/document'
+} from '@papercut/document'
 import {
   Character,
   Picker,
@@ -48,8 +48,8 @@ import {
   type PickResult,
   type SceneAssets,
   type LayerRange,
-} from '@map-editor/runtime'
-import type { RgbaImage, SpriteAsset } from '@map-editor/document'
+} from '@papercut/runtime'
+import type { RgbaImage, SpriteAsset } from '@papercut/document'
 
 /** Tilt-shift: a cheap vertical-gradient blur, the HD-2D miniature look. */
 const TiltShiftShader = {

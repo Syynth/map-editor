@@ -1,5 +1,5 @@
 {
-  "name": "@map-editor/editor",
+  "name": "@papercut/editor",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -12,16 +12,16 @@
     "check-bundle-size": "node ../../scripts/check-bundle-size.mjs dist"
   },
   "dependencies": {
-    "@map-editor/document": "workspace:*",
-    "@map-editor/editor-host": "workspace:*",
-    "@map-editor/feature-sketch": "workspace:*",
-    "@map-editor/feature-terrain": "workspace:*",
-    "@map-editor/fixtures": "workspace:*",
-    "@map-editor/geometry": "workspace:*",
-    "@map-editor/registry": "workspace:*",
-    "@map-editor/runtime": "workspace:*",
-    "@map-editor/ui": "workspace:*",
-    "@map-editor/viewport": "workspace:*",
+    "@papercut/document": "workspace:*",
+    "@papercut/editor-host": "workspace:*",
+    "@papercut/feature-sketch": "workspace:*",
+    "@papercut/feature-terrain": "workspace:*",
+    "@papercut/fixtures": "workspace:*",
+    "@papercut/geometry": "workspace:*",
+    "@papercut/registry": "workspace:*",
+    "@papercut/runtime": "workspace:*",
+    "@papercut/ui": "workspace:*",
+    "@papercut/viewport": "workspace:*",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

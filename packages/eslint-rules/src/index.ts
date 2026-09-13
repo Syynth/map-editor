@@ -17,6 +17,6 @@ import type { ESLint } from 'eslint'
 export const rules: NonNullable<ESLint.Plugin['rules']> = {}
 
 export const plugin: ESLint.Plugin = {
-  meta: { name: '@map-editor/eslint-rules', version: '0.0.0' },
+  meta: { name: '@papercut/eslint-rules', version: '0.0.0' },
   rules,
 }

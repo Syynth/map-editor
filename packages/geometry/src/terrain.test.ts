@@ -10,7 +10,7 @@ import {
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
-} from '@map-editor/document'
+} from '@papercut/document'
 import { meshTerrainChunk } from './terrain'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */

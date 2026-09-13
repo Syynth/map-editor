@@ -36,8 +36,8 @@ import {
   type ReadonlyMapDoc,
   type ReadonlyVoxel,
   type SurfaceAddress,
-} from '@map-editor/document'
-import { defaultTopTile, sheetLayoutFor } from '@map-editor/geometry'
+} from '@papercut/document'
+import { defaultTopTile, sheetLayoutFor } from '@papercut/geometry'
 
 export type TerrainMode = 'sculpt' | 'paint'
 export type SculptVerb = 'raise' | 'flatten' | 'ramp' | 'water'

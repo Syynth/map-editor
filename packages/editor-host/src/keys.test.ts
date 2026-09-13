@@ -1,8 +1,8 @@
-import { commands, keymap, parseChords, resolve, validateArgs, type Chord, type KeyBinding } from '@map-editor/registry'
+import { commands, keymap, parseChords, resolve, validateArgs, type Chord, type KeyBinding } from '@papercut/registry'
 import { describe, expect, it } from 'vitest'
 
 import { createHost, type Host } from './host'
-import { createDocument, createMap } from '@map-editor/document'
+import { createDocument, createMap } from '@papercut/document'
 
 // Importing the module is what declares the defaults, and the barrel is what
 // an app reaches them through.

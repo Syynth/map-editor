@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
 import { GLTFExporter, type GLTFWriter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
-import type { RgbaImage, SpriteAsset } from '@map-editor/document'
+import type { RgbaImage, SpriteAsset } from '@papercut/document'
 import { rgbaTexture } from './billboard'
 import { atlasFor, embedPngImages, flipRows, type WriterInternals } from './images'
 

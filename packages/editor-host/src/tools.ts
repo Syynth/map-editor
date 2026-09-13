@@ -13,8 +13,8 @@
  * knows, and `tools.set { tool }` refuses an id no owner declared.
  */
 
-import type { SnapMode } from '@map-editor/document'
-import { commands, defineContextKey, reserveOwner, tools } from '@map-editor/registry'
+import type { SnapMode } from '@papercut/document'
+import { commands, defineContextKey, reserveOwner, tools } from '@papercut/registry'
 import { setup, types } from 'xstate'
 import { z } from 'zod'
 

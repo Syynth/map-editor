@@ -43,7 +43,7 @@
  * — `enq.sendTo` takes nothing else on v6.
  */
 
-import type { DocumentReader } from '@map-editor/document'
+import type { DocumentReader } from '@papercut/document'
 import { setup, types } from 'xstate'
 
 import { strokeLogic, type DocumentRef, type StrokeRef } from './stroke'
