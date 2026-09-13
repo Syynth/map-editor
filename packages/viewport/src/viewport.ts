@@ -451,8 +451,15 @@ export class Viewport {
   // here rather than in test-only code because the thing worth driving is the
   // real viewport; nothing in the app calls them.
 
-  /** Skip the post-processing chain, to isolate it when diagnosing. */
-  bypassComposer = false
+  /**
+   * Skip the post-processing chain. ON by default (2026-09-12): on one Apple
+   * GPU (an M5) anything drawn through the composer's offscreen target came
+   * out cut off past a view depth — a 24-bit multisampled target and
+   * dropping tilt-shift did not cure it, and the owner would rather have the
+   * level on every machine than bloom on most. The composer stays built so a
+   * probe can turn it back on and measure it.
+   */
+  bypassComposer = true
 
   setCameraForProbe(state: Partial<{ yaw: number; pitch: number; distance: number }>): void {
     if (state.yaw !== undefined) this.orbit.yaw = state.yaw
