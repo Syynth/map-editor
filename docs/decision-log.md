@@ -281,3 +281,11 @@ Each entry:
 - **SCOPE:** minor/local
 - **WHAT:** `formatVersion` bumps freely and old shapes are simply not read; `deserialize` rejects them. Migrations start when a level worth keeping exists.
 - **WHY:** Nothing has been authored outside prototypes; a migration now would be code protecting no data.
+
+## Drag modifiers follow the reference art apps; Select picks structures too
+- **WHEN:** 2026-09-12
+- **PROJECT:** map-editor
+- **SYSTEM:** editor-ui
+- **SCOPE:** moderate
+- **WHAT:** One snap setting (grid / half / free) serves every drag. Holding Ctrl (Cmd on a Mac) frees one drag or press from snapping; holding Shift constrains a drag to the axis it has travelled further along. This replaces the sketch tool's earlier Shift-for-free. The arrows nudge the selection one cell along the world axes. Select is one tool over everything: a press on an object selects and drags it; a press on any structure's surface — the ground included — selects that structure and drags it by its placement in its parent (voxel volumes to whole cells; the root never moves); a press on nothing clears.
+- **WHY:** Photoshop, Figma and Blender all put snap-off on Ctrl/Cmd and axis constraint on Shift, so those hands already know it; the ground being selectable is what a scene graph of structures means — the level has no special-cased terrain to click past.
