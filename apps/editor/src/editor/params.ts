@@ -10,7 +10,13 @@ import type { TerrainParams } from '@map-editor/feature-terrain'
 
 export type EditorParams = ToolsSnapshot & TerrainParams & SketchParams
 
-/** Spread every feature's slice over the host's fields; a later feature's key shadows an earlier one's, so features namespace their names. */
+/**
+ * Spread every feature's slice over the host's fields; a later feature's key
+ * shadows an earlier one's, so features namespace their names. The host's
+ * own fields go on last, all of them: a panel that reads one the merge
+ * forgot sees `undefined` and shows nothing selected.
+ */
 export function mergeParams(snapshot: ToolsSnapshot): EditorParams {
-  return Object.assign({}, ...Object.values(snapshot.features), { tool: snapshot.tool, spriteName: snapshot.spriteName, features: snapshot.features }) as EditorParams
+  const { features, ...own } = snapshot
+  return Object.assign({}, ...Object.values(features), own, { features }) as EditorParams
 }

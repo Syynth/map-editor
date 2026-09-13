@@ -16,7 +16,7 @@ import type { ReadonlyMapDoc, SnapMode } from '@map-editor/document'
 import { SPRITE_NAMES } from '@map-editor/fixtures/textures'
 import type { TerrainPanelProps } from '@map-editor/feature-terrain'
 import { always, chordFor, evaluate, panels, tools, type PanelSlot, type Platform } from '@map-editor/registry'
-import { BarDivider, BarGroup, BarLabel, BarValue, Chip, Segmented, Verb, type IconName } from '@map-editor/ui'
+import { BarDivider, BarGroup, BarLabel, BarValue, Chip, IconSegmented, Verb, type IconName } from '@map-editor/ui'
 import type { ComponentType } from 'react'
 
 /**
@@ -88,18 +88,18 @@ export function describeSelection(doc: ReadonlyMapDoc, selection: Selection | nu
   }
 }
 
-/** The snap setting, as both host tools offer it (ruling of 2026-09-12, "Select tool"). */
+/** The snap setting, as both host tools offer it (ruling of 2026-09-12, "Select tool"); icons, as every bar control is. */
 export function SnapControl({ value, onChange }: { value: SnapMode; onChange: (snap: SnapMode) => void }) {
   return (
     <>
       <BarLabel>Snap</BarLabel>
-      <Segmented
+      <IconSegmented
         value={value}
         onChange={onChange}
         options={[
-          { value: 'grid', label: 'Grid', title: 'Whole cells' },
-          { value: 'half', label: '½', title: 'Half cells' },
-          { value: 'free', label: 'Free', title: 'No snapping — holding ctrl (⌘ on a Mac) does this too' },
+          { value: 'grid', icon: 'snapGrid', title: 'Snap to whole cells' },
+          { value: 'half', icon: 'snapHalf', title: 'Snap to half cells' },
+          { value: 'free', icon: 'snapFree', title: 'No snapping — holding ctrl (⌘ on a Mac) does this too' },
         ]}
       />
     </>
