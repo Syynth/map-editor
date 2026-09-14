@@ -5,8 +5,12 @@
  * A list so the key can be rotated without stranding installed apps: ship a
  * shell trusting old and new, switch CI to the new key, drop the old one in a
  * later shell release.
- *
- * Empty until the first key is generated — with nothing trusted, a packaged app
- * never updates its bundle and serves the one its installer shipped.
  */
-export const TRUSTED_BUNDLE_KEYS: readonly string[] = []
+export const TRUSTED_BUNDLE_KEYS: readonly string[] = [
+  // Generated 2026-09-13; the private key is the repo's BUNDLE_SIGNING_KEY
+  // secret, backed up in the owner's password manager.
+  `-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA5HAv6PiAs4FWVnTh1fTMxW6ZqnLWQNl90E5O+7UdP0c=
+-----END PUBLIC KEY-----
+`,
+]
