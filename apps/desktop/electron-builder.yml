@@ -34,9 +34,19 @@ extraResources:
 # `grantFileProtocolExtraPrivileges` is off because no page is ever loaded from
 # `file://` — the bundle is served over `app://` (src/bundle-protocol.ts) — so
 # the privileges it grants `file:` pages would only be attack surface.
+#
+# `enableCookieEncryption` is OFF on purpose. It encrypts Chromium's cookie
+# store with a key kept in the macOS Keychain ("Papercut Safe Storage"), and
+# the first network request of every launch opens that store — including the
+# main process's bundle update check. A keychain item belongs to the signature
+# that created it, so any build signed differently (every ad-hoc build, and the
+# switch to Developer ID) blocks that request on a Keychain permission prompt:
+# the first released build hung its update check that way. The app keeps no
+# cookies worth protecting — no accounts, no sessions — so there is nothing for
+# the encryption to guard.
 electronFuses:
   runAsNode: false
-  enableCookieEncryption: true
+  enableCookieEncryption: false
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
   enableEmbeddedAsarIntegrityValidation: true
@@ -77,3 +87,7 @@ win:
 linux:
   target: AppImage
   category: Graphics
+  # Linux names the binary after package.json's `name` unless told otherwise,
+  # and `@papercut/desktop` is not a legal filename (macOS and Windows use
+  # `productName`, which is).
+  executableName: papercut

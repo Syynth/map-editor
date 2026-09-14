@@ -68,8 +68,12 @@ jobs:
 
       # `extraMetadata.version` stamps the version into the packaged app
       # without committing a package.json bump for every release.
+      # bash on every runner: Windows defaults to PowerShell, which splits
+      # `-c.extraMetadata.version=…` at the dots and hands electron-builder a
+      # config *file* named `.extraMetadata.version=0.1.0`.
       - name: Package
         working-directory: apps/desktop
+        shell: bash
         run: pnpm exec electron-builder ${{ matrix.target }} --publish never -c.extraMetadata.version=${{ inputs.version }}
 
       - uses: actions/upload-artifact@v7.0.1
