@@ -525,3 +525,11 @@ Each entry:
 - **SCOPE:** architectural
 - **WHAT:** There is no door for a loose `.map.json`, no standalone-map mode, and no migration of today's map files: the project format starts fresh and the map format is defined as the project's. Recents are projects.
 - **WHY:** Nobody has made a map yet; the project is a day and a half old, so there is no legacy to keep alive, and a second way in (brink needs two because a story can be one file) would only add a code path and a badge for an identity papercut does not have.
+
+## The terrain setup screen works like Tiled's terrain editor
+- **WHEN:** 2026-09-14
+- **PROJECT:** papercut
+- **SYSTEM:** terrain-tools / settings
+- **SCOPE:** moderate (the design of the sidecar authoring UI, #146)
+- **WHAT:** Painting on the map stays as it is: pick a material and paint. The setup screen in Project settings (the Terrains section) works the way Tiled's terrain editor does: the artist picks an image (a sheet), a terrain list sits beside the image, and terrains are assigned by clicking or dragging over tile corners in the image; every tagged corner shows as a translucent wedge in the terrain's colour so the whole set reads at a glance. That tagging is what decides how textures are painted onto the terrain. Sets stay corner-only; Tiled's edge and mixed set types are not adopted.
+- **WHY:** Both familiarity and reach. The people who will tag sheets already know Tiled's editor and should not have to learn a second idiom for the same job. Tagging corners directly on the image also works for any sheet layout, hand-drawn or third-party, where the template-placing approach in the terrain-tools mockup only fits tiles laid out on its fixed 4 × 4 block.
