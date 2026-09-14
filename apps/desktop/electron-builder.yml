@@ -77,3 +77,7 @@ win:
 linux:
   target: AppImage
   category: Graphics
+  # Linux names the binary after package.json's `name` unless told otherwise,
+  # and `@papercut/desktop` is not a legal filename (macOS and Windows use
+  # `productName`, which is).
+  executableName: papercut
