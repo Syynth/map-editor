@@ -386,3 +386,19 @@ Each entry:
 - **SCOPE:** architectural
 - **WHAT:** The desktop shell is Electron, built in `apps/desktop`. This settles the Electron-vs-Tauri question that "Decisions deliberately deferred during the prototype" held open. The heavy-scene smoke test planned to decide it won't be run.
 - **WHY:** The owner has used Tauri and is unhappy with it. Its main advantage is a Rust backend, and papercut has no use for one: the app is a TypeScript web UI in a thin desktop wrapper. The goal is a shell that works predictably. Electron ships its own Chromium, so the editor runs on the same engine on every platform instead of each OS's webview. Its packaging and update path is mature and widely used. A smoke test wouldn't change a choice already made on first-hand experience.
+
+## Papercut gets its own signing credentials, after an unsigned end-to-end build
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** moderate
+- **WHAT:** Papercut's macOS signing uses its own credentials (certificate, notarization API key or app-specific password, CI secrets), set up alongside brink's rather than reusing them. brink (`~/code/rs/brink`) is a reference for the process only. Signing comes after an unsigned build works end to end: packaged app, bundle updater, and CI publishing.
+- **WHY:** Separate credentials mean one project's secrets can be revoked or rotated, or can leak, without affecting the other. Proving the whole update pipeline unsigned first means a signing failure can't hide a pipeline bug, or the other way round.
+
+## The desktop app's bundle ID is dev.syynth.papercut
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** moderate
+- **WHAT:** The Electron app's `appId` (the macOS bundle identifier) is `dev.syynth.papercut`, and its product name is `Papercut`. This intentionally breaks from brink's `dev.<product>.<app>` pattern (`dev.brink.studio`).
+- **WHY:** The ID names the publisher, not the product, so future apps can share the `dev.syynth` prefix. It needs to be picked once and kept: signing, notarization, and the permissions and keychain entries macOS grants the app are all tied to it. The product name needs the same care, because Electron names the app's data folder after it, and renaming would strand autosaves and downloaded bundles.

@@ -1,0 +1,65 @@
+# Packaging for the Electron shell. Unsigned for now: signing gets its own
+# credentials once an unsigned build works end to end (docs/decision-log.md,
+# "Papercut gets its own signing credentials, after an unsigned end-to-end
+# build").
+
+# Permanent — signing, notarization and the OS's per-app grants are keyed on
+# it (docs/decision-log.md, "The desktop app's bundle ID is dev.syynth.papercut").
+# `productName` comes from package.json and names the data folder, so it is
+# just as fixed.
+appId: dev.syynth.papercut
+
+directories:
+  output: release
+
+# The shell's own code only. It has no runtime dependencies — tsup bundles
+# everything but `electron` — so nothing from node_modules is packed.
+files:
+  - dist/**
+  - package.json
+  - '!dist/**/*.map'
+
+# The web bundle ships beside the asar, not inside it, as the starting bundle
+# every install has before it has downloaded one (`bundleRoot` in src/main.ts).
+extraResources:
+  - from: ../editor/dist
+    to: bundle
+
+# Electron's fuses, flipped at package time. Each closes a way to run code in
+# the shell's process without going through the app: `RunAsNode` makes the
+# binary a plain Node when ELECTRON_RUN_AS_NODE is set; the NODE_OPTIONS and
+# `--inspect` fuses let an environment variable or flag inject code;
+# `onlyLoadAppFromAsar` and asar integrity stop a swapped-in app directory or a
+# tampered asar from loading. Integrity is only enforced on macOS and Windows.
+# `grantFileProtocolExtraPrivileges` is off because no page is ever loaded from
+# `file://` — the bundle is served over `app://` (src/bundle-protocol.ts) — so
+# the privileges it grants `file:` pages would only be attack surface.
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false
+
+mac:
+  category: public.app-category.graphics-design
+  target:
+    - dmg
+    - zip
+  # Ad-hoc (`-`): a signature with no identity behind it, so no credential of
+  # any kind. Leaving the identity unset would make electron-builder sign with
+  # any Developer ID in the local keychain — on a machine holding another
+  # project's certificate, exactly the reuse the decision log rules out.
+  # `null` (skip signing) is not an option on Apple Silicon: renaming the app
+  # and flipping fuses invalidate the ad-hoc signature Electron ships with, and
+  # the kernel SIGKILLs a binary whose signature does not verify.
+  identity: '-'
+
+win:
+  target: nsis
+
+linux:
+  target: AppImage
+  category: Graphics

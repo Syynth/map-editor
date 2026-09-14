@@ -3,6 +3,8 @@ dist/
 # `pnpm perf`'s own unminified production build (scripts/perf.mjs).
 dist-perf/
 .turbo/
+# electron-builder's packaged apps and installers (apps/desktop).
+apps/desktop/release/
 
 # `tsc -b` from the repo root (see tsconfig.json's solution `references`, #46)
 # writes one of these for the root project itself, outside any `dist/`. Every
