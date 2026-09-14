@@ -91,6 +91,7 @@ void app.whenReady().then(() => {
   // Swapped only when the user accepts a reload: until then the running page
   // keeps loading its lazy chunks from the bundle it started with.
   let serving = activeBundle(store)
+  describeInAboutPanel(serving)
 
   lockDown()
   protocol.handle(BUNDLE_SCHEME, async (request) => {
@@ -134,6 +135,7 @@ void app.whenReady().then(() => {
           offered.add(outcome.bundle.sequence)
           if (await offerReload(window, outcome.bundle)) {
             serving = outcome.bundle
+            describeInAboutPanel(serving)
             window.webContents.reloadIgnoringCache()
           }
         } else if (outcome.kind === 'needs-app-update' && !offered.has(outcome.manifest.sequence)) {
@@ -154,6 +156,21 @@ void app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+/**
+ * The About panel names both halves of what is running: the shell's release
+ * version, and in the parenthesised build slot the web bundle it is serving —
+ * which changes without the shell's version changing, so without it two
+ * installs of the same release can run different editors indistinguishably.
+ * macOS shows it as `0.1.0 (bundle 25 · 9c649e3)`.
+ */
+function describeInAboutPanel(bundle: ActiveBundle): void {
+  app.setAboutPanelOptions({
+    applicationName: 'Papercut',
+    applicationVersion: app.getVersion(),
+    version: bundle.sequence > 0 ? `bundle ${bundle.sequence} · ${(bundle.commit ?? '').slice(0, 7)}` : 'built-in bundle',
+  })
+}
 
 /** Only the app's own top frame may call the shell — not an iframe, not a page it navigated away to. */
 function isAppFrame(event: IpcMainInvokeEvent): boolean {
