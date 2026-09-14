@@ -67,5 +67,17 @@ engineStrict: true
 # supply-chain settings exist to keep out. pnpm 12 hard-fails an install
 # (`ERR_PNPM_IGNORED_BUILDS`) on an UNDECLARED ignored build, so this entry is
 # what keeps `pnpm install` green on a fresh clone rather than a silent skip.
+#
+# `electron-builder` (apps/desktop) brings `electron-winstaller`, whose
+# `install` script copies a host-arch `7z.exe` into place for the
+# Squirrel.Windows target. The desktop app packages Windows as NSIS, which
+# never touches it, and the script is a local file copy with no network — so
+# declining it costs nothing, and declaring it keeps `ERR_PNPM_IGNORED_BUILDS`
+# from failing a fresh install.
+#
+# `electron` itself needs no entry: since Electron 44 it has no install script
+# and downloads its binary on first run instead, verified against the
+# `checksums.json` the npm package ships.
 allowBuilds:
   esbuild: false
+  electron-winstaller: false

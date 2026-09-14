@@ -67,6 +67,7 @@
     { "path": "packages/geometry" },
     { "path": "packages/registry" },
     { "path": "packages/runtime" },
+    { "path": "packages/shell-api" },
     { "path": "packages/ui" },
     { "path": "packages/viewport" }
   ]

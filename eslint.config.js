@@ -39,7 +39,11 @@ export default tseslint.config(
     // fresh checkout and fail everywhere else. `.gitignore`'s `dist/` matches at
     // any depth (gitignore semantics differ), so `git status` stays clean and
     // hides it.
-    ignores: ['**/dist/**', '**/dist-perf/**', '**/.turbo/**', '.claude/**'],
+    //
+    // `apps/desktop/release` is electron-builder's output: a packaged app with
+    // the whole editor bundle inside it, which would lint as minified code the
+    // same way `dist/` does — and, like `dist/`, only on a machine that packaged.
+    ignores: ['**/dist/**', '**/dist-perf/**', '**/.turbo/**', '.claude/**', 'apps/desktop/release/**'],
   },
 
   {

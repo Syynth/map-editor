@@ -58,6 +58,34 @@ jobs:
           pnpm turbo run build --filter='@papercut/editor^...'
           pnpm --filter @papercut/editor exec vite build --base=./
 
+      # The desktop app's bundle updater reads `desktop/manifest.json` from
+      # this site and fetches every file it lists from here too, so signing
+      # is all it takes to publish a desktop bundle: the deploy below already
+      # serves the files (docs/decision-log.md, "Web bundles are delivered as
+      # a signed per-file manifest, not a zip").
+      #
+      # `--sequence` is this workflow's run number, which only grows, so every
+      # deploy supersedes the last and a replayed older manifest is refused.
+      # `minShellApi` comes from the editor's package.json because the editor
+      # is where code that depends on the shell lives; raise it there when the
+      # editor starts using a newer `SHELL_API_VERSION`.
+      #
+      # The key reaches this one step only, never `pnpm install` or the build.
+      # Without it (a fork, or before the secret exists) the site still
+      # deploys; installed apps just keep the bundle they have.
+      - name: Sign desktop bundle
+        env:
+          BUNDLE_SIGNING_KEY: ${{ secrets.BUNDLE_SIGNING_KEY }}
+        run: |
+          if [ -z "$BUNDLE_SIGNING_KEY" ]; then
+            echo "::warning::BUNDLE_SIGNING_KEY is not set; desktop apps will not receive this bundle"
+            exit 0
+          fi
+          node apps/desktop/tools/sign-bundle.ts apps/editor/dist \
+            --sequence "${{ github.run_number }}" \
+            --commit "${{ github.sha }}" \
+            --min-shell-api "$(node -p "require('./apps/editor/package.json').papercut.minShellApi")"
+
       - uses: actions/configure-pages@v6.0.0
 
       - uses: actions/upload-pages-artifact@v5.0.0

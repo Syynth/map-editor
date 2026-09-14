@@ -1,0 +1,25 @@
+{
+  "name": "@papercut/desktop",
+  "productName": "Papercut",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Papercut level editor",
+  "author": "syynth",
+  "type": "module",
+  "main": "dist/main.js",
+  "exports": {},
+  "scripts": {
+    "build": "tsc --noEmit && tsup",
+    "typecheck": "tsc --noEmit",
+    "start": "electron .",
+    "package": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "@papercut/shell-api": "workspace:*",
+    "@types/node": "^22.20.2",
+    "electron": "44.3.0",
+    "electron-builder": "26.15.3",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3"
+  }
+}

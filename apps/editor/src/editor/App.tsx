@@ -44,13 +44,28 @@ export default function App() {
 
   // Autosave, subscribed rather than rendered: a document change schedules a
   // save, it does not re-render anything.
+  //
+  // A save still waiting out the delay is flushed on `pagehide` rather than
+  // dropped: closing the tab, or the desktop shell reloading into an updated
+  // bundle, would otherwise lose the last edit made inside the delay.
   useEffect(() => {
     let pending: ReturnType<typeof setTimeout> | undefined
     const unsubscribe = host.reader.subscribe(() => {
       clearTimeout(pending)
-      pending = setTimeout(() => saveAutosave(host.reader.doc), AUTOSAVE_DELAY_MS)
+      pending = setTimeout(() => {
+        pending = undefined
+        saveAutosave(host.reader.doc)
+      }, AUTOSAVE_DELAY_MS)
     })
+    const flush = () => {
+      if (pending === undefined) return
+      clearTimeout(pending)
+      pending = undefined
+      saveAutosave(host.reader.doc)
+    }
+    window.addEventListener('pagehide', flush)
     return () => {
+      window.removeEventListener('pagehide', flush)
       clearTimeout(pending)
       unsubscribe()
     }

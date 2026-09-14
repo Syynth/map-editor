@@ -16,6 +16,8 @@
   },
   "scripts": {
     "dev": "pnpm --filter @papercut/editor dev",
+    "desktop": "turbo run build --filter=@papercut/editor --filter=@papercut/desktop && pnpm --filter @papercut/desktop start",
+    "desktop:package": "turbo run build --filter=@papercut/editor --filter=@papercut/desktop && pnpm --filter @papercut/desktop package",
     "gate": "turbo run test typecheck lint",
     "gate:full": "turbo run build test typecheck lint check-bundle-size",
     "preview": "pnpm --filter @papercut/editor preview",

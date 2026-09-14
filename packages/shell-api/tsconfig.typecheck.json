@@ -1,0 +1,12 @@
+{
+  // The checking half of #46's split — see `packages/registry/tsconfig.typecheck.json`.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "emitDeclarationOnly": false,
+    "declarationMap": false,
+    "noEmit": true
+  },
+  "exclude": [],
+  "include": ["src"]
+}

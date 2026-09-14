@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    // No `DOM`: nothing here runs in a page. The main process is Node, and the
+    // preload runs in the renderer but only touches `contextBridge`, never the
+    // document — the page itself is the editor bundle, typed by `apps/editor`.
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // The Electron main process is Node, the same honest declaration
+    // `apps/export-cli` makes. `electron`'s own typings reference these.
+    "types": ["node"]
+  },
+
+  // The editor the shell hosts is a built bundle it serves as files, not a
+  // module it imports — apps are leaves (tests/dependency-direction.test.ts),
+  // and that is what lets the web bundle ship without the shell. The one
+  // workspace import is the contract both sides compile against.
+  "include": ["src", "tools", "tsup.config.ts"],
+
+  "references": [{ "path": "../../packages/shell-api" }]
+}

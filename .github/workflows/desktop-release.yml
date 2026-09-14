@@ -1,0 +1,108 @@
+name: Desktop release
+
+# Builds the Electron shell's installers and attaches them to a DRAFT GitHub
+# release. Run by hand, only when the shell itself changes: the web bundle
+# reaches installed apps through the Pages deploy and needs no release
+# (docs/decision-log.md, "Web UI updates ship separately from the Electron
+# shell, without code signing").
+#
+# Unsigned for now — ad-hoc on macOS, nothing on Windows or Linux — until the
+# unsigned pipeline works end to end (docs/decision-log.md, "Papercut gets its
+# own signing credentials, after an unsigned end-to-end build"). macOS will
+# refuse to open a downloaded ad-hoc app until it is signed and notarized;
+# right-click > Open, or `xattr -dr com.apple.quarantine`, gets past that for
+# testing.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Shell version, semver without a leading v (e.g. 0.1.0)
+        required: true
+
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac --arm64 --x64
+          - os: windows-latest
+            target: --win --x64
+          - os: ubuntu-latest
+            target: --linux --x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+          package-manager-cache: false
+
+      # Same corepack install as gate.yml, for the same reasons (see there).
+      - name: Enable corepack
+        run: |
+          npm install -g corepack@0.36.0
+          corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check version
+        shell: bash
+        run: |
+          [[ "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::not a semver version"; exit 1; }
+
+      # The installer's built-in bundle is the editor at this commit. Downloaded
+      # bundles replace it as soon as the app sees a newer signed one.
+      - name: Build
+        run: pnpm turbo run build --filter=@papercut/editor --filter=@papercut/desktop
+
+      # `extraMetadata.version` stamps the version into the packaged app
+      # without committing a package.json bump for every release.
+      - name: Package
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder ${{ matrix.target }} --publish never -c.extraMetadata.version=${{ inputs.version }}
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: desktop-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    # The only job that writes to the repository, so the only one that can.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          path: installers
+          merge-multiple: true
+
+      # A draft: nothing is public, and no tag exists, until someone reviews
+      # the files and publishes it by hand.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "desktop-v${{ inputs.version }}" installers/* \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Papercut desktop ${{ inputs.version }}" \
+            --notes "Unsigned desktop build of ${{ github.sha }}." \
+            --draft
