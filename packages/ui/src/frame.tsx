@@ -143,7 +143,8 @@ export function TopButton({
 }
 
 /** A labelled button that opens the file picker; the input rides inside it. */
-export function FileButton({ icon, title, accept, onFile }: { icon: IconName; title: string; accept: string; onFile: (file: File) => void }) {
+/** A file picker as a button. `multiple` lets several files be picked together, delivered to `onFiles`; `onFile` gets the first either way. */
+export function FileButton({ icon, title, accept, onFile, onFiles, multiple = false }: { icon: IconName; title: string; accept: string; onFile?: (file: File) => void; onFiles?: (files: File[]) => void; multiple?: boolean }) {
   return (
     <label className="ui-btn is-file">
       <Icon name={icon} size={13} />
@@ -151,9 +152,13 @@ export function FileButton({ icon, title, accept, onFile }: { icon: IconName; ti
       <input
         type="file"
         accept={accept}
+        multiple={multiple}
         onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) onFile(file)
+          const files = [...(event.target.files ?? [])]
+          if (files.length > 0) {
+            onFiles?.(files)
+            onFile?.(files[0])
+          }
           event.target.value = ''
         }}
       />

@@ -23,7 +23,7 @@
  * the command form of a verb cannot drift from each other either.
  */
 
-import { SURFACE_TOP, cellIndex, inBounds, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@papercut/document'
+import { DIR_VECTORS, NO_RAMP, SURFACE_CLIFF, SURFACE_TOP, clearRampRun, frameOf, inBounds, rampDirAt, rampRun, rampRunBlocked, rampRunLength, toLocal, topHeight, type Cell, type Patch, type SurfaceAddress, structureOf, type ReadonlyVoxel } from '@papercut/document'
 import type { FeatureDeps, StrokeHandler, ToolContract } from './deps'
 import { eyedrop, paintPatches, sculptPatches, strokeCells, terrainLabel, type TerrainModifiers } from './verbs'
 
@@ -68,14 +68,68 @@ export function cellPast(from: Cell, point: { readonly x: number; readonly z: nu
 /** The top of `cell`, as the address a sculpt verb targets when it was steered there by the plane rather than by a pick. */
 const topOf = (structure: string, [x, y]: Cell): SurfaceAddress => ({ structure, x, y, kind: SURFACE_TOP, dir: 0, level: 0 })
 
+/**
+ * The Ramp verb is a drag (spec §4): press on a cliff face and drag back onto
+ * the high side; the run grows one cell per cell of drag, up to what the
+ * drop needs, and is previewed through the tool parameters. The slope is
+ * fixed at 45°, so the drag decides nothing the drop has not: on release the
+ * run the drop needs is cut, whatever the drag reached, unless the ground
+ * behind the edge blocks it — in which case the reason is shown for the
+ * length of the press and nothing is cut. A press on a ramp's own top
+ * removes its run; so does a shift-press anywhere on one.
+ */
+function rampHandler(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxel): TerrainStrokeHandler | undefined {
+  const address = press.pick.surface
+  if (!address) return undefined
+  const label = press.modifiers.shift ? 'Remove ramp' : address.kind === SURFACE_CLIFF ? 'Cut ramp' : 'Remove ramp'
+  if (press.modifiers.shift || address.kind !== SURFACE_CLIFF) {
+    if (rampDirAt(voxel, address.x, address.y) === NO_RAMP) return undefined
+    return { label, begin: () => clearRampRun(deps.doc(), voxel, address.x, address.y), move: () => [], end: () => [] }
+  }
+  const edge = { x: address.x, z: address.y, dir: address.dir }
+  const needed = rampRunLength(voxel, edge)
+  if (needed === null) return undefined
+  const blocked = rampRunBlocked(voxel, edge)
+  const frame = frameOf(deps.doc(), voxel.id)
+  const [dx, dz] = DIR_VECTORS[edge.dir]
+  let run = 1
+  const show = (): void => deps.setParams({ rampRun: { edge, run, needed, blocked } })
+  return {
+    label,
+    begin: () => {
+      show()
+      return []
+    },
+    move: (sample) => {
+      const plane = sample.pick.plane
+      if (!plane) return []
+      // How far back onto the high side the pointer has come, in cells, from the edge cell's centre — in the volume's own frame.
+      const [lx, lz] = toLocal(frame, plane.x, plane.z)
+      const back = -((lx - (edge.x + 0.5)) * dx + (lz - (edge.z + 0.5)) * dz)
+      const next = Math.min(needed, Math.max(1, Math.floor(back + 0.5) + 1))
+      if (next !== run) {
+        run = next
+        show()
+      }
+      return []
+    },
+    end: () => {
+      deps.setParams({ rampRun: null })
+      return blocked ? [] : rampRun(deps.doc(), voxel, edge, needed)
+    },
+  }
+}
+
 function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxel): TerrainStrokeHandler {
   const address = press.pick.surface
   /** Anchor cell for rectangle strokes, and the corner a rectangle preview grows from. */
   const anchor: Cell | null = address ? [address.x, address.y] : null
   /** Height sampled when the stroke began, for flatten. */
-  const anchorHeight = address && inBounds(voxel.size, address.x, address.y) ? voxel.terrain.height[cellIndex(voxel.size, address.x, address.y)] : 0
+  const anchorHeight = address && inBounds(voxel.size, address.x, address.y) ? topHeight(voxel, address.x, address.y) : 0
   /** Cell last edited, so a drag does not re-apply to the same cell. */
   let lastCell: string | null = null
+  /** The pressed volume's frame: the press plane is in world space, the cells it steers by are the volume's own. */
+  const frame = frameOf(deps.doc(), voxel.id)
   /** The cell a sculpt stroke is on, steered by the press plane; `null` until a tick lands one. */
   let steered: Cell | null = null
 
@@ -90,16 +144,17 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
   function steer(sample: TerrainSample): SurfaceAddress | null {
     const params = deps.params()
     const surface = sample.pick.surface
-    if (params.terrainMode !== 'sculpt' || params.sculptVerb === 'ramp') return surface
+    if (params.terrainMode !== 'sculpt') return surface
     const plane = sample.pick.plane
     if (plane === undefined || plane === null) {
       // No plane — a press, or no camera: the pick decides, by cell only.
       if (surface) steered = [surface.x, surface.y]
       return surface ? topOf(voxel.id, [surface.x, surface.y]) : null
     }
-    if (steered === null) steered = [Math.floor(plane.x), Math.floor(plane.z)]
+    const [lx, lz] = toLocal(frame, plane.x, plane.z)
+    if (steered === null) steered = [Math.floor(lx), Math.floor(lz)]
     else {
-      const next = cellPast(steered, plane, params.sculptDeadZone)
+      const next = cellPast(steered, { x: lx, z: lz }, params.sculptDeadZone)
       if (next !== null && inBounds(voxel.size, next[0], next[1])) steered = next
     }
     return topOf(voxel.id, steered)
@@ -107,17 +162,22 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
 
   function tick(sample: TerrainSample, phase: 'start' | 'move' | 'end'): Patch[] {
     const address = steer(sample)
-    if (!address) return []
+    // A stroke edits the volume it was pressed on: a pick that wandered onto another structure is not its business.
+    if (!address || address.structure !== voxel.id) return []
 
     if (sample.modifiers.alt) {
       // The eyedropper changes a tool parameter, not the document, so it
       // leaves through `setParams` — an event at the tools actor — and the
       // stroke produces no patches at all.
-      if (phase === 'start') deps.setParams(eyedrop(deps.doc(), voxel, deps.params(), address))
+      if (phase === 'start') deps.setParams(eyedrop(voxel, deps.params(), address))
       return []
     }
 
     const params = deps.params()
+    // Flatten shows the height it levels to: sampled at the press, unless the field is pinned to a typed value.
+    if (phase === 'start' && params.terrainMode === 'sculpt' && params.sculptVerb === 'flatten' && !params.heightPinned && params.height !== anchorHeight) {
+      deps.setParams({ height: anchorHeight })
+    }
     // Rectangle strokes only commit on release; everything else is live.
     if (params.strokeShape === 'rect' && phase !== 'end') return []
     if (params.strokeShape !== 'rect' && phase === 'end') return []
@@ -136,7 +196,7 @@ function handlerFor(deps: FeatureDeps, press: TerrainSample, voxel: ReadonlyVoxe
   }
 
   return {
-    label: terrainLabel(deps.params(), press.modifiers),
+    label: terrainLabel(deps.params(), press.modifiers, press.pick.surface),
     begin: (sample) => tick(sample, 'start'),
     move: (sample) => tick(sample, 'move'),
     end: (sample) => tick(sample, 'end'),
@@ -154,7 +214,10 @@ export function terrainContract(deps: FeatureDeps): ToolContract<TerrainSample, 
       // The tool addresses the voxel volume the press landed on; a press on any other kind of structure is not its stroke.
       const surface = sample.pick.surface
       const voxel = surface ? structureOf(deps.doc(), surface.structure, 'voxel') : undefined
-      return voxel ? handlerFor(deps, sample, voxel) : undefined
+      if (!voxel) return undefined
+      const params = deps.params()
+      if (params.terrainMode === 'sculpt' && params.sculptVerb === 'ramp' && !sample.modifiers.alt) return rampHandler(deps, sample, voxel)
+      return handlerFor(deps, sample, voxel)
     },
   }
 }

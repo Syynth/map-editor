@@ -23,7 +23,6 @@ import { FrameProfile, GpuTimer, type FrameProfileReport } from './profile'
 import {
   SURFACE_CLIFF,
   SURFACE_TOP,
-  cellIndex,
   cornerHeights,
   groundHeight,
   inBounds,
@@ -37,6 +36,7 @@ import {
   levelCentre,
   toWorld,
   type DocumentTarget,
+  topHeight,
 } from '@papercut/document'
 import {
   Character,
@@ -55,7 +55,8 @@ import {
   type SceneAssets,
   type LayerRange,
 } from '@papercut/runtime'
-import type { RgbaImage, SpriteAsset } from '@papercut/document'
+import type { SpriteAsset } from '@papercut/document'
+import type { LoadedSet } from '@papercut/runtime'
 
 /** Tilt-shift: a cheap vertical-gradient blur, the HD-2D miniature look. */
 export interface PointerModifiers {
@@ -146,7 +147,7 @@ export interface ViewportHandlers {
   onCameraChange(state: { yaw: number; pitch: number; distance: number; inBounds: boolean }): void
   /** The view cube was clicked on the view the camera already has: flip the editor's projection. */
   onProjectionToggle(): void
-  onStats(stats: { fps: number; triangles: number; meshMs: number }): void
+  onStats(stats: { fps: number; triangles: number; meshMs: number; missingTransitions: readonly string[] }): void
 }
 
 /** Where a play session puts the character down, in world units. The host's play actor computes it. */
@@ -158,6 +159,8 @@ export interface ViewportOptions {
   /** Cells the brush would affect, previewed under the cursor. */
   brushPreview: ReadonlyArray<readonly [number, number]>
   showGrid: boolean
+  /** Mark every corner the atlas had to compose: the transitions still to draw. */
+  showMissing: boolean
   /** Clamp the editor camera to what the game rig allows. */
   gameCamera: boolean
   /** How the free editor camera projects. Under `gameCamera` and in play the rig's own projection is used instead. */
@@ -194,6 +197,7 @@ const CUBE_REST_OPACITY = 0.4
 const DEFAULT_OPTIONS: ViewportOptions = {
   brushPreview: [],
   showGrid: true,
+  showMissing: false,
   gameCamera: false,
   projection: 'perspective',
   play: null,
@@ -409,11 +413,13 @@ export class Viewport {
   setOptions(options: Partial<ViewportOptions>): void {
     const wasPlaying = this.playing
     const wasLayers = this.options.layers
+    const wasShowMissing = this.options.showMissing
     this.options = { ...this.options, ...options }
     if (this.playing !== wasPlaying) this.togglePlay(this.options.play)
     // The range is a section cut on the GPU: a plane and a uniform, nothing rebuilt.
     const layers = this.options.layers
     if (layers?.lo !== wasLayers?.lo || layers?.hi !== wasLayers?.hi) this.scene.setLayerRange(layers)
+    if (this.options.showMissing !== wasShowMissing) this.scene.setShowMissing(this.options.showMissing)
   }
 
   /** A session is running. The flag this replaced was a second copy of the same fact. */
@@ -470,8 +476,8 @@ export class Viewport {
     this.scene.applyAtmosphere()
   }
 
-  loadSheet(sheet: RgbaImage): void {
-    this.scene.refreshSheet(sheet)
+  loadTerrain(sets: LoadedSet[]): void {
+    this.scene.refreshTerrain(sets)
   }
 
   loadSprites(sprites: Record<string, SpriteAsset>): void {
@@ -1075,6 +1081,7 @@ export class Viewport {
     this.canvas.addEventListener('pointermove', this.onPointerMove)
     this.canvas.addEventListener('pointerleave', this.onPointerLeave)
     window.addEventListener('pointerup', this.onPointerUp)
+    window.addEventListener('pointercancel', this.onPointerUp)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('contextmenu', this.onContextMenu)
     window.addEventListener('resize', this.resize)
@@ -1085,6 +1092,7 @@ export class Viewport {
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerleave', this.onPointerLeave)
     window.removeEventListener('pointerup', this.onPointerUp)
+    window.removeEventListener('pointercancel', this.onPointerUp)
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onContextMenu)
     window.removeEventListener('resize', this.resize)
@@ -1216,6 +1224,7 @@ export class Viewport {
         // last pass, which is a fullscreen quad.
         triangles: this.scene.stats.triangles,
         meshMs: this.scene.stats.lastMeshMs,
+        missingTransitions: this.scene.missingTransitions(),
       })
       this.fpsAccumulator = 0
       this.fpsFrames = 0
@@ -1235,6 +1244,6 @@ export class Viewport {
     if (!address) return null
     const voxel = structureOf(this.reader.doc, address.structure, 'voxel')
     if (!voxel || !inBounds(voxel.size, address.x, address.y)) return null
-    return voxel.terrain.height[cellIndex(voxel.size, address.x, address.y)]
+    return topHeight(voxel, address.x, address.y)
   }
 }

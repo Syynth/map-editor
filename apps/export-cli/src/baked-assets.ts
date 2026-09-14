@@ -1,13 +1,14 @@
 /**
- * Turns the checked-in bake (`packages/fixtures/baked/`) into the `sheet` and
- * `sprites` `exportGltf` now requires as inputs (#47).
+ * Turns the checked-in bake (`packages/fixtures/baked/`) into the `sprites`
+ * `exportGltf` requires as an input (#47).
  *
- * The editor builds these live with `generateTerrainSheet` / `generateSprites`
- * (`@papercut/fixtures`), which draw with a 2D canvas — the one thing this
- * app is proving it does not need (#48). The bake is that same output,
- * pre-rendered to PNG for exactly this situation; decoding it back to raw
- * RGBA is `fast-png`'s job, the pure-JS PNG codec this app carries so that
- * job never reaches for a canvas either.
+ * The editor builds these live with `generateSprites` (`@papercut/fixtures`),
+ * which draws with a 2D canvas — the one thing this app is proving it does
+ * not need (#48). The bake is that same output, pre-rendered to PNG for
+ * exactly this situation; decoding it back to raw RGBA is `fast-png`'s job,
+ * the pure-JS PNG codec this app carries so that job never reaches for a
+ * canvas either. The terrain set needs no bake: `generatePlaceholderTerrainSet`
+ * draws it without a canvas, so `export-map.ts` makes it on the spot.
  */
 
 import { readFile } from 'node:fs/promises'
@@ -19,7 +20,6 @@ import { bakedDir } from '@papercut/fixtures'
 
 /** The slice of `baked/manifest.json` this loader reads; see `baked.test.ts` for the rest of its shape. */
 interface BakedManifest {
-  sheet: { file: string }
   sprites: Record<
     string,
     {
@@ -54,12 +54,10 @@ async function decodeRgba(fileUrl: URL): Promise<RgbaImage> {
   return { width: decoded.width, height: decoded.height, data: new Uint8ClampedArray(decoded.data) }
 }
 
-/** Loads the sheet and every sprite the bake carries, keyed as `exportGltf` expects. */
-export async function loadBakedAssets(): Promise<{ sheet: RgbaImage; sprites: Record<string, SpriteAsset> }> {
+/** Loads every sprite the bake carries, keyed as `exportGltf` expects. The terrain set is generated, not baked. */
+export async function loadBakedAssets(): Promise<{ sprites: Record<string, SpriteAsset> }> {
   const dir = bakedDir()
   const manifest = JSON.parse(await readFile(new URL('manifest.json', dir), 'utf8')) as BakedManifest
-
-  const sheet = await decodeRgba(new URL(manifest.sheet.file, dir))
 
   const sprites: Record<string, SpriteAsset> = {}
   for (const [name, sprite] of Object.entries(manifest.sprites)) {
@@ -72,5 +70,5 @@ export async function loadBakedAssets(): Promise<{ sheet: RgbaImage; sprites: Re
     }
   }
 
-  return { sheet, sprites }
+  return { sprites }
 }

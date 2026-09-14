@@ -12,20 +12,24 @@
  */
 
 import {
+  DIR_VECTORS,
   cellIndex,
-  cliffKey,
+  columnTopAt,
   createMap,
+  createSketch,
   defaultFacing,
+  faceKey,
+  fillColumn,
   groundHeight,
   newId,
+  rampShape,
   tintKey,
-  topKey,
+  topHeight,
+  voxelIndex,
   type MapDoc,
   type MapObject,
   type VoxelStructure,
-  createSketch,
 } from '@papercut/document'
-import { sheetLayoutFor, cliffTile, defaultTopTile } from '@papercut/geometry'
 
 function hash(x: number, y: number, seed: number): number {
   const n = Math.sin(x * 127.1 + y * 311.7 + seed * 74.7) * 43758.5453
@@ -62,7 +66,11 @@ function place(
 export function createSampleMap(width = 36, height = 36): MapDoc {
   const doc = createMap(width, height, 'Sample Valley')
   const ground = doc.structures.ground as VoxelStructure
-  const layout = sheetLayoutFor(doc)
+  const material = (name: string): number => {
+    const found = doc.materials.find((m) => m.name === name)
+    if (!found) throw new Error(`The sample map wants a ${name} material.`)
+    return found.id
+  }
   const centreX = width / 2
   const centreY = height / 2
 
@@ -81,13 +89,12 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
 
       let h = Math.round(rolling + ridge * (1 - distance) - river * 2.4)
       h = Math.max(0, Math.min(18, h))
-      ground.terrain.height[index] = h
 
-      // Material follows height: sand low, grass mid, stone high.
-      ground.terrain.material[index] = h <= 1 ? 3 : h >= 8 ? 2 : hash(x, y, 1) > 0.88 ? 1 : 0
+      // Material follows height: sand low, grass mid, stone high. Every voxel of a column takes it.
+      fillColumn(ground, x, y, h, h <= 1 ? material('Sand') : h >= 8 ? material('Stone') : hash(x, y, 1) > 0.88 ? material('Dirt') : material('Grass'))
 
       // Water pools in the river bed.
-      if (h <= 1) ground.terrain.water[index] = 2
+      if (h <= 1) ground.water[index] = 2
     }
   }
 
@@ -100,52 +107,49 @@ export function createSampleMap(width = 36, height = 36): MapDoc {
   const stepDowns: Array<[number, number, number]> = []
   for (let y = 1; y < height - 1; y++) {
     for (let x = 1; x < width - 1; x++) {
-      const h = ground.terrain.height[cellIndex(ground.size, x, y)]
-      if (h < 3) continue
+      const h = topHeight(ground, x, y)
+      // A full ramp is a cube-tall shape: it wants a column standing on whole tiles, not a slab.
+      if (h < 3 || h % 2 === 1) continue
       for (let dir = 0; dir < 4; dir++) {
-        const [dx, dy] = [
-          [1, 0],
-          [0, 1],
-          [-1, 0],
-          [0, -1],
-        ][dir]
-        if (ground.terrain.height[cellIndex(ground.size, x + dx, y + dy)] === h - 2) {
-          stepDowns.push([x, y, dir])
-        }
+        const [dx, dy] = DIR_VECTORS[dir]
+        if (topHeight(ground, x + dx, y + dy) === h - 2) stepDowns.push([x, y, dir])
       }
     }
   }
   // Spread a handful around the map instead of clustering them.
   for (let i = 0; i < stepDowns.length; i += Math.max(1, Math.floor(stepDowns.length / 14))) {
     const [x, y, dir] = stepDowns[i]
-    ground.terrain.ramp[cellIndex(ground.size, x, y)] = dir
+    ground.voxels.shape[voxelIndex(ground, x, y, columnTopAt(ground, x, y))] = rampShape(dir)
   }
 
-  // --- painted overrides ---------------------------------------------------
-  // A worn dirt path across the grass: painted, not a material change, so the
-  // autotiling underneath is untouched.
-  const dirtTile = defaultTopTile(layout, 1, 15)
+  // --- paint -----------------------------------------------------------------
+  // A worn path across the grass: the top voxel's material, which is what the
+  // Material brush sets, so the transition tiles around it are the dual grid's.
+  const path = (x: number, y: number) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return
+    const top = columnTopAt(ground, x, y)
+    if (top >= 0) ground.voxels.material[voxelIndex(ground, x, y, top)] = material('Path')
+  }
   for (let step = 0; step < 22; step++) {
     const x = Math.round(4 + step)
     const y = Math.round(centreY + 6 + Math.sin(step * 0.4) * 2)
-    if (x < 0 || x >= width || y < 0 || y >= height) continue
-    ground.paint.top[topKey(x, y)] = dirtTile
-    if (hash(x, y, 7) > 0.6) ground.paint.top[topKey(x, y - 1)] = dirtTile
+    path(x, y)
+    if (hash(x, y, 7) > 0.6) path(x, y - 1)
   }
 
-  // A band of stone painted onto one cliff face, at a fixed absolute level, so
-  // sculpting nearby demonstrates that the paint stays put.
-  const stoneBand = cliffTile(layout, 2, 'middle')
+  // A band of stone painted onto one cliff face — a face override on the
+  // voxel one below the top, at a fixed layer — so sculpting nearby
+  // demonstrates that the paint stays put.
   for (let x = 0; x < width; x++) {
-    const index = cellIndex(ground.size, x, Math.round(centreY - 8))
-    const h = ground.terrain.height[index]
-    if (h > 5) ground.paint.cliff[cliffKey(x, Math.round(centreY - 8), 1, h - 2)] = stoneBand
+    const z = Math.round(centreY - 8)
+    const top = columnTopAt(ground, x, z)
+    if (top >= 2) ground.paint.faces[faceKey(x, z, top - 1, 1)] = material('Stone')
   }
 
   // A cool tint in the river bed, quantised per cell rather than blended.
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      if (ground.terrain.height[cellIndex(ground.size, x, y)] <= 2) {
+      if (topHeight(ground, x, y) <= 2) {
         ground.paint.tint[tintKey(x, y)] = 0xa8c4d8
       }
     }

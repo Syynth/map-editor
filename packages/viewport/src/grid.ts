@@ -22,12 +22,9 @@
 import * as THREE from 'three'
 
 import {
-  NO_RAMP,
-  RAMP_DROP,
-  RAMP_LOW_CORNERS,
   allChunkKeys,
-  cellIndex,
   chunkBounds,
+  cornerHeights,
   chunkKey,
   frameOf,
   parseStructureChunkKey,
@@ -182,21 +179,10 @@ export class TerrainGrid {
   }
 }
 
-/** A cell's four corner heights in world units, in `CORNER_OFFSETS` order, written into `out`: `cornerHeights` without the array. */
+/** A cell's four corner heights in world units, in `CORNER_OFFSETS` order, written into `out`. */
 function cornersOf(voxel: ReadonlyVoxel, x: number, y: number, out: Float64Array): void {
-  const index = cellIndex(voxel.size, x, y)
-  const h = voxel.terrain.height[index]
-  out[0] = h
-  out[1] = h
-  out[2] = h
-  out[3] = h
-  const ramp = voxel.terrain.ramp[index]
-  if (ramp !== NO_RAMP) {
-    const [a, b] = RAMP_LOW_CORNERS[ramp]
-    out[a] = h - RAMP_DROP
-    out[b] = h - RAMP_DROP
-  }
-  for (let corner = 0; corner < 4; corner++) out[corner] = out[corner] * 0.5 + LIFT
+  const corners = cornerHeights(voxel, x, y)
+  for (let corner = 0; corner < 4; corner++) out[corner] = corners[corner] * 0.5 + LIFT
 }
 
 function vertex(out: Float32Array, i: number, x: number, h: number, z: number): number {

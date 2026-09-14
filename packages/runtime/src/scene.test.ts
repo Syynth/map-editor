@@ -1,7 +1,8 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { HALF, SURFACE_SKETCH_CAP, SURFACE_TOP, allChunkKeys, cellIndex, createMap, createSketch, type RgbaImage, type SpriteAsset, type VoxelStructure } from '@papercut/document'
+import { HALF, PLACEHOLDER_SHEET, SURFACE_SKETCH_CAP, SURFACE_TOP, allChunkKeys, createMap, createSketch, fillColumn, topHeight, type RgbaImage, type SpriteAsset, type VoxelStructure } from '@papercut/document'
+import { addTerrain, createTerrainSet, stampTemplate, type LoadedSet } from '@papercut/geometry'
 import { Picker } from './picking'
 import { rgbaTexture } from './billboard'
 import { RuntimeScene } from './scene'
@@ -14,12 +15,28 @@ function solid(width: number, height: number, rgba: [number, number, number, num
   return { width, height, data }
 }
 
+const TILE = 4
+
+/**
+ * A stand-in for the placeholder terrain set the default materials point
+ * into: the five terrains, each with an edge set stamped on its own 4×4 block
+ * of a 16-column sheet, over one flat colour.
+ */
+function terrainSet(rgba: [number, number, number, number] = [0, 255, 0, 255]): LoadedSet {
+  let set = createTerrainSet(PLACEHOLDER_SHEET, TILE, 16, 8)
+  ;['grass', 'dirt', 'stone', 'sand', 'path'].forEach((id, i) => {
+    set = addTerrain(set, { id, name: id, color: '#808080' })
+    set = stampTemplate(set, (i % 4) * 4, Math.floor(i / 4) * 4, null, id)
+  })
+  return { set, image: solid(16 * TILE, 8 * TILE, rgba) }
+}
+
 const sprites: Record<string, SpriteAsset> = {
   rock: { name: 'rock', facings: [solid(4, 6, [255, 0, 0, 255])], widthTiles: 1, heightTiles: 1.5, emissive: false },
 }
 
 function scene(width: number, height: number): RuntimeScene {
-  return new RuntimeScene(createMap(width, height), { sheet: solid(16, 5, [0, 255, 0, 255]), sprites, textures: {} })
+  return new RuntimeScene(createMap(width, height), { terrain: [terrainSet()], sprites, textures: {} })
 }
 
 describe('full rebuild reconciles chunks', () => {
@@ -78,7 +95,7 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
   function level() {
     const doc = createMap(6, 6)
     const g = doc.structures.ground as VoxelStructure
-    g.terrain.height[cellIndex(g.size, 4, 4)] = 12
+    fillColumn(g, 4, 4, 12)
     const island = createSketch('ground', 'Island', { x: 0, z: 0, yaw: 0 })
     island.points = [
       { x: 0, z: 0, smooth: false },
@@ -90,7 +107,7 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
     island.layers = 6
     doc.structures[island.id] = island
     doc.structureOrder.push(island.id)
-    const runtime = new RuntimeScene(doc, { sheet: solid(16, 5, [0, 255, 0, 255]), sprites, textures: {} })
+    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {} })
     runtime.rebuildAll()
     return { doc, runtime, island, ground: g }
   }
@@ -126,7 +143,7 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
 
   it('finds the cap a pick lands on: the top of whatever the ceiling passes through, the highest standing one first', () => {
     const { runtime, island, ground } = level()
-    const base = ground.terrain.height[0]
+    const base = topHeight(ground, 0, 0)
     expect(runtime.capAt(4.5, 4.5)).toBeNull()
 
     runtime.setLayerRange({ lo: 0, hi: base + 2 })
@@ -140,7 +157,7 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
 
   it('a pick straight down into a cut lands on the ceiling, on the cap', () => {
     const { runtime, ground } = level()
-    const base = ground.terrain.height[0]
+    const base = topHeight(ground, 0, 0)
     runtime.setLayerRange({ lo: 0, hi: base + 2 })
     runtime.scene.updateMatrixWorld(true)
     const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 500)
@@ -176,7 +193,7 @@ describe('a structure that moved is re-placed, not remeshed', () => {
       doc.structures[s.id] = s
       doc.structureOrder.push(s.id)
     }
-    const runtime = new RuntimeScene(doc, { sheet: solid(16, 5, [0, 255, 0, 255]), sprites, textures: {} })
+    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {} })
     runtime.rebuildAll()
     const before = runtime.terrainMeshes()
     const disposed: THREE.BufferGeometry[] = []
@@ -210,7 +227,7 @@ describe('bounds of a target', () => {
     island.layers = 2
     doc.structures[island.id] = island
     doc.structureOrder.push(island.id)
-    const runtime = new RuntimeScene(doc, { sheet: solid(16, 5, [0, 255, 0, 255]), sprites, textures: {} })
+    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {} })
     runtime.rebuildAll()
 
     const ground = runtime.boundsOf({ kind: 'structure', id: 'ground' })
@@ -235,25 +252,45 @@ describe('textures the scene no longer draws with go back to the GPU', () => {
     return counts
   }
 
-  it('releases the old sheet when a new one replaces it — as every document load does — and keeps a sheet handed in again', () => {
-    const first = solid(16, 5, [0, 255, 0, 255])
-    const second = solid(16, 5, [0, 0, 255, 255])
-    const runtime = new RuntimeScene(createMap(4, 4), { sheet: first, sprites, textures: {} })
-    const disposed = watch(first, second)
+  it('releases the old atlas when new terrain sets replace it — as every document load does — and never uploads a sheet itself', () => {
+    const first = terrainSet([0, 255, 0, 255])
+    const second = terrainSet([0, 0, 255, 255])
+    const runtime = new RuntimeScene(createMap(4, 4), { terrain: [first], sprites, textures: {} })
+    runtime.rebuildAll()
+    const sheets = watch(first.image, second.image)
+    const material = runtime.terrainMeshes()[0].material as THREE.MeshStandardMaterial
+    // What the terrain draws with is the atlas built from the set, not the sheet itself: 32 tiles across, the set's first tile first.
+    const atlas = material.map as THREE.DataTexture
+    const pixels = (texture: THREE.DataTexture) => [...(texture.image.data as Uint8Array).slice(0, 4)]
+    expect(atlas.image.width).toBe(32 * TILE)
+    expect(pixels(atlas)).toEqual([0, 255, 0, 255])
+    let released = 0
+    atlas.addEventListener('dispose', () => void (released += 1))
 
-    runtime.refreshSheet(first)
-    expect(disposed.get(first)).toBe(0)
-    runtime.refreshSheet(second)
-    expect(disposed.get(first)).toBe(1)
-    expect(disposed.get(second)).toBe(0)
-    // The released image is forgotten: asking again makes a fresh texture rather than handing back the disposed one.
-    expect(rgbaTexture(first, true)).not.toBe(undefined)
+    // A fresh look is a fresh atlas: the chunks are remeshed against it and its image goes up in place of the old one.
+    runtime.refreshTerrain([second])
+    expect(released).toBe(1)
+    const replaced = material.map as THREE.DataTexture
+    expect(replaced).not.toBe(atlas)
+    expect(pixels(replaced)).toEqual([0, 0, 255, 255])
+    // Neither sheet was ever the texture, so neither is what gets released.
+    expect(sheets.get(first.image)).toBe(0)
+    expect(sheets.get(second.image)).toBe(0)
+
+    // Handing the same set in again still rebuilds the look, and the atlas it replaces goes back too.
+    let releasedAgain = 0
+    replaced.addEventListener('dispose', () => void (releasedAgain += 1))
+    runtime.refreshTerrain([second])
+    expect(releasedAgain).toBe(1)
+    expect(material.map).not.toBe(replaced)
+    // A released texture is forgotten: asking for an image's texture makes a fresh one rather than handing back a disposed one.
+    expect(rgbaTexture(first.image, true)).not.toBe(undefined)
   })
 
   it('releases the images a new sprite set dropped, and only those', () => {
     const kept = sprites.rock
     const tree: SpriteAsset = { name: 'tree', facings: [solid(4, 6, [0, 128, 0, 255])], widthTiles: 1, heightTiles: 2, emissive: false }
-    const runtime = new RuntimeScene(createMap(4, 4), { sheet: solid(16, 5, [0, 255, 0, 255]), sprites: { rock: kept }, textures: {} })
+    const runtime = new RuntimeScene(createMap(4, 4), { terrain: [terrainSet()], sprites: { rock: kept }, textures: {} })
     const disposed = watch(kept.facings[0], tree.facings[0])
 
     runtime.setSprites({ rock: kept, tree })

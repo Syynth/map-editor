@@ -1,10 +1,10 @@
 /**
  * The geometry package's public surface.
  *
- * Turning a document into vertex buffers, plus the sheet layout that says what
- * a position on a tile sheet means. The two travel together because the mesher
- * is the layout's largest consumer — it asks for a tile id and a UV rectangle
- * per quad — and nothing else in the graph needs one without the other.
+ * Turning a document into vertex buffers, plus the terrain sets and the atlas
+ * that say what a tile is. The two travel together because the mesher is the
+ * atlas's only consumer — it asks for the tile at a corner and a UV rectangle
+ * per quarter — and nothing else in the graph needs one without the other.
  *
  * Written out rather than `export *` for the same reason as `document`'s
  * barrel: the meshing worker that issue #3 draws this boundary for will want a
@@ -13,22 +13,26 @@
  */
 
 export {
-  BLOCK_COLUMNS,
-  BLOCK_ROWS,
-  CLIFF_BOTTOM,
-  CLIFF_MIDDLE,
-  CLIFF_ROW,
-  CLIFF_TOP,
-  RAMP_COLUMN,
-  cliffTile,
-  defaultTopTile,
-  rampTile,
-  sheetLayoutFor,
-  tileColumnRow,
-  tileId,
-  tileUv,
-} from './template'
-export type { CliffBand, SheetLayout } from './template'
+  CORNER_BITS,
+  TERRAIN_SET_VERSION,
+  TerrainSetError,
+  addTerrain,
+  createTerrainSet,
+  edgeCoverage,
+  edgeTile,
+  exactTile,
+  pairAuthored,
+  parseTerrainSet,
+  serializeTerrainSet,
+  stampTemplate,
+  tagCorner,
+  templateTags,
+} from './terrainset'
+export type { CornerTags, Tag, TerrainDef, TerrainSet, TerrainSetFile } from './terrainset'
+export { TerrainAtlas, terrainKey } from './atlas'
+export { createTerrainLook } from './look'
+export type { TerrainLook } from './look'
+export type { AtlasTile, CompositeReport, CornerKeys, LoadedSet, TerrainKey } from './atlas'
 
 export { meshTerrainChunk } from './terrain'
 export type { MeshBuffers, TerrainChunkMesh } from './terrain'

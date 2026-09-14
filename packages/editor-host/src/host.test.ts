@@ -1,23 +1,4 @@
-import {
-  HALF,
-  addObject,
-  cellIndex,
-  createDocument,
-  createMap,
-  frameOf,
-  groundHeight,
-  defaultFacing,
-  raise,
-  removeObject,
-  serialize,
-  type MapObject,
-  type Patch,
-  type SurfaceAddress,
-  type SurfaceKind,
-  type MapDoc,
-  type ReadonlyMapDoc,
-  type VoxelStructure,
-} from '@papercut/document'
+import { FORMAT_VERSION, HALF, addObject, createDocument, createMap, defaultFacing, frameOf, groundHeight, materialById, raise, removeObject, serialize, topHeight, type MapDoc, type MapObject, type Patch, type ReadonlyMapDoc, type SurfaceAddress, type SurfaceKind, type VoxelStructure } from '@papercut/document'
 import { commands, defineFeature, dispose, provideFeature, type HotHandle, reserveOwner, tools as toolDeclarations } from '@papercut/registry'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from 'xstate'
@@ -74,16 +55,17 @@ function raiseOnce(host: Host, x: number, y: number, by = 1): void {
 describe('the document commands, routed to the document actor', () => {
   it('undoes and redoes what the write path recorded, seen through reader', () => {
     const { host, dispatch } = makeHost()
-    const index = cellIndex(ground(host.reader.doc).size, 2, 2)
-    const before = ground(host.reader.doc).terrain.height[index]
+    // A column's height is derived from its voxels, so it is read, never indexed.
+    const height = () => topHeight(ground(host.reader.doc), 2, 2)
+    const before = height()
     raiseOnce(host, 2, 2, 3)
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 3)
+    expect(height()).toBe(before + 3)
 
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before)
+    expect(height()).toBe(before)
 
     expect(dispatch('redo')).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 3)
+    expect(height()).toBe(before + 3)
   })
 
   it('undoes exactly once per dispatch, not twice', () => {
@@ -148,6 +130,23 @@ describe('the document commands, routed to the document actor', () => {
     expect(host.reader.undoLabel()).toBe('Add object')
   })
 
+  it('replaces the material list whole, so a reorder is one entry', () => {
+    const { host, dispatch } = makeHost()
+    const before = host.reader.doc.materials
+    const reordered = [...before].reverse()
+    const voxels = ground(host.reader.doc).voxels.material.slice()
+    expect(dispatch('materials.set', { materials: reordered })).toEqual({ ok: true })
+    expect(host.reader.doc.materials.map((m) => m.id)).toEqual(reordered.map((m) => m.id))
+    expect(host.reader.undoLabel()).toBe('Materials')
+    // The list's order is only its priority: a voxel names its material by id, so no voxel changed what it is made of.
+    expect(ground(host.reader.doc).voxels.material).toEqual(voxels)
+    expect(materialById(host.reader.doc.materials, voxels[0])?.name).toBe(materialById(before, voxels[0])?.name)
+    // A material that names no terrain is not a material.
+    expect(dispatch('materials.set', { materials: [{ id: 9, name: 'X', color: 0, role: 'any' }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    // And two materials may not share an id: a voxel names its material by it.
+    expect(dispatch('materials.set', { materials: [before[0], { ...before[1], id: before[0].id }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+  })
+
   it('merges the camera rig and the atmosphere, one entry each', () => {
     const { host, dispatch } = makeHost()
     const fov = host.reader.doc.camera.fov
@@ -185,7 +184,8 @@ describe('the document commands, routed to the document actor', () => {
     // keeps the open document open.
     const { host, dispatch } = makeHost()
     const name = host.reader.doc.name
-    expect(dispatch('document.load', { json: '{ "formatVersion": 2 }' })).toMatchObject({
+    // The current format, so the failure is the missing structures and not the version gate in front of them.
+    expect(dispatch('document.load', { json: JSON.stringify({ formatVersion: FORMAT_VERSION }) })).toMatchObject({
       ok: false,
       kind: 'invalid-args',
       issues: [{ path: ['json'], message: expect.stringContaining('no structures') as string }],
@@ -950,18 +950,20 @@ describe('the viewport actor: what the viewport observed', () => {
     viewport.send({ type: 'camera', camera: { ...camera, inBounds: false } })
     expect(viewport.getSnapshot().context.camera.inBounds).toBe(false)
 
-    viewport.send({ type: 'stats', stats: { fps: 60, triangles: 5000, meshMs: 1.5 } })
+    viewport.send({ type: 'stats', stats: { fps: 60, triangles: 5000, meshMs: 1.5, missingTransitions: [] } })
     viewport.send({ type: 'renderer', software: true })
     expect(viewport.getSnapshot().context).toMatchObject({ stats: { fps: 60 }, softwareRenderer: true })
   })
 
-  it('holds a loaded sheet and what loading it said, until told to go back to the generated one', () => {
+  it('holds a loaded terrain set and what loading it said, until told to go back to the generated one', () => {
     const { host } = makeHost()
-    const image = { width: 16, height: 16, data: new Uint8ClampedArray(16 * 16 * 4) }
-    host.children.viewport.send({ type: 'sheet', image, warning: 'expected 16 × 5 tiles' })
-    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedSheet: image, sheetWarning: 'expected 16 × 5 tiles' })
-    host.children.viewport.send({ type: 'sheet', image: null, warning: null })
-    expect(host.children.viewport.getSnapshot().context.loadedSheet).toBeNull()
+    const image = { width: 64, height: 64, data: new Uint8ClampedArray(64 * 64 * 4) }
+    const set = { set: { sheet: 'ground.png', tile: 16, columns: 4, rows: 4 }, image }
+    host.children.viewport.send({ type: 'terrain', set, warning: 'expected 16 × 5 tiles' })
+    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedTerrain: set, terrainWarning: 'expected 16 × 5 tiles' })
+    host.children.viewport.send({ type: 'terrain', set: null, warning: null })
+    expect(host.children.viewport.getSnapshot().context.loadedTerrain).toBeNull()
+    expect(host.children.viewport.getSnapshot().context.terrainWarning).toBeNull()
   })
 
   it('answers frame and sweep with an event for whoever holds the viewport', () => {

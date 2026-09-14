@@ -7,7 +7,10 @@
  */
 
 import {
+  AIR,
   DEFAULT_MATERIALS,
+  MAX_LAYERS,
+  SHAPE_COUNT,
   FORMAT_VERSION,
   createMap,
   defaultCameraRig,
@@ -15,7 +18,9 @@ import {
   makeAtmosphere,
   type MapDoc,
   type MapObject,
+  type MaterialDef,
   type ReadonlyMapDoc,
+  type TerrainRef,
 } from './document'
 import { DEFAULT_WALL_PROFILE } from './ops'
 import { defaultSurfaceMaterials, type SketchStructure, type Structure, type VoxelStructure } from './structure'
@@ -58,15 +63,27 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
   if (raw.kind === 'voxel') {
     const size = must(raw.size as VoxelStructure['size'], `Structure ${id} has no size.`)
     const count = size.width * size.height
-    const terrain = must(raw.terrain as VoxelStructure['terrain'], `Structure ${id} has no terrain.`)
-    for (const field of ['height', 'material', 'ramp', 'water'] as const) {
-      const arr = terrain[field]
-      if (!Array.isArray(arr) || arr.length !== count) {
-        throw new LoadError(`${id}.terrain.${field} should hold ${count} entries, found ${Array.isArray(arr) ? arr.length : 'none'}.`)
+    const layers = raw.layers
+    if (typeof layers !== 'number' || !Number.isInteger(layers) || layers < 1) throw new LoadError(`Structure ${id} has no layers.`)
+    if (layers > MAX_LAYERS) throw new LoadError(`Structure ${id} has ${layers} layers; a volume holds at most ${MAX_LAYERS}.`)
+    const voxels = must(raw.voxels as VoxelStructure['voxels'], `Structure ${id} has no voxels.`)
+    for (const field of ['material', 'shape'] as const) {
+      const arr = voxels[field]
+      if (!Array.isArray(arr) || arr.length !== count * layers) {
+        throw new LoadError(`${id}.voxels.${field} should hold ${count * layers} entries, found ${Array.isArray(arr) ? arr.length : 'none'}.`)
       }
+      // Every entry is a whole number in range: a material id or AIR, a shape the mesher knows.
+      const low = field === 'material' ? AIR : 0
+      const high = field === 'material' ? Number.MAX_SAFE_INTEGER : SHAPE_COUNT - 1
+      const bad = (arr as unknown[]).findIndex((v) => typeof v !== 'number' || !Number.isInteger(v) || v < low || v > high)
+      if (bad >= 0) throw new LoadError(`${id}.voxels.${field}[${bad}] is ${String((arr as unknown[])[bad])}, which is not a ${field}.`)
+    }
+    const water = raw.water
+    if (!Array.isArray(water) || water.length !== count) {
+      throw new LoadError(`${id}.water should hold ${count} entries, found ${Array.isArray(water) ? water.length : 'none'}.`)
     }
     const paint = (raw.paint ?? {}) as Partial<VoxelStructure['paint']>
-    return { ...base, kind: 'voxel', size, terrain, paint: { top: paint.top ?? {}, cliff: paint.cliff ?? {}, tint: paint.tint ?? {} } }
+    return { ...base, kind: 'voxel', size, layers, voxels, water: water as number[], paint: { faces: paint.faces ?? {}, tint: paint.tint ?? {} } }
   }
   if (raw.kind === 'sketch') {
     const wall = (raw.wall ?? {}) as Partial<SketchStructure['wall']>
@@ -83,6 +100,30 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
     }
   }
   throw new LoadError(`Structure ${id} has an unknown kind: ${String(raw.kind)}.`)
+}
+
+/** A material names its terrains or it is not a material; the rest defaults. */
+function normaliseMaterials(raw: unknown): MapDoc['materials'] {
+  if (!Array.isArray(raw)) return DEFAULT_MATERIALS.map((m) => ({ ...m }))
+  if (raw.length === 0) throw new LoadError('A map has at least one material.')
+  const ids = new Set<number>()
+  return raw.map((value, index) => {
+    const m = value as Partial<MaterialDef>
+    const top = m.top as Partial<TerrainRef> | undefined
+    if (!top || typeof top.sheet !== 'string' || typeof top.terrain !== 'string') throw new LoadError(`Material ${index} names no terrain.`)
+    const side = m.side as Partial<TerrainRef> | undefined
+    const id = typeof m.id === 'number' && Number.isInteger(m.id) && m.id >= 0 ? m.id : index
+    if (ids.has(id)) throw new LoadError(`Two materials share the id ${id}.`)
+    ids.add(id)
+    return {
+      id,
+      name: typeof m.name === 'string' ? m.name : `Material ${index + 1}`,
+      color: typeof m.color === 'number' ? m.color : 0x808080,
+      role: m.role === 'top' || m.role === 'wall' ? m.role : 'any',
+      top: { sheet: top.sheet, terrain: top.terrain },
+      ...(side && typeof side.sheet === 'string' && typeof side.terrain === 'string' ? { side: { sheet: side.sheet, terrain: side.terrain } } : {}),
+    }
+  })
 }
 
 export function deserialize(text: string): MapDoc {
@@ -123,7 +164,7 @@ export function deserialize(text: string): MapDoc {
     name: (raw.name as string) ?? 'Untitled Map',
     texelDensity: (raw.texelDensity as number) ?? 16,
     filtering: (raw.filtering as MapDoc['filtering']) ?? 'nearest',
-    materials: (raw.materials as MapDoc['materials']) ?? DEFAULT_MATERIALS.map((m) => ({ ...m })),
+    materials: normaliseMaterials(raw.materials),
     surfaceMaterials: { ...defaultSurfaceMaterials(), ...((raw.surfaceMaterials as MapDoc['surfaceMaterials']) ?? {}) },
     structures,
     structureOrder,

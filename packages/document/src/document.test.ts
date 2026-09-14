@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { autotileMask, MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST } from './autotile'
 import { applyPatches, History, inversePatch, patchAddress, type Patch, type StrokeRecord } from './edits'
-import { cellIndex, createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
+import { createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
 import { childrenOf, descendantsOf, outlineOf, type VoxelStructure } from './structure'
 import { deserialize, LoadError, serialize } from './io'
-import { addObject, addSketchPoint, addStructure, brushCells, closeSketch, createSketch, deleteSketchPoint, fillCells, flatten, paintTop, placeStructureOnto, raise, removeObject, removeStructure, reparentStructure, setRamp, setSketch, updateObject } from './ops'
-import { cliffKey, countDormant, topKey } from './paint'
+import { addObject, addSketchPoint, addStructure, brushCells, clearRampRun, closeSketch, columnPatches, createSketch, deleteSketchPoint, fillCells, flatten, paintFace, placeStructureOnto, raise, rampPlan, rampRun, rampRunBlocked, rampRunLength, removeObject, removeStructure, reparentStructure, setSketch, updateObject } from './ops'
+import { FACE_TOP, countDormant, faceKey, parseFaceKey } from './paint'
 import { EditorStore } from './store'
-import { frameOf, groundHeight, structureAt } from './terrain'
+import { cornerHeights, frameOf, groundHeight, structureAt } from './terrain'
+import { columnHeights, columnTopAt, faceExposed, fillColumn, halfRampShape, halfRampUpShape, materialAt, rampDirAt, rampShape, topHeight, voxelIndex } from './voxels'
 
 function objectAt(id: string, x: number, z: number): MapObject {
   return {
@@ -30,9 +30,9 @@ function objectAt(id: string, x: number, z: number): MapObject {
 /** The one voxel volume a fresh level has, as the mutable thing a test sets up. */
 const ground = (doc: MapDoc | ReadonlyMapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
 
+/** Stand a column at `h` half-tiles by writing the voxels directly, as a fixture does. */
 function setHeight(doc: MapDoc, x: number, y: number, h: number): void {
-  const g = ground(doc)
-  g.terrain.height[cellIndex(g.size, x, y)] = h
+  fillColumn(ground(doc), x, y, h)
 }
 
 // `JSON.parse` returns `any` here on purpose: the whole point of these tests
@@ -47,65 +47,69 @@ function parseOnDisk(doc: MapDoc) {
 describe('edits', () => {
   it('derives an exact inverse without the tool writing one', () => {
     const doc = createMap(4, 4)
-    const before = ground(doc).terrain.height.slice()
+    const before = columnHeights(ground(doc))
 
-    const inverse = applyPatches(doc, [
-      { t: 'voxel', id: ground(doc).id, field: 'height', index: 5, value: 9 },
-      { t: 'voxel', id: ground(doc).id, field: 'height', index: 6, value: 7 },
-    ])
-    expect(ground(doc).terrain.height[5]).toBe(9)
+    // Two columns re-stood: each is several voxel patches, and the inverse
+    // covers all of them without the op describing any.
+    const inverse = applyPatches(doc, [...columnPatches(ground(doc), 1, 1, 9), ...columnPatches(ground(doc), 2, 1, 7)])
+    expect(topHeight(ground(doc), 1, 1)).toBe(9)
+    expect(topHeight(ground(doc), 2, 1)).toBe(7)
 
     applyPatches(doc, inverse)
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
   })
 
   it('inverts repeated writes to one address in the right order', () => {
     const doc = createMap(4, 4)
-    ground(doc).terrain.height[0] = 1
+    fillColumn(ground(doc), 0, 0, 2, 1)
+    const index = voxelIndex(ground(doc), 0, 0, 0)
 
     const inverse = applyPatches(doc, [
-      { t: 'voxel', id: ground(doc).id, field: 'height', index: 0, value: 2 },
-      { t: 'voxel', id: ground(doc).id, field: 'height', index: 0, value: 3 },
+      { t: 'voxel', id: ground(doc).id, field: 'material', index, value: 2 },
+      { t: 'voxel', id: ground(doc).id, field: 'material', index, value: 3 },
     ])
-    expect(ground(doc).terrain.height[0]).toBe(3)
+    expect(materialAt(ground(doc), 0, 0)).toBe(3)
 
     applyPatches(doc, inverse)
-    expect(ground(doc).terrain.height[0]).toBe(1)
+    expect(materialAt(ground(doc), 0, 0)).toBe(1)
   })
 
   it('undoes and redoes through the history', () => {
     const doc = createMap(4, 4)
     const history = new History()
-    const patches = [{ t: 'voxel' as const, id: ground(doc).id, field: 'height' as const, index: 3, value: 11 }]
+    const patches = columnPatches(ground(doc), 3, 0, 11)
     history.push({ label: 'Raise', patches, inverse: applyPatches(doc, patches) })
 
-    expect(ground(doc).terrain.height[3]).toBe(11)
+    expect(topHeight(ground(doc), 3, 0)).toBe(11)
     history.undo(doc)
-    expect(ground(doc).terrain.height[3]).toBe(2)
+    expect(topHeight(ground(doc), 3, 0)).toBe(2)
     history.redo(doc)
-    expect(ground(doc).terrain.height[3]).toBe(11)
+    expect(topHeight(ground(doc), 3, 0)).toBe(11)
   })
 })
 
 describe('patch addresses and inverses', () => {
   it('keys a patch by the slot it writes, and nothing else', () => {
-    expect(patchAddress({ t: 'voxel', id: 'g', field: 'height', index: 7, value: 1 })).toBe(patchAddress({ t: 'voxel', id: 'g', field: 'height', index: 7, value: 9 }))
-    expect(patchAddress({ t: 'voxel', id: 'g', field: 'height', index: 7, value: 1 })).not.toBe(patchAddress({ t: 'voxel', id: 'g', field: 'water', index: 7, value: 1 }))
-    expect(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'top', key: '1,2', value: 3 })).not.toBe(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'cliff', key: '1,2', value: 3 }))
+    expect(patchAddress({ t: 'voxel', id: 'g', field: 'material', index: 7, value: 1 })).toBe(patchAddress({ t: 'voxel', id: 'g', field: 'material', index: 7, value: 9 }))
+    expect(patchAddress({ t: 'voxel', id: 'g', field: 'material', index: 7, value: 1 })).not.toBe(patchAddress({ t: 'voxel', id: 'g', field: 'shape', index: 7, value: 1 }))
+    expect(patchAddress({ t: 'voxel', id: 'g', field: 'material', index: 7, value: 1 })).not.toBe(patchAddress({ t: 'voxel', id: 'g', field: 'water', index: 7, value: 1 }))
+    expect(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'faces', key: '1,2', value: 3 })).not.toBe(patchAddress({ t: 'voxelPaint', id: 'g', layer: 'tint', key: '1,2', value: 3 }))
     expect(patchAddress({ t: 'object', id: 'a', value: undefined })).toBe('object:a')
     expect(patchAddress({ t: 'doc', field: 'camera', value: null })).toBe('doc:camera')
   })
 
   it('reads the before-value the applier would have returned, without writing', () => {
     const doc = createMap(4, 4)
-    setHeight(doc, 1, 1, 6)
-    const patch: Patch = { t: 'voxel', id: ground(doc).id, field: 'height', index: cellIndex(ground(doc).size, 1, 1), value: 9 }
+    // A three-block column in material 6: its top voxel sits in layer 2.
+    fillColumn(ground(doc), 1, 1, 6, 6)
+    const patch: Patch = { t: 'voxel', id: ground(doc).id, field: 'material', index: voxelIndex(ground(doc), 1, 1, 2), value: 9 }
     const before = inversePatch(doc, patch)
     expect(before).toEqual({ ...patch, value: 6 })
-    expect(ground(doc).terrain.height[patch.index]).toBe(6)
+    expect(materialAt(ground(doc), 1, 1)).toBe(6)
     // Same answer as the applier, which is what makes the two paths agree.
     expect(applyPatches(doc, [patch])).toEqual([before])
-    expect(inversePatch(doc, { t: 'voxelPaint', id: ground(doc).id, layer: 'top', key: '0,0', value: 1 })).toEqual({ t: 'voxelPaint', id: ground(doc).id, layer: 'top', key: '0,0', value: undefined })
+    const face = faceKey(0, 0, 0, FACE_TOP)
+    expect(inversePatch(doc, { t: 'voxelPaint', id: ground(doc).id, layer: 'faces', key: face, value: 1 })).toEqual({ t: 'voxelPaint', id: ground(doc).id, layer: 'faces', key: face, value: undefined })
   })
 })
 
@@ -191,10 +195,10 @@ describe('store', () => {
     for (let i = 0; i < 5; i++) stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[i, 0]], 1))
     stroke.end()
 
-    expect(ground(store.reader.doc).terrain.height[0]).toBe(3)
+    expect(topHeight(ground(store.reader.doc), 0, 0)).toBe(3)
     expect(store.reader.undoLabel()).toBe('Raise')
     store.undo()
-    for (let i = 0; i < 5; i++) expect(ground(store.reader.doc).terrain.height[i]).toBe(2)
+    for (let i = 0; i < 5; i++) expect(topHeight(ground(store.reader.doc), i, 0)).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
   })
 
@@ -203,14 +207,14 @@ describe('store', () => {
     const stroke = compactingStroke(store, 'Raise')
     stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
     // The terrain moved mid-drag, and the drag is not an undo entry yet.
-    expect(ground(store.reader.doc).terrain.height[0]).toBe(3)
+    expect(topHeight(ground(store.reader.doc), 0, 0)).toBe(3)
     expect(store.reader.canUndo()).toBe(false)
     expect(store.inStroke).toBe(true)
 
     // Undo mid-stroke is refused rather than closing the stroke early: the
     // old close-and-undo left the rest of the drag with no record at all.
     store.undo()
-    expect(ground(store.reader.doc).terrain.height[0]).toBe(3)
+    expect(topHeight(ground(store.reader.doc), 0, 0)).toBe(3)
 
     stroke.end()
     expect(store.reader.canUndo()).toBe(true)
@@ -225,17 +229,17 @@ describe('store', () => {
     const stroke = compactingStroke(store, 'Raise')
     stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
     store.apply('Elsewhere', raise(store.reader.doc, ground(store.reader.doc), [[7, 7]], 1))
-    expect(ground(store.reader.doc).terrain.height[cellIndex(ground(store.reader.doc).size, 7, 7)]).toBe(3)
+    expect(topHeight(ground(store.reader.doc), 7, 7)).toBe(3)
 
     stroke.end()
     // Two entries, innermost last: the mid-stroke edit unwinds on its own undo
     // and the drag unwinds on the next.
     expect(store.reader.undoLabel()).toBe('Raise')
     store.undo()
-    expect(ground(store.reader.doc).terrain.height[0]).toBe(2)
+    expect(topHeight(ground(store.reader.doc), 0, 0)).toBe(2)
     expect(store.reader.undoLabel()).toBe('Elsewhere')
     store.undo()
-    expect(ground(store.reader.doc).terrain.height[cellIndex(ground(store.reader.doc).size, 7, 7)]).toBe(2)
+    expect(topHeight(ground(store.reader.doc), 7, 7)).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
   })
 
@@ -249,14 +253,16 @@ describe('store', () => {
     const stroke = compactingStroke(store, 'Raise')
     stroke.apply(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
 
+    // The stroke put a slab in layer 1; raising further turns that slab into
+    // a block, which is a write to the same shape address.
     store.apply('Collides', raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 5))
     // Refused whole: not applied, and not an entry.
-    expect(ground(store.reader.doc).terrain.height[0]).toBe(3)
+    expect(topHeight(ground(store.reader.doc), 0, 0)).toBe(3)
 
     stroke.end()
     expect(store.reader.undoLabel()).toBe('Raise')
     store.undo()
-    expect(ground(store.reader.doc).terrain.height[0]).toBe(2)
+    expect(topHeight(ground(store.reader.doc), 0, 0)).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
   })
 
@@ -284,7 +290,7 @@ describe('store', () => {
   it('refuses a stroke tick with no stroke open, since it addresses a replaced document', () => {
     const store = new EditorStore(createMap(8, 8))
     store.applyStrokeTick(raise(store.reader.doc, ground(store.reader.doc), [[0, 0]], 1))
-    expect(ground(store.reader.doc).terrain.height[0]).toBe(2)
+    expect(topHeight(ground(store.reader.doc), 0, 0)).toBe(2)
     expect(store.reader.canUndo()).toBe(false)
   })
 
@@ -325,51 +331,46 @@ describe('store', () => {
 describe('paint survives sculpt', () => {
   it('never emits a paint patch from a sculpt op', () => {
     const doc = createMap(8, 8)
+    // A cliff at (1,1) for the ramp to be cut from, and a ramp at (3,3) to clear.
+    setHeight(doc, 1, 1, 4)
+    fillColumn(ground(doc), 3, 3, 4, 0, rampShape(0))
+    const edge = { x: 1, z: 1, dir: 0 }
     const ops = [
       raise(doc, ground(doc), [[1, 1]], 2),
       flatten(doc, ground(doc), [[1, 1]], 5),
-      setRamp(doc, ground(doc), [[1, 1]], 0),
+      rampRun(doc, ground(doc), edge, rampRunLength(ground(doc), edge) ?? 0),
+      clearRampRun(doc, ground(doc), 3, 3),
     ]
     for (const patches of ops) {
+      expect(patches.length).toBeGreaterThan(0)
       expect(patches.some((patch) => patch.t === 'voxelPaint')).toBe(false)
     }
   })
 
   it('reports dormant paint as a diagnostic', () => {
     const doc = createMap(4, 4)
-    ground(doc).paint.top[topKey(1, 1)] = 3
-    ground(doc).paint.cliff[cliffKey(9, 9, 0, 0)] = 4
-    const counts = countDormant(ground(doc).paint, (kind) => kind === 'top')
-    expect(counts.top).toBe(0)
-    expect(counts.cliff).toBe(1)
-  })
-})
-
-describe('autotile', () => {
-  it('connects to matching neighbours at the same height', () => {
-    const doc = createMap(5, 5)
-    expect(autotileMask(ground(doc), 2, 2)).toBe(MASK_NORTH | MASK_EAST | MASK_SOUTH | MASK_WEST)
-  })
-
-  it('breaks the connection across a height change', () => {
-    const doc = createMap(5, 5)
-    setHeight(doc, 3, 2, 6)
-    const mask = autotileMask(ground(doc), 2, 2)
-    expect(mask & MASK_EAST).toBe(0)
-    expect(mask & MASK_WEST).toBe(MASK_WEST)
-  })
-
-  it('treats the map border as connected so it does not ring the level in edge tiles', () => {
-    const doc = createMap(5, 5)
-    expect(autotileMask(ground(doc), 0, 0)).toBe(15)
+    const g = ground(doc)
+    // An override on a face that is drawn — the top of the one-cube column at (1, 1) — and one on a face
+    // no voxel has, off the volume. Only the second is dormant.
+    g.paint.faces[faceKey(1, 1, 0, FACE_TOP)] = 3
+    g.paint.faces[faceKey(9, 9, 0, 0)] = 4
+    const exists = (key: string) => {
+      const { x, z, y, dir } = parseFaceKey(key)
+      return faceExposed(g, x, z, y, dir)
+    }
+    expect(countDormant(g.paint, exists)).toBe(1)
+    // Lower the column to nothing and its top face goes too: the override stays, dormant now.
+    setHeight(doc, 1, 1, 0)
+    expect(countDormant(g.paint, exists)).toBe(2)
+    expect(g.paint.faces[faceKey(1, 1, 0, FACE_TOP)]).toBe(3)
   })
 })
 
 describe('terrain queries', () => {
   it('interpolates a ramp instead of stepping it', () => {
     const doc = createMap(4, 4)
-    setHeight(doc, 1, 1, 4)
-    ground(doc).terrain.ramp[cellIndex(ground(doc).size, 1, 1)] = 0 // descends east
+    // A two-cube column whose top voxel is a ramp descending east.
+    fillColumn(ground(doc), 1, 1, 4, 0, rampShape(0))
 
     const high = groundHeight(doc, 1.01, 1.5)
     const low = groundHeight(doc, 1.99, 1.5)
@@ -383,6 +384,97 @@ describe('terrain queries', () => {
     const doc = createMap(4, 4)
     setHeight(doc, 2, 2, 6)
     expect(groundHeight(doc, 2.5, 2.5)).toBeCloseTo(3, 6)
+  })
+})
+
+describe('ramps', () => {
+  it('cuts a ramp from a cliff edge and clears it back to a level top of the same height', () => {
+    const doc = createMap(4, 4)
+    setHeight(doc, 1, 1, 4)
+    const edge = { x: 1, z: 1, dir: 0 }
+    // One tile of drop to the east is one ramp cell.
+    expect(rampRunLength(ground(doc), edge)).toBe(1)
+    // No drop, no run.
+    expect(rampRunLength(ground(doc), { x: 1, z: 1, dir: 2 })).toBe(1)
+    expect(rampRunLength(ground(doc), { x: 0, z: 0, dir: 0 })).toBeNull()
+    // The run must be what the drop needs.
+    expect(rampRun(doc, ground(doc), edge, 2)).toEqual([])
+
+    applyPatches(doc, rampRun(doc, ground(doc), edge, 1))
+    expect(rampDirAt(ground(doc), 1, 1)).toBe(0)
+    expect(topHeight(ground(doc), 1, 1)).toBe(4)
+    expect(groundHeight(doc, 1.5, 1.5)).toBeCloseTo(1.5, 6)
+
+    applyPatches(doc, clearRampRun(doc, ground(doc), 1, 1))
+    expect(rampDirAt(ground(doc), 1, 1)).toBe(NO_RAMP)
+    expect(topHeight(ground(doc), 1, 1)).toBe(4)
+    expect(clearRampRun(doc, ground(doc), 1, 1)).toEqual([])
+  })
+
+  it('finishes an odd drop with a half ramp', () => {
+    const doc = createMap(4, 4)
+    // Three half-tiles of drop from a plateau two cells deep: a full ramp and a half ramp.
+    setHeight(doc, 2, 1, 5)
+    setHeight(doc, 1, 1, 5)
+    const edge = { x: 2, z: 1, dir: 0 }
+    expect(rampRunLength(ground(doc), edge)).toBe(2)
+    expect(rampRunBlocked(ground(doc), edge)).toBeNull()
+    applyPatches(doc, rampRun(doc, ground(doc), edge, 2))
+    expect(rampDirAt(ground(doc), 2, 1)).toBe(0)
+    expect(rampDirAt(ground(doc), 1, 1)).toBe(0)
+    // The run keeps its high end at the top of the cliff and descends to the low side.
+    expect(topHeight(ground(doc), 1, 1)).toBe(5)
+    expect(groundHeight(doc, 3.5, 1.5)).toBeCloseTo(1, 6)
+  })
+
+  it('starts an odd drop from a slab with the half ramp that rides one, so every full ramp has a whole-tile floor', () => {
+    const doc = createMap(4, 4)
+    // The low side is a slab at 1; the plateau stands at 5: a drop of four, which a full ramp on an odd floor could not meet.
+    setHeight(doc, 3, 1, 1)
+    for (const x of [0, 1, 2]) setHeight(doc, x, 1, 5)
+    const edge = { x: 2, z: 1, dir: 0 }
+    const plan = rampPlan(ground(doc), edge)
+    expect(plan?.map((step) => [step.height, step.shape])).toEqual([
+      [2, halfRampUpShape(0)],
+      [4, rampShape(0)],
+      [5, halfRampShape(0)],
+    ])
+    applyPatches(doc, rampRun(doc, ground(doc), edge, 3))
+    // Each cell's low edge meets the next cell's high edge, and the last meets the plateau.
+    expect(cornerHeights(ground(doc), 2, 1)).toEqual([2, 2, 1, 1])
+    expect(cornerHeights(ground(doc), 1, 1)).toEqual([4, 4, 2, 2])
+    expect(cornerHeights(ground(doc), 0, 1)).toEqual([5, 5, 4, 4])
+  })
+
+  it('clears the run under a click and leaves the run beside it', () => {
+    const doc = createMap(4, 4)
+    for (const z of [1, 2]) for (const x of [1, 2]) setHeight(doc, x, z, 6)
+    // Two runs cut side by side, both descending east from x = 2.
+    for (const z of [1, 2]) applyPatches(doc, rampRun(doc, ground(doc), { x: 2, z, dir: 0 }, 2))
+    expect([1, 2].map((z) => [rampDirAt(ground(doc), 1, z), rampDirAt(ground(doc), 2, z)])).toEqual([
+      [0, 0],
+      [0, 0],
+    ])
+    applyPatches(doc, clearRampRun(doc, ground(doc), 2, 1))
+    expect([rampDirAt(ground(doc), 1, 1), rampDirAt(ground(doc), 2, 1)]).toEqual([NO_RAMP, NO_RAMP])
+    expect([rampDirAt(ground(doc), 1, 2), rampDirAt(ground(doc), 2, 2)]).toEqual([0, 0])
+  })
+
+  it('refuses a run through ground that is not level with the edge, or that leaves the volume', () => {
+    const doc = createMap(4, 4)
+    setHeight(doc, 2, 1, 6)
+    // Two cells of run wanted; the cell behind the edge stands at 2, not 6.
+    expect(rampRunBlocked(ground(doc), { x: 2, z: 1, dir: 0 })).toBe('the ground behind the edge is not level with it')
+    expect(rampRun(doc, ground(doc), { x: 2, z: 1, dir: 0 }, 2)).toEqual([])
+    // A ramp already cut behind the edge blocks it too.
+    setHeight(doc, 1, 1, 6)
+    fillColumn(ground(doc), 1, 1, 6, 0, rampShape(1))
+    expect(rampRunBlocked(ground(doc), { x: 2, z: 1, dir: 0 })).toBe('the run crosses another ramp')
+    // And a run that would step off the volume: a drop of three tiles from a plateau only two cells deep.
+    const small = createMap(3, 2)
+    setHeight(small, 1, 0, 8)
+    setHeight(small, 0, 0, 8)
+    expect(rampRunBlocked(ground(small), { x: 1, z: 0, dir: 0 })).toBe('the run would leave the volume')
   })
 })
 
@@ -454,19 +546,23 @@ describe('io', () => {
   it('round-trips a document', () => {
     const store = new EditorStore(createMap(6, 6, 'Test Map'))
     store.apply('Raise', raise(store.reader.doc, ground(store.reader.doc), [[1, 1]], 3))
-    store.apply('Paint', paintTop(ground(store.reader.doc), [[1, 1]], 7))
+    // The top face of the column's top voxel, drawn with material 4 (path) instead of its own.
+    const top = columnTopAt(ground(store.reader.doc), 1, 1)
+    store.apply('Paint', paintFace(ground(store.reader.doc), [{ x: 1, z: 1, y: top, dir: FACE_TOP }], 4))
 
     const restored = deserialize(serialize(store.reader.doc))
     expect(restored.name).toBe('Test Map')
-    expect(ground(restored).terrain.height).toEqual(ground(store.reader.doc).terrain.height)
-    expect(ground(restored).paint.top).toEqual(ground(store.reader.doc).paint.top)
-    expect(restored.formatVersion).toBe(2)
+    expect(ground(restored).voxels).toEqual(ground(store.reader.doc).voxels)
+    expect(columnHeights(ground(restored))).toEqual(columnHeights(ground(store.reader.doc)))
+    expect(ground(restored).paint.faces).toEqual(ground(store.reader.doc).paint.faces)
+    expect(ground(restored).paint.faces[faceKey(1, 1, top, FACE_TOP)]).toBe(4)
+    expect(restored.formatVersion).toBe(3)
   })
 
   it('refuses an older format outright: no migrations until data exists', () => {
     const doc = createMap(4, 4)
     const raw = parseOnDisk(doc)
-    raw.formatVersion = 1
+    raw.formatVersion = 2
     expect(() => deserialize(JSON.stringify(raw))).toThrow(/no migration/)
     delete raw.formatVersion
     expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
@@ -498,19 +594,28 @@ describe('io', () => {
     expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
   })
 
-  it('rejects a terrain array of the wrong length', () => {
+  it('rejects a voxel array of the wrong length', () => {
+    const doc = createMap(4, 4)
+    const { layers } = ground(doc)
+    const raw = parseOnDisk(doc)
+    raw.structures[ground(doc).id].voxels.material = [1, 2, 3]
+    expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
+    expect(() => deserialize(JSON.stringify(raw))).toThrow(new RegExp(`should hold ${16 * layers} entries`))
+  })
+
+  it('rejects a water array of the wrong length', () => {
     const doc = createMap(4, 4)
     const raw = parseOnDisk(doc)
-    raw.structures[ground(doc).id].terrain.height = [1, 2, 3]
-    expect(() => deserialize(JSON.stringify(raw))).toThrow(LoadError)
+    raw.structures[ground(doc).id].water = [1, 2, 3]
+    expect(() => deserialize(JSON.stringify(raw))).toThrow(/should hold 16 entries/)
   })
 
   it('preserves dormant paint across a save and load', () => {
     const doc = createMap(4, 4)
-    ground(doc).paint.cliff[cliffKey(1, 1, 0, 30)] = 5
-    ground(doc).terrain.ramp[0] = NO_RAMP
+    // The east side of a voxel fifteen layers up a column that is one cube tall: no such face is drawn.
+    ground(doc).paint.faces[faceKey(1, 1, 15, 0)] = 5
     const restored = deserialize(serialize(doc))
-    expect(ground(restored).paint.cliff[cliffKey(1, 1, 0, 30)]).toBe(5)
+    expect(ground(restored).paint.faces[faceKey(1, 1, 15, 0)]).toBe(5)
   })
 })
 
@@ -675,5 +780,27 @@ describe('structures', () => {
     applyPatches(doc, deleteSketchPoint(doc, id, 0))
     applyPatches(doc, deleteSketchPoint(doc, id, 0))
     expect((doc.structures[id] as { closed: boolean }).closed).toBe(false)
+  })
+})
+
+describe('a map file is checked before it is believed', () => {
+  const raw = () => JSON.parse(serialize(createMap(2, 2))) as { structures: Record<string, { voxels: { material: number[]; shape: number[] }; layers: number }>; materials: unknown[] }
+
+  it('refuses a voxel whose material or shape is not one', () => {
+    const material = raw()
+    material.structures.ground.voxels.material[0] = -5
+    expect(() => deserialize(JSON.stringify(material))).toThrow(/material\[0\] is -5/)
+    const shape = raw()
+    shape.structures.ground.voxels.shape[1] = 99
+    expect(() => deserialize(JSON.stringify(shape))).toThrow(/shape\[1\] is 99/)
+  })
+
+  it('refuses a volume taller than a band level can name, and a map with no materials', () => {
+    const tall = raw()
+    tall.structures.ground.layers = 129
+    expect(() => deserialize(JSON.stringify(tall))).toThrow(/at most 128/)
+    const bare = raw()
+    bare.materials = []
+    expect(() => deserialize(JSON.stringify(bare))).toThrow(/at least one material/)
   })
 })

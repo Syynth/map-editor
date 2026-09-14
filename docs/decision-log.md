@@ -444,3 +444,51 @@ Each entry:
 - **SCOPE:** minor/local
 - **WHAT:** Wherever the desktop app reports its version (for now, the About panel), it shows both the shell's release version and the web bundle it's serving: the bundle's sequence number and short commit, or "built-in bundle" before any update. For example, `0.1.0 (bundle 25 · 9c649e3)`. It updates when a reload switches bundles.
 - **WHY:** The bundle updates without the shell's version changing, so the shell version alone doesn't tell you which editor is running. Two installs of the same release can be on different bundles, and a bug report or a check that an update landed needs both numbers.
+
+## Terrain paint is dual-grid autotiling over materials, on tops and cliff faces
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** cross-system (document, geometry, feature-terrain)
+- **SCOPE:** architectural
+- **WHAT:** What the artist paints is a material, never a tile; the tile is derived. A material is a library entry on the level (name, sheet, region, role hint of top/wall/ramp/any), added, renamed, reordered and deleted from the Terrain inspector; its order is its draw priority. Each material is authored as a dual-grid set of 16 whole tiles indexed by which of an offset tile's four corners hold it. Cells store a top material and a wall material; a cliff band may override the wall material at the existing stable address (cell, side, level). The mesher emits each top and each band as four quarters, each sampling the quarter of the offset tile at its corner, with the corner mask computed per cell so height discontinuities fall on the split. A cliff face is autotiled in face space: bands above/below/beside count, the top surface and the ground count as edges, a bend in the face counts as connected. At a corner holding several materials the runtime atlas composites the lowest material's full tile under each higher one's masked tile, cached per combination; per-pair authored transitions are a later override. Ground at the foot of a cliff treats a taller same-material neighbour as connected, so there is no rim at the base (tentative). The raw tile brush stays only as an escape hatch (a per-cell stamp layer); its interaction is to be redesigned.
+- **WHY:** The current paint stores raw tile ids, so nothing painted autotiles, cliffs cannot be dressed in a material of their own, corners are impossible with a four-neighbour mask, and materials cannot be managed at all. Dual grid gives real corners from 16 tiles the artist draws whole, and treating a cliff face as the same kind of grid makes one brush work everywhere.
+
+## Ramps are 45°, one tile per cell, with run length set by drag
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** cross-system (document, geometry, feature-terrain)
+- **SCOPE:** moderate
+- **WHAT:** A ramp cell always slopes at 45°, dropping one tile over one cell; ramp art is a strip per material of tiles one cell wide and √2 cells tall, in single / left-edge / middle / right-edge variants, plus a half-length piece that drops one half-tile over half a cell for odd drops. With the Ramp verb, press on a cliff face and drag back to choose how many cells the run spans; a length that does not meet the drop is refused. Clicking any cell of a ramp removes the whole run; shift-click removes too. The direction dropdown and the ramp inspector panel go away.
+- **WHY:** A √2-tall tile lets pixel art be drawn at true scale on a 45° slope instead of being stretched. A per-cell ramp with a fixed drop that ignored the neighbour left gaps, and a ramp could not be removed because its cliff face no longer existed to click and its top supplied no direction.
+
+## Sculpt verbs: Raise/Lower and Smooth take a strength; Flatten shows a target height
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** feature-terrain
+- **SCOPE:** moderate
+- **WHAT:** Sculpt has four verbs: Raise (shift lowers), Flatten, Smooth, Ramp. Strength is an integer number of half-tiles per pass and applies to Raise/Lower and to Smooth, which moves each cell toward the mean of its neighbours by at most the strength. Flatten sets cells to a height shown in the bar, sampled at the press and editable. Water is not a terrain verb (ruling of 2026-09-12 stands; the interim pooling verb is removed when the Water tool lands).
+- **WHY:** Raising by one half-tile per pass makes large changes tedious, and flattening and smoothing are different operations that a single strength cannot serve.
+
+## Numeric tool parameters are scrub fields, not sliders
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** editor-ui
+- **SCOPE:** moderate
+- **WHAT:** Brush size, strength, flatten height, the sculpt dead zone and any future numeric parameter are shown as a number that can be dragged horizontally to change, clicked to type into, or nudged with arrow keys (shift for coarse steps). Sliders leave the bar and the inspector for these; the `[` `]` size keys stay.
+- **WHY:** These are small exact values a slider cannot reliably land on; a slider track spends bar width the icon-only bar does not have; typing a value must be possible; and scrubbable fields are the convention in the reference art apps.
+
+## The voxel model is scheduled now, built with the sculpt verbs; a voxel is a cube; one material per voxel
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** cross-system (document, geometry, feature-terrain)
+- **SCOPE:** architectural
+- **WHAT:** The 2026-09-12 ruling that the map needs real voxel data (#100) is scheduled: the document becomes voxels and the reworked sculpt verbs (Raise/Lower with strength, Flatten with a height, Smooth, Ramp by drag) are written against it as one piece of work, with Water and the material paint following. A voxel is a full cube, one tile on every side; a half-height slab is a voxel shape, as are the 45° ramp and the half-length ramp piece, each with a direction. Every voxel carries one material. Contiguous flat areas of same-material tops autotile dual-grid style by drawing the offset tile centred on each cell corner; where a height edge crosses a corner the tile is split into the quarters that belong to each cell, so the two renderings are the same picture. Side faces autotile the same way in face space. A per-face material override at (cell, side, level) stays for exceptions, at the address the cliff paint layer already uses.
+- **WHY:** Every sculpt verb touches height, so building them on columns and again on voxels is the same code written twice, while the paint addressing is already voxel-shaped; the no-migrations ruling makes changing the document cheap now. Cubes rather than half-tile voxels because the tile is the unit everywhere and a half step should look like the exception in the data; whole-tile layers keep the layer view, region selection and outliner half the size; cubes match the brief's Blocks fallback and the voxel-art convention the artist knows; and half-tile heights were an open question that slabs keep possible without making them the norm.
+
+## Any number of terrains may meet at a corner; unauthored transitions composite and are shown
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** cross-system (document, geometry, feature-terrain)
+- **SCOPE:** moderate
+- **WHAT:** Amends the dual-grid ruling of the same date. A transition tile is authored as the transition itself (half grass, half path) and tagged per corner; the tile at a cell corner is the one tagged exactly like its four cells, for any number of terrains. Two, three or four terrains meeting at a corner is allowed. Where no tile is authored for the exact combination, the corner is composited with no extra art: the lowest terrain in the library order from its edge set, then each higher terrain's edge-set tile over it. Composited corners are shown in the editor (a toggleable mark) and the distinct missing combinations are counted and named, so transitions are drawn on demand; an authored tile always wins over the composite. Library order matters only for composited corners and for which terrain is the shape when a template is placed.
+- **WHY:** A complete set for six terrains is about 1,300 tiles, so restricting corners to pairs is an authoring budget, not a property of the model. Compositing from the edge sets gives every corner a plausible look for free, and showing what was composited turns the gap into a to-do list the artist works off as the level needs it.

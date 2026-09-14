@@ -15,8 +15,6 @@
  * rendered by `bars.tsx` and `inspector.tsx` under the tool's owner.
  */
 
-import { useEffect, useState } from 'react'
-
 import {
   ATMOSPHERE_PRESETS,
   DISPLAY_MODES,
@@ -28,10 +26,8 @@ import {
   type ReadonlyMapDoc,
   type ReadonlyStructure,
   type MapObject,
-  type RgbaImage,
 } from '@papercut/document'
 import { useDocument, useDocumentSelector } from '@papercut/editor-host'
-import { sheetLayoutFor, tileColumnRow } from '@papercut/geometry'
 import { analyseCoverage, type CoverageReport } from '@papercut/runtime'
 import {
   Action,
@@ -50,61 +46,6 @@ import {
   Toggle,
   Verb,
 } from '@papercut/ui'
-import { rgbaToDataUrl } from './rgba'
-
-// --- tile palette -----------------------------------------------------------
-
-export function TilePalette({
-  doc,
-  sheet,
-  selected,
-  onSelect,
-}: {
-  doc: ReadonlyMapDoc
-  sheet: RgbaImage | null
-  selected: number
-  onSelect: (tile: number) => void
-}) {
-  const [url, setUrl] = useState<string | null>(null)
-  const layout = sheetLayoutFor(doc)
-
-  useEffect(() => {
-    if (!sheet) return setUrl(null)
-    setUrl(rgbaToDataUrl(sheet))
-  }, [sheet])
-
-  const { column, row } = tileColumnRow(layout, selected)
-  const scale = Math.min(14, Math.max(6, Math.floor(240 / layout.columns)))
-
-  return (
-    <div className="palette">
-      <div
-        className="palette-sheet"
-        style={{
-          width: layout.columns * scale,
-          height: layout.rows * scale,
-          backgroundImage: url ? `url(${url})` : undefined,
-          backgroundSize: `${layout.columns * scale}px ${layout.rows * scale}px`,
-        }}
-        onClick={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect()
-          const tx = Math.floor(((event.clientX - rect.left) / rect.width) * layout.columns)
-          const ty = Math.floor(((event.clientY - rect.top) / rect.height) * layout.rows)
-          onSelect(ty * layout.columns + tx)
-        }}
-      >
-        <span
-          className="palette-cursor"
-          style={{ left: column * scale, top: row * scale, width: scale, height: scale }}
-        />
-      </div>
-      <Note>
-        Rows 0–3 are the 16 autotile variants; row 4 is cliff top, middle, bottom, then the ramp.
-        Each material owns four columns. Alt-click the map to pick a tile up.
-      </Note>
-    </div>
-  )
-}
 
 // --- the selected object ------------------------------------------------------
 

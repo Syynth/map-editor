@@ -265,7 +265,7 @@ and §14 makes the extras spec a public contract other engines implement.
 - [ ] A preferences store: keybindings, theme, recent files.
 
 ### Later, but decide now
-- [ ] **Virtualization** (TanStack Virtual) — the outliner and tile palette both
+- [ ] **Virtualization** (TanStack Virtual) — the outliner and materials list both
       become long lists.
 - [ ] **Worker RPC** (Comlink) for when the mesher moves off the main thread.
       Benchmarks say it is not needed yet.

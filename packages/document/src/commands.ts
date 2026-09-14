@@ -99,6 +99,24 @@ const cameraBounds = z
   .strict()
 
 /** The rig, as the camera panel edits it. `bounds` is set whole for the same reason `facing` is. */
+/** A terrain reference: the sheet's file and the terrain's id in its sidecar. */
+const terrainRef = z.object({ sheet: z.string().min(1), terrain: z.string().min(1) }).strict()
+const materialDef = z
+  .object({
+    id: z.int().min(0),
+    name: z.string().min(1),
+    color: z.int().min(0).max(0xffffff),
+    role: z.enum(['top', 'wall', 'any']),
+    top: terrainRef,
+    side: terrainRef.exactOptional(),
+  })
+  .strict()
+/** The whole list, replaced: its order is the materials' priority, so a reorder is as much an edit as a rename. */
+const materialsSet = z
+  .object({ materials: z.array(materialDef).min(1) })
+  .strict()
+  .refine(({ materials }) => new Set(materials.map((m) => m.id)).size === materials.length, { message: 'material ids must be unique' })
+
 const cameraChanges = z
   .object({
     yaw: z.number().exactOptional(),
@@ -179,6 +197,7 @@ commands.declare(DOCUMENT_OWNER, { id: 'objects.delete', title: 'Delete Objects'
 commands.declare(DOCUMENT_OWNER, { id: 'objects.update', title: 'Edit Object', category: 'Edit', args: objectUpdate })
 commands.declare(DOCUMENT_OWNER, { id: 'camera.set', title: 'Set Camera Rig', category: 'Camera', args: cameraChanges })
 commands.declare(DOCUMENT_OWNER, { id: 'atmosphere.set', title: 'Set Atmosphere', category: 'Atmosphere', args: atmosphereChanges })
+commands.declare(DOCUMENT_OWNER, { id: 'materials.set', title: 'Set Materials', category: 'Terrain', args: materialsSet })
 commands.declare(DOCUMENT_OWNER, { id: 'document.load', title: 'Open Map', category: 'File', args: documentLoad })
 commands.declare(DOCUMENT_OWNER, { id: 'document.new', title: 'New Map', category: 'File', args: documentNew })
 
@@ -232,6 +251,7 @@ export type StructurePlaceArgs = z.infer<typeof structurePlace>
 export type StructureReparentArgs = z.infer<typeof structureReparent>
 export type ObjectUpdateArgs = z.infer<typeof objectUpdate>
 export type CameraChanges = z.infer<typeof cameraChanges>
+export type MaterialsSetArgs = z.infer<typeof materialsSet>
 export type AtmosphereChanges = z.infer<typeof atmosphereChanges>
 export type DocumentLoadArgs = z.infer<typeof documentLoad>
 export type DocumentNewArgs = z.infer<typeof documentNew>

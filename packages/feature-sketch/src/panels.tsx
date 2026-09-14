@@ -8,7 +8,7 @@
  * by the app's `dispatch` prop; the tool's parameters go through `set`.
  */
 
-import { HALF, type ReadonlyMapDoc, type ReadonlySketch, type WallProfile, type WallProfilePoint } from '@papercut/document'
+import { HALF, heightAt, type ReadonlyMapDoc, type ReadonlySketch, type WallProfile, type WallProfilePoint } from '@papercut/document'
 import { wallProfilePolyline } from '@papercut/geometry'
 import { chordFor, panels, type FeatureSelection, type OwnerId, type Platform } from '@papercut/registry'
 import { BarDivider, BarLabel, BarSlider, Field, IconSegmented, Note, Row, Segmented, Select, Slider, Toggle, Verb, colors } from '@papercut/ui'
@@ -133,8 +133,7 @@ function frameY(doc: ReadonlyMapDoc, sketch: ReadonlySketch): number {
   const parent = sketch.parent ? doc.structures[sketch.parent] : undefined
   if (!parent) return 0
   if (parent.kind === 'sketch') return frameY(doc, parent) + (parent.closed ? parent.layers * HALF : 0)
-  const index = Math.floor(sketch.placement.z) * parent.size.width + Math.floor(sketch.placement.x)
-  return (parent.terrain.height[index] ?? 0) * HALF
+  return heightAt(parent, Math.floor(sketch.placement.x), Math.floor(sketch.placement.z)) * HALF
 }
 
 function cloneProfile(profile: ReadonlySketch['wall']): WallProfile {

@@ -3,7 +3,7 @@
  *
  * A raycast that resolves to a surface and a cell on it, not just a point in
  * space. Every tool in the editor picks through here, so "what is under the
- * cursor" means the same thing to the sculpt brush, the tile brush and the
+ * cursor" means the same thing to the sculpt brush, the material brush and the
  * object placer.
  *
  * Objects are tested before terrain, per brief section 8, with a modifier to

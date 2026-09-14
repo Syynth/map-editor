@@ -20,9 +20,9 @@
  *     rule in this file.
  */
 
-import { defaultSurfaceMaterials, type FillEdgeMaterial, type ReadonlyVoxel, type Structure, type VoxelStructure } from './structure'
+import { defaultSurfaceMaterials, type FillEdgeMaterial, type Structure, type VoxelStructure } from './structure'
 
-export const FORMAT_VERSION = 2
+export const FORMAT_VERSION = 3
 
 export type Direction = 0 | 1 | 2 | 3
 /** +X east, +Z south, -X west, -Z north. Index order used everywhere. */
@@ -34,10 +34,28 @@ export const DIR_VECTORS: ReadonlyArray<readonly [number, number]> = [
 ]
 export const DIR_NAMES = ['East', 'South', 'West', 'North'] as const
 
-/** No ramp on this cell. */
+/** No ramp: the answer of `rampDirAt` for a level top. */
 export const NO_RAMP = -1
 /** No water in this column. */
 export const NO_WATER = -32768
+
+/** No voxel here. */
+export const AIR = -1
+/** Voxel shapes. A sloped shape's direction (the way it descends) is added to its base value. See `voxels.ts`. */
+export const SHAPE_BLOCK = 0
+export const SHAPE_SLAB = 1
+/** `SHAPE_RAMP + dir`: a 45° slope, one tile of drop over the cell. */
+export const SHAPE_RAMP = 2
+/** `SHAPE_HALF_RAMP + dir`: one half-tile of drop over half the cell from the floor, then flat; finishes an odd drop. */
+export const SHAPE_HALF_RAMP = 6
+/** `SHAPE_HALF_RAMP_UP + dir`: the same wedge riding a slab, for an odd drop whose low side is a half-tile up. */
+export const SHAPE_HALF_RAMP_UP = 10
+/** How many layers a new volume gets: 20 cubes, the old 40-half-tile ceiling. */
+export const DEFAULT_LAYERS = 20
+/** The most layers a volume may have: the mesher keys a band by its half-tile level in eight bits. */
+export const MAX_LAYERS = 128
+/** The shapes a voxel may take: SHAPE_BLOCK up to the last half-ramp direction. */
+export const SHAPE_COUNT = SHAPE_HALF_RAMP_UP + 4
 
 export interface MapSize {
   width: number
@@ -45,36 +63,31 @@ export interface MapSize {
 }
 
 /**
- * Parallel arrays, one entry per cell, indexed `y * width + x`.
- * Plain number arrays rather than typed arrays so the document is JSON without
- * a serializer. If profiling ever demands typed arrays, that is a change to
- * `io.ts` and this interface, not to any tool.
+ * Parallel arrays, one entry per voxel, indexed by `voxelIndex` in
+ * `voxels.ts`: `(y * height + z) * width + x`. Plain number arrays rather
+ * than typed arrays so the document is JSON without a serializer. If
+ * profiling ever demands typed arrays, that is a change to `io.ts` and this
+ * interface, not to any tool.
  */
-export interface TerrainData {
-  /** Integer half-tiles. */
-  height: number[]
-  /** Index into `materials`. The default look before anything is painted. */
+export interface VoxelData {
+  /** Index into `materials`, or AIR. */
   material: number[]
-  /** Direction the ramp descends toward, or NO_RAMP. */
-  ramp: number[]
-  /** Water surface height in half-tiles, or NO_WATER. */
-  water: number[]
+  /** A shape (SHAPE_*); meaningless where the material is AIR. */
+  shape: number[]
 }
 
 /**
  * Painted overrides. Keys are stable grid addresses (see paint.ts).
  *
- * Entries are NEVER deleted when geometry shrinks. A cliff face that stops
+ * Entries are NEVER deleted when geometry shrinks. A face that stops
  * existing leaves its paint behind, dormant; raising the terrain again brings
  * it back. That dormancy is the whole mechanism behind "paint survives
  * sculpt", and it works precisely because nothing garbage-collects this.
  */
 export interface PaintLayers {
-  /** `${x},${y}` -> tile id */
-  top: Record<string, number>
-  /** `${x},${y},${dir},${level}` -> tile id */
-  cliff: Record<string, number>
-  /** `${x},${y}` -> packed 0xRRGGBB */
+  /** `${x},${z},${y},${dir}` -> the material one face of one voxel is drawn with, instead of the voxel's own. */
+  faces: Record<string, number>
+  /** `${x},${z}` -> packed 0xRRGGBB */
   tint: Record<string, number>
 }
 
@@ -201,12 +214,33 @@ export interface BackdropCard {
   opacity: number
 }
 
+/** A terrain in a terrain set: the sheet's file name and the terrain's id in its sidecar (spec §2). */
+export interface TerrainRef {
+  sheet: string
+  terrain: string
+}
+
+/**
+ * A terrain material: what a voxel is made of, and which terrains draw it.
+ * `top` draws its top faces and, unless `side` says otherwise, its sides;
+ * grass-topped dirt is one material with both. The order of the map's
+ * materials is their priority: which is the shape when a template is placed
+ * for a pair, and the layering of a composited corner.
+ */
 export interface MaterialDef {
+  /**
+   * What a voxel stores. Assigned when the material is made and never reused
+   * or renumbered, so the list can be reordered — its order is the
+   * materials' priority — or a material deleted without a voxel changing
+   * what it is made of.
+   */
+  id: number
   name: string
-  /** Column block on the template sheet. See template.ts for the layout. */
-  block: number
-  /** Fallback colour when no sheet is loaded. */
+  /** Fallback colour when no sheet is loaded, and the swatch. */
   color: number
+  role: 'top' | 'wall' | 'any'
+  top: TerrainRef
+  side?: TerrainRef
 }
 
 export interface MapDoc {
@@ -238,8 +272,8 @@ export interface MapDoc {
  *
  * A structural, recursive `readonly` over `MapDoc`: every property, every
  * array and every nested object. Verified during prototyping to reject all
- * four write shapes — indexed assignment (`doc.terrain.height[i] = h`),
- * record assignment (`doc.paint.top[key] = t`), array mutation (`push`,
+ * four write shapes — indexed assignment (`voxel.voxels.material[i] = m`),
+ * record assignment (`voxel.paint.faces[key] = m`), array mutation (`push`,
  * `splice`) and property replacement (`doc.name = …`) — while leaving reads
  * untouched. No branding is needed because the arrays are plain `number[]`
  * and the records plain `Record<string, number>`: the mapped type is enough,
@@ -271,19 +305,6 @@ export function inBounds(size: MapSize, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < size.width && y < size.height
 }
 
-/** Height in half-tiles, or the edge value clamped, for out-of-bounds reads. */
-export function heightAt(voxel: ReadonlyVoxel, x: number, y: number): number {
-  const cx = Math.min(Math.max(x, 0), voxel.size.width - 1)
-  const cy = Math.min(Math.max(y, 0), voxel.size.height - 1)
-  return voxel.terrain.height[cellIndex(voxel.size, cx, cy)]
-}
-
-export function materialAt(voxel: ReadonlyVoxel, x: number, y: number): number {
-  const cx = Math.min(Math.max(x, 0), voxel.size.width - 1)
-  const cy = Math.min(Math.max(y, 0), voxel.size.height - 1)
-  return voxel.terrain.material[cellIndex(voxel.size, cx, cy)]
-}
-
 /** Half-tile units to world units. */
 export const HALF = 0.5
 
@@ -291,12 +312,28 @@ export function worldHeight(halfTiles: number): number {
   return halfTiles * HALF
 }
 
+/** The placeholder terrain set's sheet, which the default materials point into. */
+export const PLACEHOLDER_SHEET = 'ground.png'
+
+const placeholder = (terrain: string): TerrainRef => ({ sheet: PLACEHOLDER_SHEET, terrain })
+
 export const DEFAULT_MATERIALS: MaterialDef[] = [
-  { name: 'Grass', block: 0, color: 0x6aa84f },
-  { name: 'Dirt', block: 1, color: 0x8b6b45 },
-  { name: 'Stone', block: 2, color: 0x8e8e8e },
-  { name: 'Sand', block: 3, color: 0xd9c27e },
+  { id: 0, name: 'Grass', color: 0x6aa84f, role: 'top', top: placeholder('grass'), side: placeholder('dirt') },
+  { id: 1, name: 'Dirt', color: 0x8b6b45, role: 'any', top: placeholder('dirt') },
+  { id: 2, name: 'Stone', color: 0x8e8e8e, role: 'wall', top: placeholder('stone') },
+  { id: 3, name: 'Sand', color: 0xd9c27e, role: 'top', top: placeholder('sand'), side: placeholder('dirt') },
+  { id: 4, name: 'Path', color: 0xb08f5e, role: 'top', top: placeholder('path'), side: placeholder('dirt') },
 ]
+
+/** The material a voxel names, by id; `undefined` for an id the map no longer has. */
+export function materialById(materials: readonly MaterialDef[], id: number): MaterialDef | undefined {
+  return materials.find((m) => m.id === id)
+}
+
+/** An id no material of the map has: the next number after the highest. */
+export function nextMaterialId(materials: readonly MaterialDef[]): number {
+  return materials.reduce((max, m) => Math.max(max, m.id + 1), 0)
+}
 
 export const ATMOSPHERE_PRESETS: Record<string, Omit<Atmosphere, 'preset' | 'backdrop'>> = {
   'Clear noon': {
@@ -411,9 +448,11 @@ export function newId(prefix = 'obj'): string {
   return `${prefix}_${rand}${idCounter.toString(36)}`
 }
 
-/** A flat voxel volume of `width` × `height` cells at height 2, standing on `parent` (or the ground). */
-export function createVoxel(width: number, height: number, name = 'Ground', parent: string | null = null, id = newId('vox')): VoxelStructure {
+/** A flat voxel volume of `width` × `height` cells, one cube tall in the first material, standing on `parent` (or the ground). */
+export function createVoxel(width: number, height: number, name = 'Ground', parent: string | null = null, id = newId('vox'), layers = DEFAULT_LAYERS): VoxelStructure {
   const count = width * height
+  const material = new Array<number>(count * layers).fill(AIR)
+  material.fill(0, 0, count)
   return {
     id,
     kind: 'voxel',
@@ -421,13 +460,10 @@ export function createVoxel(width: number, height: number, name = 'Ground', pare
     parent,
     placement: { x: 0, z: 0, yaw: 0 },
     size: { width, height },
-    terrain: {
-      height: new Array<number>(count).fill(2),
-      material: new Array<number>(count).fill(0),
-      ramp: new Array<number>(count).fill(NO_RAMP),
-      water: new Array<number>(count).fill(NO_WATER),
-    },
-    paint: { top: {}, cliff: {}, tint: {} },
+    layers,
+    voxels: { material, shape: new Array<number>(count * layers).fill(SHAPE_BLOCK) },
+    water: new Array<number>(count).fill(NO_WATER),
+    paint: { faces: {}, tint: {} },
   }
 }
 

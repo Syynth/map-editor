@@ -19,15 +19,15 @@ import {
   structureOf,
   MAX_HEIGHT,
   MIN_HEIGHT,
-  NO_RAMP,
+  clearRampRun,
   flatten,
-  paintCliff,
+  paintFace,
   paintTint,
-  paintTop,
   raise,
+  rampRun,
   setMaterial,
-  setRamp,
   setWater,
+  smooth,
   type Patch,
   type ReadonlyMapDoc,
 } from '@papercut/document'
@@ -44,16 +44,18 @@ const cells = z.array(cell).min(1)
 /** The voxel volume the cells are in: nothing ambient, a command names its structure. */
 const structure = z.string().min(1)
 
-/** One cliff band: a cell, the face it points along, and the level on that face. */
-const face = z.object({ x: z.int().min(0), y: z.int().min(0), dir: z.int().min(0).max(3), level: z.int().min(0) }).strict()
+/** One face of one voxel: the cell, the layer, and the side (0–3, 4 top, 5 bottom). */
+const face = z.object({ x: z.int().min(0), z: z.int().min(0), y: z.int().min(0), dir: z.int().min(0).max(5) }).strict()
 
 const raiseArgs = z.object({ structure, cells, delta: z.int().min(-MAX_HEIGHT).max(MAX_HEIGHT) }).strict()
 const flattenArgs = z.object({ structure, cells, height: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT) }).strict()
-const rampArgs = z.object({ structure, cells, dir: z.int().min(NO_RAMP).max(3) }).strict()
+const smoothArgs = z.object({ structure, cells, strength: z.int().min(1).max(MAX_HEIGHT) }).strict()
+/** A cliff edge — a cell and the side that stands above its neighbour — and how many cells the ramp runs back from it. */
+const rampArgs = z.object({ structure, edge: z.object({ x: z.int().min(0), z: z.int().min(0), dir: z.int().min(0).max(3) }).strict(), run: z.int().min(1) }).strict()
+const rampClearArgs = z.object({ structure, cell }).strict()
 const waterArgs = z.object({ structure, cells, level: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT).nullable() }).strict()
 const materialArgs = z.object({ structure, cells, material: z.int().min(0) }).strict()
-const topArgs = z.object({ structure, cells, tile: z.int().min(0).nullable() }).strict()
-const cliffArgs = z.object({ structure, faces: z.array(face).min(1), tile: z.int().min(0).nullable() }).strict()
+const faceArgs = z.object({ structure, faces: z.array(face).min(1), material: z.int().min(0).nullable() }).strict()
 const tintArgs = z.object({ structure, cells, tint: z.int().min(0).max(0xffffff).nullable() }).strict()
 
 /**
@@ -66,14 +68,20 @@ const tintArgs = z.object({ structure, cells, tint: z.int().min(0).max(0xffffff)
 const terrainParams = z
   .object({
     terrainMode: z.enum(['sculpt', 'paint']).exactOptional(),
-    sculptVerb: z.enum(['raise', 'flatten', 'ramp', 'water']).exactOptional(),
-    paintVerb: z.enum(['tile', 'material', 'tint']).exactOptional(),
+    sculptVerb: z.enum(['raise', 'flatten', 'smooth', 'ramp', 'water']).exactOptional(),
+    paintVerb: z.enum(['material', 'tint']).exactOptional(),
     strokeShape: z.enum(['brush', 'rect', 'fill']).exactOptional(),
     brush: z.object({ size: z.int().min(1).max(12), shape: z.enum(['square', 'circle']) }).exactOptional(),
     material: z.int().min(0).exactOptional(),
-    tile: z.int().min(0).exactOptional(),
     tint: z.int().min(0).max(0xffffff).exactOptional(),
-    rampDir: z.int().min(NO_RAMP).max(3).exactOptional(),
+    strength: z.int().min(1).max(8).exactOptional(),
+    height: z.int().min(MIN_HEIGHT).max(MAX_HEIGHT).exactOptional(),
+    heightPinned: z.boolean().exactOptional(),
+    rampRun: z
+      .object({ edge: z.object({ x: z.int().min(0), z: z.int().min(0), dir: z.int().min(0).max(3) }).strict(), run: z.int().min(1), needed: z.int().min(1), blocked: z.string().nullable() })
+      .strict()
+      .nullable()
+      .exactOptional(),
     sculptDeadZone: z.number().min(0).max(0.5).exactOptional(),
   })
   .strict()
@@ -86,12 +94,13 @@ export function declareTerrainCommands(owner: OwnerId): void {
   commands.declare(owner, { id: 'terrain.brush.resize', title: 'Resize Brush', category: 'Terrain', args: brushResize })
   commands.declare(owner, { id: 'terrain.raise', title: 'Raise Terrain', category: 'Terrain', args: raiseArgs })
   commands.declare(owner, { id: 'terrain.flatten', title: 'Flatten Terrain', category: 'Terrain', args: flattenArgs })
-  commands.declare(owner, { id: 'terrain.ramp', title: 'Set Ramp', category: 'Terrain', args: rampArgs })
+  commands.declare(owner, { id: 'terrain.smooth', title: 'Smooth Terrain', category: 'Terrain', args: smoothArgs })
+  commands.declare(owner, { id: 'terrain.ramp', title: 'Cut Ramp', category: 'Terrain', args: rampArgs })
+  commands.declare(owner, { id: 'terrain.ramp.clear', title: 'Remove Ramp', category: 'Terrain', args: rampClearArgs })
   commands.declare(owner, { id: 'terrain.water', title: 'Set Water', category: 'Terrain', args: waterArgs })
   commands.declare(owner, { id: 'terrain.material', title: 'Set Material', category: 'Terrain', args: materialArgs })
-  commands.declare(owner, { id: 'terrain.paint.top', title: 'Paint Tile', category: 'Terrain', args: topArgs })
-  commands.declare(owner, { id: 'terrain.paint.cliff', title: 'Paint Cliff Band', category: 'Terrain', args: cliffArgs })
-  commands.declare(owner, { id: 'terrain.paint.tint', title: 'Tint Cells', category: 'Terrain', args: tintArgs })
+  commands.declare(owner, { id: 'terrain.face', title: 'Paint Face', category: 'Terrain', args: faceArgs })
+  commands.declare(owner, { id: 'terrain.tint', title: 'Tint Cells', category: 'Terrain', args: tintArgs })
 }
 
 /** One command's effect: its undo label and the patches it produces. */
@@ -121,9 +130,17 @@ export function terrainEdit(doc: ReadonlyMapDoc, id: string, args: unknown): Ter
       const { cells, height } = args as z.infer<typeof flattenArgs>
       return { label: 'Flatten', patches: flatten(doc, voxel, cells, height) }
     }
+    case 'terrain.smooth': {
+      const { cells, strength } = args as z.infer<typeof smoothArgs>
+      return { label: 'Smooth', patches: smooth(doc, voxel, cells, strength) }
+    }
     case 'terrain.ramp': {
-      const { cells, dir } = args as z.infer<typeof rampArgs>
-      return { label: 'Toggle ramp', patches: dir < 0 ? [] : setRamp(doc, voxel, cells, dir) }
+      const { edge, run } = args as z.infer<typeof rampArgs>
+      return { label: 'Cut ramp', patches: rampRun(doc, voxel, edge, run) }
+    }
+    case 'terrain.ramp.clear': {
+      const { cell: [x, z] } = args as z.infer<typeof rampClearArgs>
+      return { label: 'Remove ramp', patches: clearRampRun(doc, voxel, x, z) }
     }
     case 'terrain.water': {
       const { cells, level } = args as z.infer<typeof waterArgs>
@@ -133,15 +150,11 @@ export function terrainEdit(doc: ReadonlyMapDoc, id: string, args: unknown): Ter
       const { cells, material } = args as z.infer<typeof materialArgs>
       return { label: 'Set material', patches: setMaterial(voxel, cells, material) }
     }
-    case 'terrain.paint.top': {
-      const { cells, tile } = args as z.infer<typeof topArgs>
-      return { label: tile === null ? 'Clear paint' : 'Paint', patches: paintTop(voxel, cells, tile ?? undefined) }
+    case 'terrain.face': {
+      const { faces, material } = args as z.infer<typeof faceArgs>
+      return { label: material === null ? 'Clear face' : 'Paint face', patches: paintFace(voxel, faces, material ?? undefined) }
     }
-    case 'terrain.paint.cliff': {
-      const { faces, tile } = args as z.infer<typeof cliffArgs>
-      return { label: tile === null ? 'Clear paint' : 'Paint', patches: paintCliff(voxel, faces, tile ?? undefined) }
-    }
-    case 'terrain.paint.tint': {
+    case 'terrain.tint': {
       const { cells, tint } = args as z.infer<typeof tintArgs>
       return { label: tint === null ? 'Clear tint' : 'Tint', patches: paintTint(voxel, cells, tint ?? undefined) }
     }

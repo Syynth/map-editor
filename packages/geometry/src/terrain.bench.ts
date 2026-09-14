@@ -11,35 +11,60 @@
 import { describe, test } from 'vitest'
 
 import {
+  PLACEHOLDER_SHEET,
   allChunkKeys,
-  cellIndex,
   createMap,
+  fillColumn,
   type MapDoc,
   type ReadonlyMapDoc,
+  type RgbaImage,
   type VoxelStructure,
 } from '@papercut/document'
+import type { LoadedSet } from './atlas'
+import { createTerrainLook } from './look'
 import { meshTerrainChunk } from './terrain'
+import { addTerrain, createTerrainSet, stampTemplate } from './terrainset'
 
 /** The root voxel volume a fresh level has, mutable for setup: `createMap` names it `ground`. */
 const ground = (doc: ReadonlyMapDoc | MapDoc): VoxelStructure => doc.structures.ground as VoxelStructure
+
+/** Pixels per tile, as the placeholder sheet has: the atlas the mesher reads UVs from is sized by it. */
+const TILE = 16
+
+/**
+ * A stand-in for the placeholder terrain set the default materials point
+ * into: the five terrains, each with an edge set on its own 4×4 block, over
+ * one flat colour. The look is built once; a pair the mesher meets is baked
+ * into its atlas on first sight and answered from cache after, so the
+ * timings below are the mesher's, not the atlas's.
+ */
+function placeholderSet(): LoadedSet {
+  let set = createTerrainSet(PLACEHOLDER_SHEET, TILE, 16, 8)
+  ;['grass', 'dirt', 'stone', 'sand', 'path'].forEach((id, i) => {
+    set = addTerrain(set, { id, name: id, color: '#808080' })
+    set = stampTemplate(set, (i % 4) * 4, Math.floor(i / 4) * 4, null, id)
+  })
+  const image: RgbaImage = { width: 16 * TILE, height: 8 * TILE, data: new Uint8ClampedArray(16 * TILE * 8 * TILE * 4).fill(255) }
+  return { set, image }
+}
 
 
 function hilly(width: number, height: number): MapDoc {
   const doc = createMap(width, height)
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      const index = cellIndex(ground(doc).size, x, y)
       const h =
         4 +
         Math.round(3 * Math.sin(x * 0.22) + 3 * Math.cos(y * 0.19) + 2 * Math.sin((x + y) * 0.11))
-      ground(doc).terrain.height[index] = Math.max(0, h)
-      ground(doc).terrain.material[index] = (x + y) % 4
+      // The whole column takes the material: a voxel carries its own, and fillColumn writes them all.
+      fillColumn(ground(doc), x, y, Math.max(0, h), (x + y) % 4)
     }
   }
   return doc
 }
 
 const map128 = hilly(128, 128)
+const look = createTerrainLook(map128.materials, [placeholderSet()])
 const keys128 = allChunkKeys(128, 128)
 const middle = keys128[Math.floor(keys128.length / 2)]
 
@@ -63,19 +88,24 @@ const brushChunks = ['3,3', '4,3', '5,3', '3,4', '4,4', '5,4', '3,5', '4,5', '5,
 describe('terrain mesher', () => {
   test('one chunk (16x16 cells), hilly', async ({ bench }) => {
     await bench('one chunk (16x16 cells), hilly', () => {
-      meshTerrainChunk(map128, ground(map128), middle)
+      meshTerrainChunk(ground(map128), middle, look)
     }).run()
   })
 
   test('one brush tick (9 chunks)', async ({ bench }) => {
     await bench('one brush tick (9 chunks)', () => {
-      for (const key of brushChunks) meshTerrainChunk(map128, ground(map128), key)
+      for (const key of brushChunks) meshTerrainChunk(ground(map128), key, look)
     }).run()
   })
 
-  test('whole 128x128 map (64 chunks)', async ({ bench }) => {
+  // A load-time number, not a frame-time one, so a few samples say what it
+  // needs to. At the dual-grid mesher's cost (see the report of 2026-09-13:
+  // ~22 ms a chunk under the harness) tinybench's default 64 samples plus 16
+  // warmups would run this case for well over a minute and trip the test
+  // timeout before it reported anything.
+  test('whole 128x128 map (64 chunks)', { timeout: 300_000 }, async ({ bench }) => {
     await bench('whole 128x128 map (64 chunks)', () => {
-      for (const key of keys128) meshTerrainChunk(map128, ground(map128), key)
-    }).run()
+      for (const key of keys128) meshTerrainChunk(ground(map128), key, look)
+    }).run({ iterations: 4, warmupIterations: 1 })
   })
 })

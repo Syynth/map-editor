@@ -1,12 +1,19 @@
 import {
+  NO_RAMP,
+  NO_WATER,
   createDocument,
   SURFACE_TOP,
   cellIndex,
+  columnHeights,
   createMap,
+  faceKey,
+  materialAt,
   paintTint,
   patchAddress,
   raise,
-  topKey,
+  rampDirAt,
+  tintPaint,
+  topHeight,
   type Patch,
   type SurfaceAddress,
   type MapDoc,
@@ -93,14 +100,15 @@ describe('what the feature declares, before anything is running', () => {
       .sort()
     expect(ids).toEqual([
       'terrain.brush.resize',
+      'terrain.face',
       'terrain.flatten',
       'terrain.material',
-      'terrain.paint.cliff',
-      'terrain.paint.tint',
-      'terrain.paint.top',
       'terrain.params',
       'terrain.raise',
       'terrain.ramp',
+      'terrain.ramp.clear',
+      'terrain.smooth',
+      'terrain.tint',
       'terrain.water',
     ])
     expect(tools.get('terrain')).toMatchObject({ title: 'Terrain', icon: 'terrain' })
@@ -116,50 +124,72 @@ describe('what the feature declares, before anything is running', () => {
 describe('the terrain commands, dispatched through the host', () => {
   it('raises what the arguments name, seen through reader', () => {
     const { host, dispatch } = live
-    const index = cellIndex(ground(host.reader.doc).size, 2, 3)
-    const before = ground(host.reader.doc).terrain.height[index]
+    const height = () => topHeight(ground(host.reader.doc), 2, 3)
+    const before = height()
 
     expect(dispatch('terrain.raise', { structure: 'ground', cells: [[2, 3]], delta: 2 })).toEqual({ ok: true })
 
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before + 2)
+    expect(height()).toBe(before + 2)
     // One labelled edit, on the undo stack the document actor owns — the
     // feature has no writer and never saw one.
     expect(host.reader.undoLabel()).toBe('Raise')
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before)
+    expect(height()).toBe(before)
   })
 
   it('carries the rest of the verbs, each addressing its target by data', () => {
     const { host, dispatch } = live
-    const size = ground(host.reader.doc).size
+    const g = () => ground(host.reader.doc)
+    const size = g().size
 
     expect(dispatch('terrain.flatten', { structure: 'ground', cells: [[1, 1]], height: 4 })).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.height[cellIndex(size, 1, 1)]).toBe(4)
+    expect(topHeight(g(), 1, 1)).toBe(4)
 
-    expect(dispatch('terrain.ramp', { structure: 'ground', cells: [[1, 1]], dir: 2 })).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.ramp[cellIndex(size, 1, 1)]).toBe(2)
+    // A ramp is cut from a cliff edge: (1,1) now stands one cube above (0,1),
+    // its neighbour to the west, and that drop takes a run of one cell. Any
+    // other run is refused (ok, no patch).
+    expect(dispatch('terrain.ramp', { structure: 'ground', edge: { x: 1, z: 1, dir: 2 }, run: 2 })).toEqual({ ok: true })
+    expect(rampDirAt(g(), 1, 1)).toBe(NO_RAMP)
+    expect(dispatch('terrain.ramp', { structure: 'ground', edge: { x: 1, z: 1, dir: 2 }, run: 1 })).toEqual({ ok: true })
+    expect(rampDirAt(g(), 1, 1)).toBe(2)
+    // The heights stay when the run is removed; only the slope goes.
+    expect(dispatch('terrain.ramp.clear', { structure: 'ground', cell: [1, 1] })).toEqual({ ok: true })
+    expect(rampDirAt(g(), 1, 1)).toBe(NO_RAMP)
+    expect(topHeight(g(), 1, 1)).toBe(4)
 
     // Water is a line above the ground, never level with it: 3 over a column
     // flattened to 4 is refused (ok, no patch), 5 lands.
     expect(dispatch('terrain.water', { structure: 'ground', cells: [[1, 1]], level: 3 })).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.water[cellIndex(size, 1, 1)]).toBeLessThan(0)
+    expect(g().water[cellIndex(size, 1, 1)]).toBe(NO_WATER)
     expect(dispatch('terrain.water', { structure: 'ground', cells: [[1, 1]], level: 5 })).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.water[cellIndex(size, 1, 1)]).toBe(5)
+    expect(g().water[cellIndex(size, 1, 1)]).toBe(5)
 
     expect(dispatch('terrain.material', { structure: 'ground', cells: [[1, 1]], material: 1 })).toEqual({ ok: true })
-    expect(ground(host.reader.doc).terrain.material[cellIndex(size, 1, 1)]).toBe(1)
+    expect(materialAt(g(), 1, 1)).toBe(1)
 
-    expect(dispatch('terrain.paint.top', { structure: 'ground', cells: [[1, 1]], tile: 5 })).toEqual({ ok: true })
-    expect(ground(host.reader.doc).paint.top[topKey(1, 1)]).toBe(5)
+    // Smoothing moves a column toward the mean of its neighbours by at most
+    // `strength`: every neighbour of (1,1) is at 2, so it comes down one.
+    expect(dispatch('terrain.smooth', { structure: 'ground', cells: [[1, 1]], strength: 1 })).toEqual({ ok: true })
+    expect(topHeight(g(), 1, 1)).toBe(3)
+    expect(g().water[cellIndex(size, 1, 1)]).toBe(5)
 
-    expect(dispatch('terrain.paint.tint', { structure: 'ground', cells: [[1, 1]], tint: 0x00ff00 })).toEqual({ ok: true })
-    expect(dispatch('terrain.paint.cliff', { structure: 'ground', faces: [{ x: 1, y: 1, dir: 2, level: 0 }], tile: 7 })).toEqual({ ok: true })
-    expect(host.reader.undoLabel()).toBe('Paint')
+    // A face override holds a material, keyed by voxel and side: the bottom
+    // cube's west face here. `null` clears it, and the label says which.
+    expect(dispatch('terrain.face', { structure: 'ground', faces: [{ x: 1, z: 1, y: 0, dir: 2 }], material: 2 })).toEqual({ ok: true })
+    expect(ground(host.reader.doc).paint.faces[faceKey(1, 1, 0, 2)]).toBe(2)
+    expect(host.reader.undoLabel()).toBe('Paint face')
+    expect(dispatch('terrain.face', { structure: 'ground', faces: [{ x: 1, z: 1, y: 0, dir: 2 }], material: null })).toEqual({ ok: true })
+    expect(ground(host.reader.doc).paint.faces[faceKey(1, 1, 0, 2)]).toBeUndefined()
+    expect(host.reader.undoLabel()).toBe('Clear face')
+
+    expect(dispatch('terrain.tint', { structure: 'ground', cells: [[1, 1]], tint: 0x00ff00 })).toEqual({ ok: true })
+    expect(tintPaint(ground(host.reader.doc).paint, 1, 1)).toBe(0x00ff00)
+    expect(host.reader.undoLabel()).toBe('Tint')
   })
 
   it('refuses arguments the schema does not admit, before anything is sent', () => {
     const { host, dispatch } = live
-    const before = ground(host.reader.doc).terrain.height[cellIndex(ground(host.reader.doc).size, 2, 3)]
+    const before = topHeight(ground(host.reader.doc), 2, 3)
 
     // A stray key, a missing one, and the shape that matters most: `undefined`
     // where a value belongs, which is not JSON and so cannot be an argument.
@@ -167,7 +197,7 @@ describe('the terrain commands, dispatched through the host', () => {
     expect(dispatch('terrain.raise', { structure: 'ground', cells: [[2, 3]] })).toMatchObject({ ok: false, kind: 'invalid-args' })
     expect(dispatch('terrain.raise', { structure: 'ground', cells: [], delta: 1 })).toMatchObject({ ok: false, kind: 'invalid-args' })
 
-    expect(ground(host.reader.doc).terrain.height[cellIndex(ground(host.reader.doc).size, 2, 3)]).toBe(before)
+    expect(topHeight(ground(host.reader.doc), 2, 3)).toBe(before)
     expect(host.reader.canUndo()).toBe(false)
   })
 })
@@ -177,8 +207,7 @@ describe('the tool contract, which a declaration cannot carry', () => {
 
   it('is reachable from the host by the tool\'s id, and answers with patches', () => {
     const { host, dispatch } = live
-    const index = cellIndex(ground(host.reader.doc).size, 4, 4)
-    const before = ground(host.reader.doc).terrain.height[index]
+    const before = topHeight(ground(host.reader.doc), 4, 4)
     const contract = host.toolContract('terrain')
     expect(contract).toBeDefined()
 
@@ -188,11 +217,14 @@ describe('the tool contract, which a declaration cannot carry', () => {
     // handed it — so a `tools.set` between the press and the tick is seen.
     expect(dispatch('terrain.params', { brush: { size: 3, shape: 'square' } })).toEqual({ ok: true })
     const patches = handler?.begin({ pick: { surface: top, point: null, objectId: null }, modifiers: { shift: false, alt: false, ctrl: false } })
+    // Nine cells, each one cube up (the default strength) from a whole cube:
+    // the new top voxel's material, per cell; its shape is already a block.
     expect(patches).toHaveLength(9)
+    expect(new Set(patches?.map((patch) => (patch.t === 'voxel' ? patch.index % (8 * 8) : -1))).size).toBe(9)
 
     // And it applied nothing: a handler answers with patches, and the stroke
     // actor is what sends them to the document (#13).
-    expect(ground(host.reader.doc).terrain.height[index]).toBe(before)
+    expect(topHeight(ground(host.reader.doc), 4, 4)).toBe(before)
   })
 
   it('declines a press that missed the terrain', () => {
@@ -218,6 +250,23 @@ function pressAt(x: number, y: number, extra: Partial<PointerPress> = {}): Point
   return { x: x * 10, y: y * 10, button: 0, modifiers: NO_MODIFIERS, pick: { surface: topAt(x, y), point: { x, z: y }, objectId: null }, ...extra }
 }
 
+/**
+ * The addresses an Edit should hold once a stroke's ticks are compacted: each
+ * one the last tick left at a value other than the one it started with. An
+ * address is one voxel's field (`voxel:<id>:<field>:<index>`), and a shape
+ * that went slab, block, slab, block over four half-tiles is back where it
+ * began, so it is not one of them.
+ */
+function changedAddresses(before: Record<'material' | 'shape' | 'water', number[]>, sent: Patch[]): Set<string> {
+  const last = new Map<string, Patch>()
+  for (const patch of sent) last.set(patchAddress(patch), patch)
+  const changed = new Set<string>()
+  for (const [address, patch] of last) {
+    if (patch.t === 'voxel' && patch.value !== before[patch.field][patch.index]) changed.add(address)
+  }
+  return changed
+}
+
 /** One committed edit, so a test has terrain to work against. */
 function raiseOnce(host: Host, x: number, y: number, by = 1): void {
   apply(host, 'Raise', raise(host.reader.doc, ground(host.reader.doc), [[x, y]], by))
@@ -235,10 +284,12 @@ function raiseOnce(host: Host, x: number, y: number, by = 1): void {
 describe('a terrain stroke, from the pointer to the document', () => {
   it('a left drag sculpts on every tick and lands as one undo entry, one patch per address', () => {
     const { host, dispatch } = live
-    dispatch('terrain.params', { brush: { size: 3, shape: 'square' } })
+    // One half-tile per pass, so each cell reads as +1 below; the tool's default strength is a whole cube.
+    dispatch('terrain.params', { brush: { size: 3, shape: 'square' }, strength: 1 })
     const doc = host.reader.doc
-    const before = ground(doc).terrain.height.slice()
-    const at = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
+    const before = columnHeights(ground(doc))
+    const arrays = { material: ground(doc).voxels.material.slice(), shape: ground(doc).voxels.shape.slice(), water: ground(doc).water.slice() }
+    const at = (x: number, y: number) => topHeight(ground(doc), x, y)
     // What the document actor received, off the system's inspector (v6's
     // `Actor.send` is a getter and cannot be spied on). Matched by the id the
     // host spawns it under: `ActorRefLike`, which is what an inspection event
@@ -261,15 +312,20 @@ describe('a terrain stroke, from the pointer to the document', () => {
     expect(host.input.gesture()).toBe('none')
     expect(host.input.strokeOrigin()).toBeNull()
 
+    // The drag re-raises cells, so more patches were sent than there are
+    // addresses; the record holds one patch per address that ended somewhere
+    // other than it began, and no address twice.
     const patches = received.flatMap((event) => (event.type === 'strokePatch' ? (event.patches as Patch[]) : []))
     const record = received.find((event) => event.type === 'endStroke')
     const unique = new Set(patches.map(patchAddress)).size
     expect(patches.length).toBeGreaterThan(unique)
-    expect((record?.patches as Patch[] | undefined)?.length).toBe(unique)
+    const changed = changedAddresses(arrays, patches)
+    expect(changed.size).toBeGreaterThan(0)
+    expect(new Set((record?.patches as Patch[] | undefined)?.map(patchAddress))).toEqual(changed)
 
     expect(host.reader.undoLabel()).toBe('Raise')
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
   })
 
   it('records an app write that lands mid-drag, so one undo brings it back', () => {
@@ -279,9 +335,10 @@ describe('a terrain stroke, from the pointer to the document', () => {
     // the store refused it and the stroke's compaction map holds only patches
     // the stroke itself produced.
     const { host, dispatch } = live
+    dispatch('terrain.params', { strength: 1 })
     const doc = host.reader.doc
-    const height = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
-    const before = ground(doc).terrain.height.slice()
+    const height = (x: number, y: number) => topHeight(ground(doc), x, y)
+    const before = columnHeights(ground(doc))
 
     expect(host.input.pointerDown(pressAt(3, 3))).toBe('stroke')
     apply(host, 'Elsewhere', raise(doc, ground(doc), [[7, 7]], 1))
@@ -292,37 +349,37 @@ describe('a terrain stroke, from the pointer to the document', () => {
     expect(height(3, 3)).toBe(before[cellIndex(ground(doc).size, 3, 3)])
     expect(host.reader.undoLabel()).toBe('Elsewhere')
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
   })
 
   it('a rect stroke commits nothing until release, then one block from the press cell to the last', () => {
     const { host, dispatch } = live
     dispatch('terrain.params', { strokeShape: 'rect' })
     const doc = host.reader.doc
-    const before = ground(doc).terrain.height.slice()
-    const height = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
+    const before = columnHeights(ground(doc))
+    const height = (x: number, y: number) => topHeight(ground(doc), x, y)
 
     expect(host.input.pointerDown(pressAt(2, 2))).toBe('stroke')
     // Nothing on the press, and nothing mid-drag: a rectangle is only known
     // once both corners are.
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
     for (const [x, y] of [[3, 3], [4, 4]] as const) {
       host.input.pointerMove({ x: x * 10, y: y * 10, modifiers: NO_MODIFIERS })
       host.input.strokeMove({ surface: topAt(x, y), point: null, objectId: null }, NO_MODIFIERS)
     }
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
     // The preview grows from the press cell, which is what `strokeOrigin` is for.
     expect(host.input.strokeOrigin()).toEqual([2, 2])
 
     host.input.pointerUp({ x: 40, y: 40 })
-    for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) expect(height(x, y)).toBe(before[cellIndex(ground(doc).size, x, y)] + 1)
+    for (let y = 2; y <= 4; y++) for (let x = 2; x <= 4; x++) expect(height(x, y)).toBe(before[cellIndex(ground(doc).size, x, y)] + 2)
     expect(height(5, 5)).toBe(before[cellIndex(ground(doc).size, 5, 5)])
     expect(height(1, 1)).toBe(before[cellIndex(ground(doc).size, 1, 1)])
 
     // One entry for the block, not nine.
     expect(host.reader.undoLabel()).toBe('Raise')
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
     expect(host.reader.canUndo()).toBe(false)
   })
 
@@ -333,16 +390,16 @@ describe('a terrain stroke, from the pointer to the document', () => {
     for (let y = 0; y < 8; y++) raiseOnce(host, 4, y)
     dispatch('terrain.params', { strokeShape: 'fill' })
     const doc = host.reader.doc
-    const before = ground(doc).terrain.height.slice()
-    const height = (x: number, y: number) => ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]
+    const before = columnHeights(ground(doc))
+    const height = (x: number, y: number) => topHeight(ground(doc), x, y)
 
     host.input.pointerDown(pressAt(2, 2))
     host.input.pointerUp({ x: 20, y: 20 })
 
-    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) expect(height(x, y)).toBe(before[cellIndex(ground(doc).size, x, y)] + 1)
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 4; x++) expect(height(x, y)).toBe(before[cellIndex(ground(doc).size, x, y)] + 2)
     expect(height(5, 5)).toBe(before[cellIndex(ground(doc).size, 5, 5)])
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(doc).terrain.height).toEqual(before)
+    expect(columnHeights(ground(doc))).toEqual(before)
   })
 
   it('the flatten verb levels a drag to the height sampled at the press', () => {
@@ -350,40 +407,41 @@ describe('a terrain stroke, from the pointer to the document', () => {
     raiseOnce(host, 0, 0, 3)
     dispatch('terrain.params', { sculptVerb: 'flatten', brush: { size: 1, shape: 'square' } })
     const doc = host.reader.doc
-    const anchor = ground(doc).terrain.height[cellIndex(ground(doc).size, 0, 0)]
+    const anchor = topHeight(ground(doc), 0, 0)
 
     host.input.pointerDown(pressAt(0, 0))
     for (const [x, y] of [[1, 0], [2, 0]] as const) {
       host.input.pointerMove({ x: x * 10, y: y * 10, modifiers: NO_MODIFIERS })
       host.input.strokeMove({ surface: topAt(x, y), point: null, objectId: null }, NO_MODIFIERS)
       // Flattened to the press height, not to each cell's own.
-      expect(ground(doc).terrain.height[cellIndex(ground(doc).size, x, y)]).toBe(anchor)
+      expect(topHeight(ground(doc), x, y)).toBe(anchor)
     }
     host.input.pointerUp({ x: 20, y: 0 })
     expect(host.reader.undoLabel()).toBe('Flatten')
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(doc).terrain.height[cellIndex(ground(doc).size, 1, 0)]).not.toBe(anchor)
+    expect(topHeight(ground(doc), 1, 0)).not.toBe(anchor)
   })
 
   it('the water verb pools one half-tile over the pressed cell (interim, until the layer view), and shift removes it', () => {
     const { host, dispatch } = live
     dispatch('terrain.params', { sculptVerb: 'water' })
     const doc = host.reader.doc
-    const level = ground(doc).terrain.height[cellIndex(ground(doc).size, 3, 3)] + 1
+    const water = () => ground(doc).water[cellIndex(ground(doc).size, 3, 3)]
+    const level = topHeight(ground(doc), 3, 3) + 1
 
     host.input.pointerDown(pressAt(3, 3))
     host.input.pointerUp({ x: 30, y: 30 })
-    expect(ground(doc).terrain.water[cellIndex(ground(doc).size, 3, 3)]).toBe(level)
+    expect(water()).toBe(level)
     expect(host.reader.undoLabel()).toBe('Carve water')
 
     const shift = { modifiers: { ...NO_MODIFIERS, shift: true } }
     host.input.pointerDown(pressAt(3, 3, shift))
     host.input.pointerUp({ x: 30, y: 30 })
-    expect(ground(doc).terrain.water[cellIndex(ground(doc).size, 3, 3)]).toBeLessThan(0)
+    expect(water()).toBe(NO_WATER)
     expect(host.reader.undoLabel()).toBe('Remove water')
 
     expect(dispatch('undo')).toEqual({ ok: true })
-    expect(ground(doc).terrain.water[cellIndex(ground(doc).size, 3, 3)]).toBe(level)
+    expect(water()).toBe(level)
   })
 
   it('alt-click runs the eyedropper at the press cell, and a 6 px alt-drag orbits without it', () => {
@@ -421,14 +479,15 @@ describe('the feature\'s context key', () => {
     expect(host.contextKeys()['terrain.verb']).toBe('tint')
   })
 
-  it('is what the ramp panel\'s availability is expressed over', () => {
+  it('is what the sculpt panel\'s availability is expressed over', () => {
     const { host, dispatch } = live
-    const ramp = panels.get('terrain.ramp')
-    expect(ramp?.when).toBeDefined()
-    expect(evaluate(ramp!.when!, host.contextKeys())).toMatchObject({ available: false, reason: expect.stringContaining('terrain.verb') as string })
+    const sculpt = panels.get('terrain.sculpt')
+    expect(sculpt?.when).toBeDefined()
+    dispatch('terrain.params', { terrainMode: 'paint' })
+    expect(evaluate(sculpt!.when!, host.contextKeys())).toMatchObject({ available: false, reason: expect.stringContaining('terrain.mode') as string })
 
-    dispatch('terrain.params', { sculptVerb: 'ramp' })
-    expect(evaluate(ramp!.when!, host.contextKeys())).toEqual({ available: true })
+    dispatch('terrain.params', { terrainMode: 'sculpt' })
+    expect(evaluate(sculpt!.when!, host.contextKeys())).toEqual({ available: true })
   })
 })
 
@@ -456,7 +515,7 @@ describe('the terrain feature owns its parameters', () => {
     for (let i = 0; i < 20; i++) dispatch('terrain.brush.resize', { by: 1 })
     expect(slice().brush.size).toBe(12)
     expect(dispatch('terrain.brush.resize', { by: 99 })).toMatchObject({ ok: false, kind: 'invalid-args' })
-    dispatch('terrain.params', { terrainMode: 'sculpt', paintVerb: 'tile', brush: { size: 1, shape: 'square' } })
+    dispatch('terrain.params', { terrainMode: 'sculpt', paintVerb: 'material', brush: { size: 1, shape: 'square' } })
   })
 
   it('binds Tab to its mode toggle and the brackets to the brush, at the feature weight', () => {

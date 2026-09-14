@@ -39,8 +39,9 @@ import {
   type RgbaImage,
   type SpriteAsset,
   type DocumentTarget,
+  columnHeights,
 } from '@papercut/document'
-import { meshSketch, meshTerrainChunk, type EdgeSpec, type MeshBuffers, type SketchMesh } from '@papercut/geometry'
+import { createTerrainLook, meshSketch, meshTerrainChunk, type EdgeSpec, type LoadedSet, type MeshBuffers, type SketchMesh, type TerrainLook } from '@papercut/geometry'
 import { ObjectView, releaseReplaced, releaseTexture, rgbaTexture, spriteImages, type ObjectViewContext } from './billboard'
 import { withinLayers, type LayerRange } from './layers'
 import { SectionCut, VoxelCap, type SketchCap } from './section'
@@ -60,6 +61,10 @@ function buildGeometry(buffers: MeshBuffers): THREE.BufferGeometry {
 interface ChunkView {
   solid: THREE.Mesh
   water: THREE.Mesh | null
+  /** A dot on every corner the atlas composited, shown while the editor asks for them. */
+  marks: THREE.Points | null
+  /** The distinct combinations this chunk composited, by name. */
+  composites: readonly string[]
   faceAddr: Int32Array
   waterFaceAddr: Int32Array | null
   triangleCount: number
@@ -80,6 +85,8 @@ interface StructureView {
  * over a preview drawn on the lake bed and the preview reads as under water.
  */
 export const WATER_RENDER_ORDER = 1000
+/** Above the water, above the caps: a mark is a note on the scene, not part of it. */
+const MARK_RENDER_ORDER = 1010
 
 export interface SceneStats {
   chunksBuilt: number
@@ -88,7 +95,8 @@ export interface SceneStats {
 }
 
 export interface SceneAssets {
-  sheet: RgbaImage
+  /** The terrain sets the map's materials draw from, with their sheets — generated or the artist's. */
+  terrain: LoadedSet[]
   sprites: Record<string, SpriteAsset>
   /** Fill-and-edge textures by the names the document's surface materials use. */
   textures: Record<string, RgbaImage>
@@ -149,8 +157,18 @@ export class RuntimeScene {
   private views = new Map<string, ObjectView>()
   private terrainMaterial: THREE.MeshStandardMaterial
   private waterMaterial: THREE.MeshStandardMaterial
+  /** The composited-corner marks: drawn over everything, sized in pixels, magenta so they cannot be mistaken for art. */
+  private markMaterial = new THREE.PointsMaterial({ color: 0xe04fc0, size: 7, sizeAttenuation: false, depthTest: false, transparent: true })
+  private showMissing = false
   private surfaceMaterials = new Map<string, THREE.MeshStandardMaterial>()
-  private sheet: RgbaImage
+  private sets: LoadedSet[]
+  /** The look the chunks were meshed with: the atlas and what each material draws with. Replaced whole, never edited. */
+  private look: TerrainLook
+  /** The materials the look was built from: a document patch swaps the array, and the look has to follow. */
+  private lookMaterials: ReadonlyMapDoc['materials']
+  /** The atlas image on the GPU, and the atlas version it was taken at. */
+  private atlasImage: RgbaImage | null = null
+  private atlasVersion = -1
   private textures: Record<string, RgbaImage>
   private sun = new THREE.DirectionalLight(0xffffff, 1)
   private hemisphere = new THREE.HemisphereLight(0xffffff, 0x444444, 1)
@@ -162,7 +180,9 @@ export class RuntimeScene {
 
   constructor(doc: ReadonlyMapDoc, assets: SceneAssets) {
     this.doc = doc
-    this.sheet = assets.sheet
+    this.sets = assets.terrain
+    this.look = createTerrainLook(doc.materials, this.sets)
+    this.lookMaterials = doc.materials
     this.sprites = assets.sprites
     this.textures = assets.textures
 
@@ -205,28 +225,47 @@ export class RuntimeScene {
     this.scene.add(this.sun.target)
     this.scene.add(this.hemisphere)
 
-    this.applySheet()
+    this.applyAtlas(true)
     this.applyAtmosphere()
   }
 
   setDocument(doc: ReadonlyMapDoc): void {
     const filteringChanged = doc.filtering !== this.doc.filtering
+    const materialsChanged = doc.materials !== this.doc.materials
     this.doc = doc
     if (filteringChanged) {
       this.dropViews()
-      this.applySheet()
+      this.applyAtlas(true)
       for (const material of this.surfaceMaterials.values()) material.dispose()
       this.surfaceMaterials.clear()
     }
+    // The materials are the look: their terrains and their order. Every chunk was meshed against the old one.
+    if (materialsChanged) this.relook()
   }
 
-  /** Draw the terrain with `sheet`, and give back the GPU texture of the sheet it replaces. */
-  refreshSheet(sheet: RgbaImage): void {
-    const previous = this.sheet
-    this.sheet = sheet
-    this.applySheet()
-    // A document load regenerates the sheet as a new image every time; without this each one left a texture on the GPU.
-    if (previous !== sheet) releaseTexture(previous)
+  /** Draw the terrain from these terrain sets — an artist's, or the generated one — remeshing every chunk against them. */
+  refreshTerrain(sets: LoadedSet[]): void {
+    this.sets = sets
+    this.relook()
+  }
+
+  /** The transitions composed somewhere on screen, named once each: the artist's to-do list (spec §3). Counted over the chunks as they stand, so painting a corner over takes it off the list. */
+  missingTransitions(): readonly string[] {
+    const names = new Set<string>()
+    for (const view of this.structures.values()) for (const chunk of view.chunks.values()) for (const combo of chunk.composites) names.add(combo)
+    return [...names].sort()
+  }
+
+  private relook(): void {
+    this.look = createTerrainLook(this.doc.materials, this.sets)
+    this.lookMaterials = this.doc.materials
+    for (const [id, view] of this.structures) {
+      const voxel = this.doc.structures[id]
+      if (!voxel || voxel.kind !== 'voxel') continue
+      for (const key of [...view.chunks.keys()]) this.buildChunk(view, voxel, key)
+      view.triangleCount = [...view.chunks.values()].reduce((sum, c) => sum + c.triangleCount, 0)
+    }
+    this.applyAtlas(true)
   }
 
   /** Draw objects and backdrops with `sprites`, and give back the GPU textures of images the new set no longer has. */
@@ -238,9 +277,21 @@ export class RuntimeScene {
     releaseReplaced(spriteImages(previous), spriteImages(sprites))
   }
 
-  private applySheet(): void {
-    this.terrainMaterial.map = rgbaTexture(this.sheet, this.doc.filtering === 'nearest')
+  /**
+   * Upload the atlas when it changed: a composite baked mid-stroke grows it,
+   * and a new look replaces it. `force` re-uploads an unchanged atlas, for a
+   * filtering change. Each upload is a new image object, so the texture it
+   * replaces is released by hand.
+   */
+  private applyAtlas(force = false): void {
+    const { atlas } = this.look
+    if (!force && atlas.version === this.atlasVersion) return
+    const image = atlas.image
+    this.terrainMaterial.map = rgbaTexture(image, this.doc.filtering === 'nearest')
     this.terrainMaterial.needsUpdate = true
+    if (this.atlasImage && this.atlasImage !== image) releaseTexture(this.atlasImage)
+    this.atlasImage = image
+    this.atlasVersion = atlas.version
   }
 
   private dropViews(): void {
@@ -281,6 +332,12 @@ export class RuntimeScene {
   setLayerRange(range: LayerRange | null): void {
     this.layers = range
     this.section.set(range)
+  }
+
+  /** Show or hide the marks on composited corners: the artist's map of which transitions to draw. */
+  setShowMissing(show: boolean): void {
+    this.showMissing = show
+    for (const view of this.structures.values()) for (const chunk of view.chunks.values()) if (chunk.marks) chunk.marks.visible = show
   }
 
   /**
@@ -344,7 +401,7 @@ export class RuntimeScene {
       view.group.add(cap.mesh)
       view.cap = cap
     }
-    cap.update(voxel.terrain.height, view.group.position.y)
+    cap.update(columnHeights(voxel), view.group.position.y)
   }
 
   private placeGroup(group: THREE.Group, id: string): void {
@@ -376,10 +433,14 @@ export class RuntimeScene {
         view.group.remove(existing.water)
         existing.water.geometry.dispose()
       }
+      if (existing.marks) {
+        view.group.remove(existing.marks)
+        existing.marks.geometry.dispose()
+      }
       view.chunks.delete(key)
     }
     const { cx, cy } = parseStructureChunkKey(key)
-    const mesh = meshTerrainChunk(this.doc, voxel, `${cx},${cy}`)
+    const mesh = meshTerrainChunk(voxel, `${cx},${cy}`, this.look)
     if (mesh.solid.triangleCount === 0 && !mesh.water) return
 
     const solid = new THREE.Mesh(buildGeometry(mesh.solid), this.terrainMaterial)
@@ -400,7 +461,17 @@ export class RuntimeScene {
       water.userData.structureId = voxel.id
       view.group.add(water)
     }
-    view.chunks.set(key, { solid, water, faceAddr: mesh.solid.faceAddr, waterFaceAddr: mesh.water?.faceAddr ?? null, triangleCount: mesh.solid.triangleCount })
+    let marks: THREE.Points | null = null
+    if (mesh.marks.length > 0) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.BufferAttribute(mesh.marks, 3))
+      marks = new THREE.Points(geometry, this.markMaterial)
+      marks.visible = this.showMissing
+      marks.renderOrder = MARK_RENDER_ORDER
+      marks.raycast = () => undefined
+      view.group.add(marks)
+    }
+    view.chunks.set(key, { solid, water, marks, composites: mesh.composites, faceAddr: mesh.solid.faceAddr, waterFaceAddr: mesh.water?.faceAddr ?? null, triangleCount: mesh.solid.triangleCount })
   }
 
   private surfaceMaterial(textureName: string | null, band: boolean): THREE.MeshStandardMaterial {
@@ -492,9 +563,11 @@ export class RuntimeScene {
   /** Rebuild everything: the document's set of structures is authoritative. */
   rebuildAll(): void {
     const start = performance.now()
+    if (this.doc.materials !== this.lookMaterials) this.relook()
     const wanted = new Set(this.doc.structureOrder)
     for (const id of [...this.structures.keys()]) if (!wanted.has(id)) this.dropStructure(id)
     for (const id of this.doc.structureOrder) this.buildStructure(id)
+    this.applyAtlas()
     this.finishStats(start, this.doc.structureOrder.length)
   }
 
@@ -504,6 +577,13 @@ export class RuntimeScene {
    */
   rebuild(dirty: { chunks: readonly string[]; structures: readonly string[]; moved?: readonly string[] }): void {
     const start = performance.now()
+    // A materials edit reaches the scene as a document patch that marks every chunk dirty; the look it meshes with
+    // has to be the new list's, or nothing on screen changes until a reload.
+    if (this.doc.materials !== this.lookMaterials) {
+      this.relook()
+      this.finishStats(start, this.doc.structureOrder.length)
+      return
+    }
     const whole = new Set(dirty.structures)
     for (const id of whole) this.buildStructure(id)
     for (const id of dirty.moved ?? []) {
@@ -525,6 +605,8 @@ export class RuntimeScene {
     }
     // Once per volume, not per chunk: the cap's height texture is the whole volume's.
     for (const { view, voxel } of touched.values()) this.refreshVoxelCap(view, voxel)
+    // A corner nobody drew grows the atlas on first sight; the GPU copy follows once per rebuild.
+    this.applyAtlas()
     this.finishStats(start, built)
   }
 
@@ -643,9 +725,10 @@ export class RuntimeScene {
     this.views.clear()
     this.terrainMaterial.dispose()
     this.waterMaterial.dispose()
+    this.markMaterial.dispose()
     for (const material of this.surfaceMaterials.values()) material.dispose()
     this.sky.dispose()
-    releaseTexture(this.sheet)
+    if (this.atlasImage) releaseTexture(this.atlasImage)
     for (const image of [...spriteImages(this.sprites), ...Object.values(this.textures)]) releaseTexture(image)
   }
 }

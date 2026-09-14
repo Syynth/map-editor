@@ -12,10 +12,11 @@
 
 import { useMemo, useSyncExternalStore } from 'react'
 
-import { SURFACE_CLIFF, cellIndex, countDormant, describeSurface, inBounds, type ReadonlyMapDoc } from '@papercut/document'
+import { SURFACE_CLIFF, SURFACE_SKETCH_CAP, SURFACE_SKETCH_WALL, countDormant, describeSurface, faceExposed, parseFaceKey, type ReadonlyMapDoc } from '@papercut/document'
 import { sameSurface, useDocumentSelector, useHost, useToolsSelector, useViewSelector, useViewportSelector } from '@papercut/editor-host'
 import { Hint, StatusHints, StatusRight } from '@papercut/ui'
 
+import { run } from './commands'
 import { mergeParams, type EditorParams } from './params'
 
 /** The snap-off modifier as the status bar names it: Cmd on a Mac, Ctrl elsewhere (the viewport folds both into `ctrl`). */
@@ -41,15 +42,43 @@ export function hintsFor(params: EditorParams): ReadonlyArray<{ kbd?: string; te
         { kbd: '⇧ click', text: 'place nothing' },
       ]
     case 'terrain':
-      return params.terrainMode === 'sculpt'
+      if (params.terrainMode === 'sculpt') {
+        switch (params.sculptVerb) {
+          case 'raise':
+            return [
+              { kbd: 'drag', text: `raise by ${params.strength}` },
+              { kbd: '⇧ drag', text: 'lower' },
+              { kbd: '⌥ click', text: 'pick up a height' },
+            ]
+          case 'flatten':
+            return [
+              { kbd: 'drag', text: params.heightPinned ? `flatten to ${params.height}` : 'flatten to the pressed height' },
+              { kbd: '⌥ click', text: 'pick up a height and pin it' },
+            ]
+          case 'smooth':
+            return [{ kbd: 'drag', text: `smooth by up to ${params.strength}` }]
+          case 'ramp':
+            return [
+              { kbd: 'press a cliff face', text: 'drag back to cut a ramp' },
+              { kbd: 'click a ramp', text: 'remove it' },
+            ]
+          case 'water':
+            return [
+              { kbd: 'drag', text: 'pool water' },
+              { kbd: '⇧ drag', text: 'drain' },
+            ]
+        }
+      }
+      return params.paintVerb === 'tint'
         ? [
-            { kbd: 'drag', text: params.sculptVerb },
-            { kbd: '⇧', text: params.sculptVerb === 'water' ? 'remove water' : 'lower instead' },
-            { kbd: '⌥ click', text: 'pick up the tile' },
+            { kbd: 'drag', text: 'tint' },
+            { kbd: '⇧ drag', text: 'clear the tint' },
+            { kbd: '⌥ click', text: 'pick up a colour' },
           ]
         : [
-            { kbd: 'drag', text: `paint ${params.paintVerb}` },
-            { kbd: '⌥ click', text: 'pick up the tile' },
+            { kbd: 'drag', text: 'paint a top, or a cliff band' },
+            { kbd: '⇧ drag', text: 'clear a band to its own material' },
+            { kbd: '⌥ click', text: 'pick up a material' },
           ]
     case 'sketch':
       return params.sketchMode === 'draw'
@@ -78,14 +107,10 @@ function dormantPaint(doc: ReadonlyMapDoc): number {
   for (const id of doc.structureOrder) {
     const voxel = doc.structures[id]
     if (!voxel || voxel.kind !== 'voxel') continue
-    const counts = countDormant(voxel.paint, (kind, key) => {
-      const [x, y] = key.split(',').map(Number)
-      if (!inBounds(voxel.size, x, y)) return false
-      if (kind === 'top') return true
-      const level = Number(key.split(',')[3])
-      return level < voxel.terrain.height[cellIndex(voxel.size, x, y)]
+    total += countDormant(voxel.paint, (key) => {
+      const { x, z, y, dir } = parseFaceKey(key)
+      return faceExposed(voxel, x, z, y, dir)
     })
-    total += counts.top + counts.cliff
   }
   return total
 }
@@ -97,6 +122,7 @@ export function StatusBar() {
       <StatusRight>
         <HoverReadout />
         <DormantPaint />
+        <MissingTransitions />
         <LayersReadout />
         <CameraReadout />
         <FrameStats />
@@ -127,7 +153,15 @@ function HoverReadout() {
   return (
     <>
       <span>{describeSurface(hover)}</span>
-      {terrain ? <span>{hover && hover.kind === SURFACE_CLIFF ? 'paints by absolute level' : `${cells} cells`}</span> : null}
+      {terrain ? (
+        <span>
+          {hover && (hover.kind === SURFACE_SKETCH_CAP || hover.kind === SURFACE_SKETCH_WALL)
+            ? 'a sketch — Terrain edits voxel volumes'
+            : hover && hover.kind === SURFACE_CLIFF
+              ? `band · layer ${Math.floor(hover.level / 2)}`
+              : `${cells} cells`}
+        </span>
+      ) : null}
     </>
   )
 }
@@ -135,6 +169,26 @@ function HoverReadout() {
 function DormantPaint() {
   const dormant = useDocumentSelector(dormantPaint, { equal: Object.is, settled: true })
   return <span title="Painted work that is currently hidden by geometry, and would come back">dormant paint {dormant}</span>
+}
+
+/** Corners the atlas had to compose because no tile is authored for them: the artist's list of transitions to draw (spec §3). */
+/** Also the switch for the marks: click to see where on the map each composited corner is. */
+function MissingTransitions() {
+  const host = useHost()
+  const missing = useViewportSelector((snapshot) => snapshot.context.stats.missingTransitions)
+  const shown = useViewSelector((snapshot) => snapshot.context.showMissing)
+  const names = missing.length ? `\n${missing.join('\n')}` : ''
+  return (
+    <button
+      type="button"
+      className={`ui-status-toggle ${shown ? 'is-on' : ''}`}
+      title={`${missing.length} transitions composed from edge sets because nobody has drawn them, each a tile to author. Click to ${shown ? 'hide' : 'show'} where they are.${names}`}
+      aria-pressed={shown}
+      onClick={() => run(host, 'view.set', { showMissing: !shown })}
+    >
+      {missing.length} to author
+    </button>
+  )
 }
 
 function LayersReadout() {

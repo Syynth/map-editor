@@ -3,8 +3,12 @@
  * pure function over data, or the actor that owns the one write path.
  */
 export {
+  AIR,
   ATMOSPHERE_PRESETS,
+  DEFAULT_LAYERS,
   DEFAULT_MATERIALS,
+  MAX_LAYERS,
+  SHAPE_COUNT,
   DIR_NAMES,
   DIR_VECTORS,
   DISPLAY_MODES,
@@ -12,19 +16,50 @@ export {
   HALF,
   NO_RAMP,
   NO_WATER,
+  PLACEHOLDER_SHEET,
   PRESET_REFERENCE_SPAN,
+  SHAPE_BLOCK,
+  SHAPE_HALF_RAMP,
+  SHAPE_HALF_RAMP_UP,
+  SHAPE_RAMP,
+  SHAPE_SLAB,
   cellIndex,
   createMap,
   createVoxel,
   defaultCameraRig,
   defaultFacing,
-  heightAt,
   inBounds,
   makeAtmosphere,
-  materialAt,
+  materialById,
   newId,
+  nextMaterialId,
   worldHeight,
 } from './document'
+export {
+  columnHeights,
+  columnShapes,
+  columnTopAt,
+  faceExposed,
+  fillColumn,
+  halfRampShape,
+  halfRampUpShape,
+  heightAt,
+  isHalfRampShape,
+  isRampShape,
+  isSlopedShape,
+  materialAt,
+  maxHeightOf,
+  rampDirAt,
+  rampShape,
+  shapeHeight,
+  shapeLowHeight,
+  shapeRampDir,
+  topHeight,
+  topShapeAt,
+  voxelAt,
+  voxelIndex,
+} from './voxels'
+export type { VoxelBox } from './voxels'
 export type {
   Atmosphere,
   BackdropCard,
@@ -43,7 +78,8 @@ export type {
   MaterialDef,
   PaintLayers,
   ReadonlyMapDoc,
-  TerrainData,
+  TerrainRef,
+  VoxelData,
 } from './document'
 export { DEFAULT_SURFACE_MATERIALS, ancestorsOf, childrenOf, defaultSurfaceMaterials, descendantsOf, outlineOf, pointInOutline, structureOf } from './structure'
 export type {
@@ -78,19 +114,24 @@ export {
   addSketchPoint,
   addStructure,
   brushCells,
+  clearRampRun,
   closeSketch,
+  columnPatches,
   createSketch,
   deleteSketchPoint,
   fillCells,
   flatten,
   groundedPosition,
   heightToWorld,
-  paintCliff,
+  paintFace,
   paintTint,
-  paintTop,
   placeStructure,
   placeStructureOnto,
   raise,
+  rampPlan,
+  rampRun,
+  rampRunBlocked,
+  rampRunLength,
   rectCells,
   regroundObjects,
   removeObject,
@@ -98,23 +139,14 @@ export {
   renameStructure,
   reparentStructure,
   setMaterial,
-  setRamp,
   setSketch,
   setWater,
+  smooth,
   updateObject,
   updateSketchPoint,
 } from './ops'
-export type { Brush, BrushShape, Cell, SketchChanges } from './ops'
-export {
-  cliffKey,
-  cliffPaint,
-  countDormant,
-  parseCliffKey,
-  tintKey,
-  tintPaint,
-  topKey,
-  topPaint,
-} from './paint'
+export type { Brush, BrushShape, Cell, FaceRef, RampEdge, RampStep, SketchChanges } from './ops'
+export { FACE_BOTTOM, FACE_TOP, countDormant, faceKey, facePaint, parseFaceKey, tintKey, tintPaint } from './paint'
 export type { DocumentReader } from './store'
 export { applyPatches, inversePatch, patchAddress } from './edits'
 export type { Patch, SketchField, SketchPatch, StrokeRecord, StructureMetaPatch } from './edits'
@@ -151,7 +183,6 @@ export {
   voxelTop,
 } from './terrain'
 export type { Bounds, Frame } from './terrain'
-export { MASK_EAST, MASK_NORTH, MASK_SOUTH, MASK_WEST, autotileMask } from './autotile'
 export { CHUNK_SIZE, allChunkKeys, chunkBounds, chunkKey, parseChunkKey, parseStructureChunkKey, structureChunkKey } from './chunks'
 export type { ChunkBounds } from './chunks'
 export { snapTo, type SnapAnchor, type SnapMode } from './snap'

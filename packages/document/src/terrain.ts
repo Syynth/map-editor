@@ -8,8 +8,9 @@
  * on a voxel volume reports the height the artist sees.
  */
 
-import { HALF, NO_RAMP, cellIndex, inBounds, type ReadonlyMapDoc } from './document'
+import { HALF, NO_RAMP, inBounds, type ReadonlyMapDoc } from './document'
 import { ancestorsOf, outlineOf, pointInOutline, type QuarterTurn, type ReadonlyStructure, type ReadonlyVoxel } from './structure'
+import { columnTopAt, shapeHeight, shapeLowHeight, shapeRampDir, voxelIndex } from './voxels'
 
 export const CORNER_OFFSETS: ReadonlyArray<readonly [number, number]> = [
   [0, 0],
@@ -26,15 +27,26 @@ export const RAMP_LOW_CORNERS: ReadonlyArray<readonly [number, number]> = [
   [3, 0],
 ]
 
+/** A full ramp's drop, in half-tiles: one tile over one cell, 45°. */
 export const RAMP_DROP = 2
 
+/**
+ * The four corner heights of a column's top, in half-tiles: level for a
+ * block or a slab, the two corners facing the ramp's direction dropped for a
+ * sloped shape. A half ramp is a wedge over half the cell and then flat; as
+ * corners it is the plane through its high and low edges, which the mesher
+ * refines when it draws shapes itself.
+ */
 export function cornerHeights(voxel: ReadonlyVoxel, x: number, y: number): [number, number, number, number] {
-  const index = cellIndex(voxel.size, x, y)
-  const h = voxel.terrain.height[index]
+  const top = columnTopAt(voxel, x, y)
+  if (top < 0) return [0, 0, 0, 0]
+  const shape = voxel.voxels.shape[voxelIndex(voxel, x, y, top)]
+  const base = top * 2
+  const h = base + shapeHeight(shape)
   const corners: [number, number, number, number] = [h, h, h, h]
-  const ramp = voxel.terrain.ramp[index]
-  if (ramp !== NO_RAMP) {
-    for (const corner of RAMP_LOW_CORNERS[ramp]) corners[corner] = h - RAMP_DROP
+  const dir = shapeRampDir(shape)
+  if (dir !== NO_RAMP) {
+    for (const corner of RAMP_LOW_CORNERS[dir]) corners[corner] = base + shapeLowHeight(shape)
   }
   return corners
 }

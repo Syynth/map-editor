@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createMap, defaultFacing, type RgbaImage, type SpriteAsset } from '@papercut/document'
+import { PLACEHOLDER_SHEET, createMap, defaultFacing, type RgbaImage, type SpriteAsset } from '@papercut/document'
+import { addTerrain, createTerrainSet, stampTemplate, type LoadedSet } from '@papercut/geometry'
 import { buildExportScene, exportGltf, type ExportOptions } from './export'
 
 // `parse` needs to be reconfigurable per test (success vs. error), and
@@ -19,10 +20,10 @@ vi.mock('three/examples/jsm/exporters/GLTFExporter.js', () => ({
 // and `./billboard` because building the scene reached for
 // `document.createElement('canvas')`, which Node does not have and which this
 // repo has ruled against shimming in (see "No native binary dependencies for
-// tooling" in docs/decision-log.md). The sheet and sprites are inputs now, so
-// the fixtures below are raw pixels made by hand and the real texture, atlas
-// and sprite/light code runs under vitest's plain Node environment. That is
-// the acceptance test for the boundary: if anything in `buildExportScene`
+// tooling" in docs/decision-log.md). The terrain sets and sprites are inputs
+// now, so the fixtures below are raw pixels made by hand and the real texture,
+// atlas and sprite/light code runs under vitest's plain Node environment. That
+// is the acceptance test for the boundary: if anything in `buildExportScene`
 // touched a DOM API again, the sprite tests here would throw `document is not
 // defined`.
 
@@ -30,6 +31,22 @@ function solid(width: number, height: number, rgba: [number, number, number, num
   const data = new Uint8ClampedArray(width * height * 4)
   for (let i = 0; i < data.length; i += 4) data.set(rgba, i)
   return { width, height, data }
+}
+
+const TILE = 4
+
+/**
+ * A stand-in for the placeholder terrain set the default materials point
+ * into: the five terrains, each with an edge set stamped on its own 4×4 block
+ * of a 16-column sheet, over one flat colour.
+ */
+function terrainSet(rgba: [number, number, number, number] = [0, 255, 0, 255]): LoadedSet {
+  let set = createTerrainSet(PLACEHOLDER_SHEET, TILE, 16, 8)
+  ;['grass', 'dirt', 'stone', 'sand', 'path'].forEach((id, i) => {
+    set = addTerrain(set, { id, name: id, color: '#808080' })
+    set = stampTemplate(set, (i % 4) * 4, Math.floor(i / 4) * 4, null, id)
+  })
+  return { set, image: solid(16 * TILE, 8 * TILE, rgba) }
 }
 
 function sprite(name: string, facings: number, emissive = false): SpriteAsset {
@@ -52,7 +69,7 @@ function options(overrides: Partial<ExportOptions> = {}): ExportOptions {
   return {
     textures: {},
     merge: false,
-    sheet: solid(16, 5, [0, 255, 0, 255]),
+    terrain: [terrainSet()],
     sprites,
     encodePng: () => Promise.resolve(new Uint8Array([0x89, 0x50, 0x4e, 0x47])),
     ...overrides,
@@ -125,12 +142,14 @@ describe('buildExportScene', () => {
     expect(extras.extrasVersion).toBe(1)
   })
 
-  it('textures the terrain with the supplied sheet, not a generated one', () => {
-    const sheet = solid(16, 5, [7, 8, 9, 255])
-    const scene = buildExportScene(createMap(4, 4), options({ sheet }))
+  it('textures the terrain with the atlas built from the supplied terrain sets, not a generated one', () => {
+    const scene = buildExportScene(createMap(4, 4), options({ terrain: [terrainSet([7, 8, 9, 255])] }))
     const terrain = nodeNamed(scene, 'Terrain')
-    // Same bytes, not a copy: the texture is a view over the caller's image.
-    expect(terrain?.material.map.image.data.buffer).toBe(sheet.data.buffer)
+    const image = terrain?.material.map.image
+    // The atlas is 32 tiles across, and its first tile is the set's first authored tile, copied pixel for pixel.
+    expect(image?.width).toBe(32 * TILE)
+    expect(image?.height).toBeGreaterThanOrEqual(TILE)
+    expect([...(image?.data.slice(0, 4) ?? [])]).toEqual([7, 8, 9, 255])
   })
 
   it('builds sprite nodes, atlases and lights without a canvas', () => {

@@ -1,7 +1,7 @@
 import type * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { NO_RAMP, cellIndex, createMap, createSketch, createVoxel, type MapDoc, type VoxelStructure } from '@papercut/document'
+import { NO_RAMP, createMap, createSketch, createVoxel, fillColumn, materialAt, rampDirAt, rampShape, topHeight, type MapDoc, type VoxelStructure } from '@papercut/document'
 
 import { TerrainGrid } from './grid'
 
@@ -22,7 +22,7 @@ describe('the terrain grid', () => {
     expect(grid.chunkCount('ground')).toBe(4)
     const corner = grid.chunkLines('ground', '1,1')
     expect(corner?.geometry.getAttribute('position').count).toBe(4 * 1 * 8)
-    const flat = ground(doc).terrain.height[0] * 0.5 + 0.025
+    const flat = topHeight(ground(doc), 0, 0) * 0.5 + 0.025
     expect(new Set(heights(grid, 'ground', '0,0'))).toEqual(new Set([Math.fround(flat)]))
   })
 
@@ -36,8 +36,9 @@ describe('the terrain grid', () => {
     const rightVersion = (right?.geometry.getAttribute('position') as THREE.BufferAttribute | undefined)?.version
 
     const g = ground(doc)
-    g.terrain.height[cellIndex(g.size, 2, 3)] = 10
-    g.terrain.ramp[cellIndex(g.size, 4, 3)] = 0
+    fillColumn(g, 2, 3, 10)
+    // A ramp is the top voxel's shape: the column keeps its height and material, its top slopes east.
+    fillColumn(g, 4, 3, topHeight(g, 4, 3), materialAt(g, 4, 3), rampShape(0))
     grid.update(doc, ['ground/0,0'], [])
 
     expect(grid.chunkLines('ground', '0,0')).toBe(left)
@@ -45,9 +46,9 @@ describe('the terrain grid', () => {
     expect((right?.geometry.getAttribute('position') as THREE.BufferAttribute | undefined)?.version).toBe(rightVersion)
     expect(heights(grid, 'ground', '0,0')).toContain(Math.fround(10 * 0.5 + 0.025))
     // The ramp's low corners sit a whole drop below its high ones.
-    const base = g.terrain.height[cellIndex(g.size, 4, 3)]
+    const base = topHeight(g, 4, 3)
     expect(heights(grid, 'ground', '0,0')).toContain(Math.fround((base - 2) * 0.5 + 0.025))
-    expect(g.terrain.ramp[cellIndex(g.size, 0, 0)]).toBe(NO_RAMP)
+    expect(rampDirAt(g, 0, 0)).toBe(NO_RAMP)
   })
 
   it('moves a volume by its group, rebuilds a resized one, and drops one that is gone or is not a voxel volume', () => {

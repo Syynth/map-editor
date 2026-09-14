@@ -18,12 +18,12 @@
 import {
   frameOf,
   DIR_VECTORS,
-  cellIndex,
   inBounds,
   type CameraRig,
   type DeepReadonly,
   type ReadonlyMapDoc,
   type MapObject,
+  topHeight,
 } from '@papercut/document'
 import { resolveDisplayMode } from './billboard'
 import { sampleYawEnvelope, wrapDegrees, yawIsFree } from './camera'
@@ -149,14 +149,12 @@ function analyseHiddenSurfaces(doc: ReadonlyMapDoc, yaws: number[]): HiddenSurfa
     const yawTurn = frameOf(doc, id).yaw
     for (let y = 0; y < voxel.size.height; y++) {
     for (let x = 0; x < voxel.size.width; x++) {
-      const h = voxel.terrain.height[cellIndex(voxel.size, x, y)]
+      const h = topHeight(voxel, x, y)
       for (let dir = 0; dir < 4; dir++) {
         const [dx, dy] = DIR_VECTORS[(dir + yawTurn) % 4]
         const nx = x + dx
         const ny = y + dy
-        const neighbour = inBounds(voxel.size, nx, ny)
-          ? voxel.terrain.height[cellIndex(voxel.size, nx, ny)]
-          : 0
+        const neighbour = inBounds(voxel.size, nx, ny) ? topHeight(voxel, nx, ny) : 0
         const bands = h - neighbour
         if (bands <= 0) continue
         totalFaces += bands

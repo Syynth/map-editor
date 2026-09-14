@@ -27,6 +27,7 @@ import {
   createDocument,
   createMap,
   raise,
+  topHeight,
   type MapDoc,
   type ReadonlyMapDoc,
   type VoxelStructure,
@@ -64,8 +65,8 @@ afterEach(() => {
  * dependencies, and the memo would then recompute every render no matter what
  * the revision did — which would make the memoisation these assert untestable.
  */
-const heightAtOrigin = (doc: ReadonlyMapDoc): number => ground(doc).terrain.height[0]
-const heightAtOne = (doc: ReadonlyMapDoc): number => ground(doc).terrain.height[1]
+const heightAtOrigin = (doc: ReadonlyMapDoc): number => topHeight(ground(doc), 0, 0)
+const heightAtOne = (doc: ReadonlyMapDoc): number => topHeight(ground(doc), 1, 0)
 const brushSize = (snapshot: { context: { features: Readonly<Record<string, unknown>> } }): number => (snapshot.context.features.terrain as { brush: { size: number } }).brush.size
 
 function mount(ui: (host: Host) => ReactNode): Host {
@@ -101,8 +102,8 @@ describe('the React glue', () => {
       </>
     ))
     const before = { ...renders }
-    // A fresh map's ground is not at zero, so the delta is what is asserted.
-    const wasHigh = ground(host.reader.doc).terrain.height[0]
+    // A fresh map's ground is one cube high, not zero, so the delta is what is asserted.
+    const wasHigh = heightAtOrigin(host.reader.doc)
 
     act(() => {
       host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, ground(host.reader.doc), [[0, 0]], 3) })
@@ -131,8 +132,8 @@ describe('the React glue', () => {
     // A real transition on the tools actor, changing a parameter this
     // component does not select. `useSelector` compares what the selector
     // returned, which is the whole reason `useActor` is not offered.
-    act(() => void host.dispatch('terrain.params', { tile: 7 }))
-    expect((host.children.tools.getSnapshot().context.features.terrain as { tile: number }).tile).toBe(7)
+    act(() => void host.dispatch('terrain.params', { material: 2 }))
+    expect((host.children.tools.getSnapshot().context.features.terrain as { material: number }).material).toBe(2)
     expect(renders).toBe(before)
   })
 
@@ -144,7 +145,7 @@ describe('the React glue', () => {
     }
 
     const host = mount(() => <Height />)
-    const before = ground(host.reader.doc).terrain.height[1]
+    const before = heightAtOne(host.reader.doc)
 
     act(() => {
       host.children.document.send({ type: 'patch', label: 'Raise', patches: raise(host.reader.doc, ground(host.reader.doc), [[1, 0]], 2) })
@@ -165,7 +166,7 @@ describe('the React glue', () => {
 
     const host = mount(() => <Height />)
     const before = renders
-    const wasHigh = ground(host.reader.doc).terrain.height[0]
+    const wasHigh = heightAtOrigin(host.reader.doc)
 
     // A revision that leaves the selected cell alone: no render.
     act(() => {
@@ -189,7 +190,7 @@ describe('the React glue', () => {
     }
 
     const host = mount(() => <Height />)
-    const wasHigh = ground(host.reader.doc).terrain.height[0]
+    const wasHigh = heightAtOrigin(host.reader.doc)
     const modifiers = { shift: false, alt: false, ctrl: false }
     const top = { structure: 'ground', kind: 0 as const, x: 5, y: 5, dir: -1, level: 0 }
 

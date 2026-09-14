@@ -327,8 +327,11 @@ export class EditorStore implements DocumentWriter {
       const voxel = this.doc.structures[patch.id]
       if (!voxel || voxel.kind !== 'voxel') return
       if (patch.t === 'voxel') {
-        const width = voxel.size.width
-        this.dirtyCell(patch.id, patch.index % width, Math.floor(patch.index / width))
+        // Material and shape are per voxel, water per column; both index a
+        // flat array whose x runs fastest, so the cell falls out of the index.
+        const { width, height } = voxel.size
+        const cell = patch.field === 'water' ? patch.index : patch.index % (width * height)
+        this.dirtyCell(patch.id, cell % width, Math.floor(cell / width))
       } else {
         const [x, y] = patch.key.split(',').map(Number)
         this.dirtyCell(patch.id, x, y)
