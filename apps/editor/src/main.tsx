@@ -6,6 +6,7 @@ import { HostProvider, createHost } from '@papercut/editor-host'
 import { UiProvider } from '@papercut/ui'
 
 import App from './editor/App'
+import { loadPrefs } from './editor/prefs'
 import { createSession, installShellMenu, openFolder, openProjectAt, recents, reopenLast, watchProjectSheets } from './editor/session'
 import { features } from './features'
 // The vocabulary's stylesheet — Mantine's base plus the frame — then the
@@ -39,6 +40,8 @@ const host = createHost({ document: source, features })
 
 async function boot(): Promise<void> {
   const session = await createSession()
+  // The machine's preferences are the view's starting state.
+  host.dispatch('view.set', loadPrefs())
   installShellMenu(host, session)
   watchProjectSheets(host, session)
 

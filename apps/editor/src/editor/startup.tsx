@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
 
 import { useHost, useViewSelector } from '@papercut/editor-host'
 import { slugOf } from '@papercut/project'
-import { Action, Checkbox, Dialog, DialogManifest, Door, Doors, ErrorLine, Field, RecentList, RecentRow, Segmented, StartupScreen, StartupSection, TextInput } from '@papercut/ui'
+import { Action, Checkbox, Dialog, DialogManifest, Door, Doors, ErrorLine, Field, NumberInput, RecentList, RecentRow, Segmented, StartupScreen, StartupSection, TextInput } from '@papercut/ui'
 
 import { run } from './commands'
 import { MEMORY_PROJECTS_DIR, createProjectAt, memoryProjects, openProjectAt, recents, reopenLast, setReopenLast, type Session } from './session'
@@ -94,7 +94,7 @@ export function Startup({ session }: { session: Session }) {
 const DENSITIES = [
   { value: 16, label: '16 px' },
   { value: 32, label: '32 px' },
-  { value: 8, label: '8 px' },
+  { value: 0, label: 'Custom' },
 ]
 
 /** The New Project dialog, open while the view's dialog is `new-project`: from the startup door, the project menu or the shell's menu. */
@@ -105,6 +105,7 @@ export function NewProjectDialog({ session }: { session: Session }) {
   const [name, setName] = useState('')
   const [folder, setFolder] = useState('')
   const [texelDensity, setDensity] = useState(16)
+  const [custom, setCustom] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // In a browser the folder follows the name; a shell folder is chosen.
@@ -164,7 +165,15 @@ export function NewProjectDialog({ session }: { session: Session }) {
         )}
       </Field>
       <Field label="Texel density" hint="Pixels per tile. Every sheet added to the project is checked against it; a mismatch is reported, never rescaled">
-        <Segmented value={texelDensity} options={DENSITIES} onChange={setDensity} />
+        <Segmented
+          value={custom ? 0 : texelDensity}
+          options={DENSITIES}
+          onChange={(value) => {
+            setCustom(value === 0)
+            if (value > 0) setDensity(value)
+          }}
+        />
+        {custom ? <NumberInput value={texelDensity} min={1} max={256} onChange={setDensity} /> : null}
       </Field>
       <DialogManifest
         title="Will create"

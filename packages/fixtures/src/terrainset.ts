@@ -57,27 +57,74 @@ function hash(x: number, y: number, seed: number): number {
  * Beyond the tile, erosion sees the nearest edge pixel (the pattern continues
  * into the next tile, so a boundary that reaches the edge stays straight) and
  * dilation sees nothing.
+ *
+ * Done through a squared Euclidean distance transform (Felzenszwalb and
+ * Huttenlocher, rows then columns, linear in the pixels) rather than by
+ * scanning a disc at every pixel: a disc scan is quadratic in the radius,
+ * and the radius scales with the tile, so at 64 px a sheet took seconds to
+ * draw and every change of texel density waited on it. A pixel is eroded
+ * where the nearest zero is within the radius, and dilated where the nearest
+ * one is — the same disc, answered once per pixel.
  */
 function morph(mask: Uint8Array, size: number, radius: number, grow: boolean): Uint8Array {
+  const pad = radius + 1
+  const n = size + 2 * pad
+  // Squared distance to the nearest TARGET pixel: a zero for erosion, a one for dilation. Outside the tile a
+  // replicated edge pixel for erosion, nothing (a zero, so not a one) for dilation.
+  const INF = 1e9
+  const f = new Float64Array(n * n)
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const ox = x - pad
+      const oy = y - pad
+      const outside = ox < 0 || oy < 0 || ox >= size || oy >= size
+      const v = grow && outside ? 0 : mask[Math.min(size - 1, Math.max(0, oy)) * size + Math.min(size - 1, Math.max(0, ox))]
+      f[y * n + x] = (grow ? v : !v) ? 0 : INF
+    }
+  }
+  const d = new Float64Array(n * n)
+  const line = new Float64Array(n)
+  const out1 = new Float64Array(n)
+  const v = new Int32Array(n)
+  const z = new Float64Array(n + 1)
+  const transform = (): void => {
+    let k = 0
+    v[0] = 0
+    z[0] = -INF
+    z[1] = INF
+    for (let q = 1; q < n; q++) {
+      let s = ((line[q] + q * q) - (line[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k])
+      while (s <= z[k]) {
+        k--
+        s = ((line[q] + q * q) - (line[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k])
+      }
+      k++
+      v[k] = q
+      z[k] = s
+      z[k + 1] = INF
+    }
+    k = 0
+    for (let q = 0; q < n; q++) {
+      while (z[k + 1] < q) k++
+      out1[q] = (q - v[k]) * (q - v[k]) + line[v[k]]
+    }
+  }
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) line[x] = f[y * n + x]
+    transform()
+    for (let x = 0; x < n; x++) d[y * n + x] = out1[x]
+  }
+  for (let x = 0; x < n; x++) {
+    for (let y = 0; y < n; y++) line[y] = d[y * n + x]
+    transform()
+    for (let y = 0; y < n; y++) d[y * n + x] = out1[y]
+  }
   const out = new Uint8Array(size * size)
   const r2 = radius * radius
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      let hit = grow ? 0 : 1
-      scan: for (let dy = -radius; dy <= radius; dy++) {
-        for (let dx = -radius; dx <= radius; dx++) {
-          if (dx * dx + dy * dy > r2) continue
-          const ox = x + dx
-          const oy = y + dy
-          const outside = ox < 0 || oy < 0 || ox >= size || oy >= size
-          const v = grow && outside ? 0 : mask[Math.min(size - 1, Math.max(0, oy)) * size + Math.min(size - 1, Math.max(0, ox))]
-          if (grow ? v : !v) {
-            hit = grow ? 1 : 0
-            break scan
-          }
-        }
-      }
-      out[y * size + x] = hit
+      const near = d[(y + pad) * n + (x + pad)] <= r2
+      out[y * size + x] = grow ? (near ? 1 : 0) : near ? 0 : 1
     }
   }
   return out

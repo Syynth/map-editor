@@ -108,7 +108,7 @@ export default function App({ session }: { session: Session }) {
     <>
       <NewProjectDialog session={session} />
       <NewMapDialog session={session} />
-      <ProjectSettings session={session} />
+      <ProjectSettings session={session} platform={platform} />
       <Frame
         top={<TopBar platform={platform} session={session} />}
         rail={<Rail platform={platform} />}
