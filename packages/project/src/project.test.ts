@@ -61,8 +61,10 @@ describe('a project folder', () => {
     expect(opened.sets[0].image.width).toBe(16)
     const map = await readMap(fs, '/projects/harbour', 'maps/harbour-town.map.json')
     expect(map.name).toBe('Harbour Town')
-    // A second project cannot land in the same folder.
+    // A second project cannot land in the same folder, and none in a folder that holds anything.
     await expect(createProjectFolder(fs, '/projects/harbour', { name: 'Again', texelDensity: 4, placeholder: placeholder() }, rawImageCodec)).rejects.toThrow(/already holds a project/)
+    await fs.mkdir('/projects/busy/notes', { recursive: true })
+    await expect(createProjectFolder(fs, '/projects/busy', { name: 'Busy', texelDensity: 4, placeholder: placeholder() }, rawImageCodec)).rejects.toThrow(/not empty/)
   })
 
   it('opens with warnings for a sheet that is missing or mis-sized and a map that is not there, never refusing', async () => {
@@ -77,12 +79,16 @@ describe('a project folder', () => {
     project.sheets[0].tile = 8
     await fs.writeFile('/p/papercut.json', JSON.stringify(project))
 
+    await fs.writeFile('/p/maps/stray.map.json', JSON.stringify(createMap(2, 2, 'Stray')))
+
     const opened = await openProject(fs, '/p', rawImageCodec)
     expect(opened.sets).toEqual([])
     expect(opened.warnings).toEqual([
       'sheets/ground.terrain.json tags 4 px tiles, but the project lists ground.png at 8 px.',
-      expect.stringMatching(/^sheets\/cliffs\.terrain\.json: /),
+      expect.stringMatching(/^sheets\/cliffs\.png: /),
+      expect.stringMatching(/^sheets\/props\.png: /),
       'maps/gone.map.json is listed but not in the folder.',
+      "maps/stray.map.json is in the folder but not in the project's map list.",
     ])
   })
 
@@ -111,10 +117,13 @@ describe('a project folder', () => {
     expect(withSheet.sheets[1]).toEqual({ path: 'sheets/cliffs.png', tile: 4, terrainSet: 'sheets/cliffs.terrain.json' })
     const reopened = await openProject(fs, '/p', rawImageCodec)
     expect(reopened.sets.map((s) => s.set.sheet)).toEqual(['ground.png', 'cliffs.png'])
-    // Adding a sheet of the same name replaces its entry rather than listing it twice.
+    // Adding a sheet of the same name replaces its entry rather than listing it twice; without a sidecar it loads as an empty set over its image.
     const replaced = await addSheet(fs, '/p', withSheet, { name: 'cliffs.png', bytes: await rawImageCodec.encode(cliffs.image), tile: 4, set: null })
     expect(replaced.sheets.map((s) => s.path)).toEqual(['sheets/ground.png', 'sheets/cliffs.png'])
     expect(replaced.sheets[1].terrainSet).toBeNull()
+    const bare = await openProject(fs, '/p', rawImageCodec)
+    expect(bare.sets[1].set).toMatchObject({ sheet: 'cliffs.png', tile: 4, columns: 4, rows: 4, terrains: [] })
+    expect(bare.sets[1].set.tiles.size).toBe(0)
   })
 })
 

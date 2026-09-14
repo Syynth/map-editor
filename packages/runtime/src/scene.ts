@@ -95,6 +95,13 @@ export interface SceneStats {
   lastMeshMs: number
 }
 
+const sameRef = (a: MaterialDef['top'] | undefined, b: MaterialDef['top'] | undefined): boolean => a?.sheet === b?.sheet && a?.terrain === b?.terrain
+
+/** Whether two material lists draw the same: same ids in the same order, each with the same terrains and colour. */
+export function sameLook(a: readonly MaterialDef[], b: readonly MaterialDef[]): boolean {
+  return a.length === b.length && a.every((m, i) => m.id === b[i].id && m.color === b[i].color && sameRef(m.top, b[i].top) && sameRef(m.side, b[i].side))
+}
+
 export interface SceneAssets {
   /** The terrain sets the materials draw from, with their sheets — generated or the artist's. */
   terrain: LoadedSet[]
@@ -249,8 +256,10 @@ export class RuntimeScene {
   /** The materials are the look: their terrains and their order. Every chunk was meshed against the old list, so all are remeshed. */
   setMaterials(materials: readonly MaterialDef[]): void {
     if (materials === this.materials) return
+    // Only what the look reads — ids, terrains, colours and order — remeshes; a rename lands in the chips alone.
+    const same = sameLook(materials, this.materials)
     this.materials = materials
-    this.relook()
+    if (!same) this.relook()
   }
 
   /** Nearest or linear sampling for every texture: the atlas, the sprites, the sketch fills. */

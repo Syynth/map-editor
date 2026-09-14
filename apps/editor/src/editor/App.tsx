@@ -57,10 +57,23 @@ export default function App({ session }: { session: Session }) {
   useEffect(() => {
     if (folder === null) return
     let pending: ReturnType<typeof setTimeout> | undefined
+    let failing = false
     const save = (): void => {
       pending = undefined
       if (host.children.project.getSnapshot().context.folder === null) return
-      saveNow(host, session).catch((error: unknown) => console.warn(`[editor] autosave failed: ${String(error)}`))
+      saveNow(host, session)
+        .then(() => {
+          if (failing) host.dispatch('view.set', { notice: 'Saved' })
+          failing = false
+          if (session.persistFailure) {
+            host.dispatch('view.set', { notice: session.persistFailure })
+            session.persistFailure = null
+          }
+        })
+        .catch((error: unknown) => {
+          failing = true
+          host.dispatch('view.set', { notice: `Not saved: ${error instanceof Error ? error.message : String(error)}` })
+        })
     }
     const schedule = (): void => {
       clearTimeout(pending)

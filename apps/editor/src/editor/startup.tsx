@@ -112,7 +112,10 @@ export function NewProjectDialog({ session }: { session: Session }) {
   const target = memory ? `${MEMORY_PROJECTS_DIR}/${slugOf(name || 'untitled')}` : folder
 
   useEffect(() => {
-    if (opened) setError(null)
+    if (!opened) return
+    setError(null)
+    setName('')
+    setFolder('')
   }, [opened])
 
   const choose = async (): Promise<void> => {

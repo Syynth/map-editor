@@ -6,7 +6,7 @@ import { HostProvider, createHost } from '@papercut/editor-host'
 import { UiProvider } from '@papercut/ui'
 
 import App from './editor/App'
-import { createSession, installShellMenu, openProjectAt, recents, reopenLast, watchProjectSheets } from './editor/session'
+import { createSession, installShellMenu, openFolder, openProjectAt, recents, reopenLast, watchProjectSheets } from './editor/session'
 import { features } from './features'
 // The vocabulary's stylesheet — Mantine's base plus the frame — then the
 // app's own remainder, which only paints what the vocabulary does not.
@@ -58,11 +58,12 @@ async function boot(): Promise<void> {
   const wrapped: ReactNode = import.meta.env.DEV ? app : <StrictMode>{app}</StrictMode>
   createRoot(root).render(wrapped)
 
-  // Reopen the last project when asked to, and always after a RELOAD — the desktop shell reloads into an updated
-  // bundle and promises the map comes back. A failure leaves the startup screen, which says why on the next attempt.
+  // Reopen the last project when asked to, and after a RELOAD the project that was open — the desktop shell reloads
+  // into an updated bundle and promises the map comes back. A failure leaves the startup screen, which says why on the
+  // next attempt.
   const reloaded = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type === 'reload'
-  const last = recents()[0]
-  if ((reopenLast() || reloaded) && last) await openProjectAt(host, session, last.folder).catch((error: unknown) => console.warn(`[editor] could not reopen ${last.folder}: ${String(error)}`))
+  const folder = reloaded ? openFolder() : reopenLast() ? (recents()[0]?.folder ?? null) : null
+  if (folder !== null) await openProjectAt(host, session, folder).catch((error: unknown) => console.warn(`[editor] could not reopen ${folder}: ${String(error)}`))
 }
 
 void boot()

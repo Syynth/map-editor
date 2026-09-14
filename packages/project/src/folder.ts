@@ -15,7 +15,7 @@
  */
 
 import { MAPS_DIR, PROJECT_FILE, SHEETS_DIR, createMap, createProject, deserialize, parseProject, serialize, serializeProject, sheetName, type MapDoc, type ProjectDoc, type ReadonlyMapDoc, type ReadonlyProjectDoc, type SheetEntry } from '@papercut/document'
-import { parseTerrainSet, serializeTerrainSet, type LoadedSet, type TerrainSet } from '@papercut/geometry'
+import { createTerrainSet, parseTerrainSet, serializeTerrainSet, type LoadedSet, type TerrainSet } from '@papercut/geometry'
 
 import type { ImageCodec } from './codec'
 import { joinPath, parentPath, type ProjectFs } from './fs'
@@ -30,10 +30,23 @@ export interface OpenedProject {
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
 
-/** Read one sheet's sidecar and image; `null`, with the reason, when either is not there or not right. */
+/**
+ * Read one sheet's image and, if it has one, its sidecar; `null`, with the reason, when either is not there or not
+ * right. A sheet with no sidecar loads as an EMPTY terrain set over its image — no terrains, no tags — so it is
+ * listed, previewed, and given a sidecar the moment a terrain is added to it.
+ */
 async function loadSheet(fs: ProjectFs, folder: string, entry: SheetEntry, codec: ImageCodec): Promise<{ set: LoadedSet | null; warning: string | null }> {
   const name = sheetName(entry.path)
-  if (entry.terrainSet === null) return { set: null, warning: null }
+  let image
+  try {
+    image = await codec.decode(await fs.readFile(joinPath(folder, entry.path)))
+  } catch (error) {
+    return { set: null, warning: `${entry.path}: ${messageOf(error)}` }
+  }
+  if (entry.terrainSet === null) {
+    if (image.width % entry.tile !== 0 || image.height % entry.tile !== 0) return { set: null, warning: `${entry.path} is ${image.width}×${image.height}, not a whole number of ${entry.tile} px tiles.` }
+    return { set: { set: createTerrainSet(name, entry.tile, image.width / entry.tile, image.height / entry.tile), image }, warning: null }
+  }
   let set: TerrainSet
   try {
     set = parseTerrainSet(JSON.parse(await fs.readTextFile(joinPath(folder, entry.terrainSet))))
@@ -43,12 +56,6 @@ async function loadSheet(fs: ProjectFs, folder: string, entry: SheetEntry, codec
   // The project names the sheet by its file; a sidecar written for another file name is retagged, not refused.
   if (set.sheet !== name) set = { ...set, sheet: name }
   if (set.tile !== entry.tile) return { set: null, warning: `${entry.terrainSet} tags ${set.tile} px tiles, but the project lists ${name} at ${entry.tile} px.` }
-  let image
-  try {
-    image = await codec.decode(await fs.readFile(joinPath(folder, entry.path)))
-  } catch (error) {
-    return { set: null, warning: `${entry.path}: ${messageOf(error)}` }
-  }
   if (image.width !== set.columns * set.tile || image.height !== set.rows * set.tile) {
     return { set: null, warning: `${entry.path} is ${image.width}×${image.height}, but its terrain set describes ${set.columns}×${set.rows} tiles of ${set.tile} px.` }
   }
@@ -66,6 +73,13 @@ export async function openProject(fs: ProjectFs, folder: string, codec: ImageCod
     if (warning) warnings.push(warning)
   }
   for (const map of project.maps) if (!(await fs.exists(joinPath(folder, map)))) warnings.push(`${map} is listed but not in the folder.`)
+  // The other way round too (ruling of 2026-09-14): a map file the list does not know is reported, never silently included.
+  if (await fs.exists(joinPath(folder, MAPS_DIR))) {
+    for (const entry of await fs.readDir(joinPath(folder, MAPS_DIR))) {
+      const path = `${MAPS_DIR}/${entry.name}`
+      if (entry.kind === 'file' && entry.name.endsWith('.map.json') && !project.maps.includes(path)) warnings.push(`${path} is in the folder but not in the project's map list.`)
+    }
+  }
   return { project, sets, warnings }
 }
 
@@ -103,9 +117,10 @@ export interface NewProjectOptions {
   firstMap?: MapDoc
 }
 
-/** Create a project folder: the project file, one map, and the placeholder sheet beside its sidecar. Refuses a folder that already holds a project. */
+/** Create a project folder: the project file, one map, and the placeholder sheet beside its sidecar. Refuses a folder that holds anything already. */
 export async function createProjectFolder(fs: ProjectFs, folder: string, options: NewProjectOptions, codec: ImageCodec): Promise<OpenedProject> {
   if (await fs.exists(joinPath(folder, PROJECT_FILE))) throw new Error(`${folder} already holds a project.`)
+  if ((await fs.exists(folder)) && (await fs.readDir(folder)).length > 0) throw new Error(`${folder} is not empty; a project gets a folder of its own.`)
   await fs.mkdir(folder, { recursive: true })
   await fs.mkdir(joinPath(folder, MAPS_DIR), { recursive: true })
   await fs.mkdir(joinPath(folder, SHEETS_DIR), { recursive: true })

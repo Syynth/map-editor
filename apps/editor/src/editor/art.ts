@@ -64,6 +64,18 @@ export interface Art extends GeneratedArt {
 
 const densityOf = (project: ReadonlyProjectDoc): number => project.resolution.texelDensity
 
+/**
+ * What the terrain draws with: the project's sheets at the profile's tile size, with the generated placeholder
+ * standing in for any it lacks. A sheet at another tile size is left out — the atlas is one tile size — and reported
+ * by the project settings instead.
+ */
+export function drawableTerrain(generated: readonly LoadedSet[], loaded: readonly LoadedSet[], density: number): LoadedSet[] {
+  const usable = loaded.filter((s) => s.set.tile === density)
+  if (usable.length === 0) return [...generated]
+  const names = new Set(usable.map((s) => s.set.sheet))
+  return [...generated.filter((s) => !names.has(s.set.sheet)), ...usable]
+}
+
 /** The art, re-rendering only when what it is made from changes. */
 export function useArt(): Art {
   const density = useProject(densityOf)
@@ -73,11 +85,6 @@ export function useArt(): Art {
   const generatedTerrain = terrainFor(density)
   // The loaded sets join the generated one rather than replacing it: the default materials point into the placeholder
   // sheet, and would draw as nothing without it. A set named like a generated one stands in for it.
-  const terrain = useMemo(() => {
-    const usable = loaded.filter((s) => s.set.tile === density)
-    if (usable.length === 0) return generatedTerrain
-    const names = new Set(usable.map((s) => s.set.sheet))
-    return [...generatedTerrain.filter((s) => !names.has(s.set.sheet)), ...usable]
-  }, [loaded, generatedTerrain, density])
+  const terrain = useMemo(() => drawableTerrain(generatedTerrain, loaded, density), [loaded, generatedTerrain, density])
   return { terrain, loadedTerrain: loaded, generatedTerrain, sprites: spritesFor(density), textures: texturesFor(density), terrainWarning }
 }

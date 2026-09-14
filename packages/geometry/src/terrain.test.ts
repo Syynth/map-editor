@@ -23,7 +23,7 @@ import {
   type RgbaImage,
   type VoxelStructure,
 } from '@papercut/document'
-import type { LoadedSet } from './atlas'
+import { terrainKey, type LoadedSet } from './atlas'
 import { createTerrainLook } from './look'
 import { meshTerrainChunk, type MeshBuffers, type TerrainChunkMesh } from './terrain'
 import { addTerrain, createTerrainSet, stampTemplate } from './terrainset'
@@ -434,5 +434,20 @@ describe('walls beside slopes', () => {
       expect(data[(py * width + px) * 4 + 3]).toBe(255)
     }
     expect(walls).toBeGreaterThan(0)
+  })
+})
+
+describe('a material whose sheet is not loaded', () => {
+  it('draws as its colour rather than as a hole', () => {
+    const materials = [{ id: 0, name: 'Grass', color: 0x6aa84f, role: 'top' as const, top: { sheet: 'ground.png', terrain: 'grass' } }, { id: 1, name: 'Moss', color: 0x336633, role: 'top' as const, top: { sheet: 'gone.png', terrain: 'moss' } }]
+    const look = createTerrainLook(materials, [placeholderSet()])
+    const answer = look.atlas.tileFor([terrainKey('gone.png', 'moss'), terrainKey('gone.png', 'moss'), terrainKey('gone.png', 'moss'), terrainKey('gone.png', 'moss')])
+    expect(answer.composite).toBe(true)
+    const [u0, v0] = look.atlas.uv(answer.tile, 0)
+    const { width, height, data } = look.atlas.image
+    const x = Math.floor(u0 * width) + 1
+    const y = Math.floor((1 - v0) * height) - 1
+    const at = (y * width + x) * 4
+    expect([data[at], data[at + 1], data[at + 2], data[at + 3]]).toEqual([0x33, 0x66, 0x33, 255])
   })
 })

@@ -33,9 +33,14 @@ export function createTerrainLook(materials: readonly MaterialDef[], sets: reado
     if (!sideOf.has(side[index])) sideOf.set(side[index], index)
   })
   const priority = (key: TerrainKey): number => topOf.get(key) ?? sideOf.get(key) ?? -1
+  // The colour a terrain falls back to when its sheet is not loaded: the swatch of the first material that names it.
+  const colorOf = (key: TerrainKey): number | null => {
+    const index = topOf.get(key) ?? sideOf.get(key)
+    return index === undefined ? null : materials[index].color
+  }
   const byId = new Map(materials.map((m, index) => [m.id, index]))
   return {
-    atlas: new TerrainAtlas(sets, priority),
+    atlas: new TerrainAtlas(sets, priority, colorOf),
     keyOf: (material, isSide) => {
       const index = byId.get(material)
       return index === undefined ? null : isSide ? side[index] : top[index]

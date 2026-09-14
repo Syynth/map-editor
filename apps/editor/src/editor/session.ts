@@ -18,18 +18,24 @@
 import { SHEETS_DIR, createMap, serialize, serializeProject, sheetName, type RgbaImage } from '@papercut/document'
 import type { Host } from '@papercut/editor-host'
 import { createSampleMap, generatePlaceholderTerrainSet } from '@papercut/fixtures'
-import { parseTerrainSet, serializeTerrainSet, type TerrainSet } from '@papercut/geometry'
+import { parseTerrainSet, serializeTerrainSet, type LoadedSet, type TerrainSet } from '@papercut/geometry'
 import { MemoryFs, addMap, addSheet, createProjectFolder, forget, joinPath, openProject, parseRecents, readMap, remember, writeMap, writeProject, type ImageCodec, type NewSheet, type OpenedProject, type ProjectFs, type RecentProject } from '@papercut/project'
 import { exportGltf } from '@papercut/runtime/export'
 import { desktopShell, type MenuCommand, type ShellDialogs, type ShellMenu } from '@papercut/shell-api'
 
-import { artFor } from './art'
+import { artFor, drawableTerrain } from './art'
 import { refusal, run } from './commands'
 import { encodePngWithCanvas } from './rgba'
 
 const RECENTS_KEY = 'papercut:recents'
 const REOPEN_KEY = 'papercut:reopen-last'
 const MEMORY_FS_KEY = 'papercut:memory-fs'
+/** The folder open when the page last ran, so a reload comes back to it. Cleared on close. */
+const OPEN_FOLDER_KEY = 'papercut:open-folder'
+/** Per folder, the map that was open there last, so opening a project comes back to it. */
+const LAST_MAP_PREFIX = 'papercut:last-map:'
+/** How long the browser's memory tree waits for writes to stop before it snapshots itself to localStorage. */
+const SNAPSHOT_DELAY_MS = 300
 /** Where the browser build keeps its projects: a folder tree that exists only in `localStorage`. */
 export const MEMORY_PROJECTS_DIR = '/projects'
 const SAMPLE_FOLDER = `${MEMORY_PROJECTS_DIR}/sample-valley`
@@ -43,6 +49,8 @@ export interface Session {
   readonly menu: ShellMenu | null
   /** When this session last wrote into the project folder, so a watch can tell its own writes from someone else's. */
   lastWriteAt: number
+  /** What the last persistence failure said — the browser's storage refusing the memory tree — or `null`; read and cleared by whoever reports it. */
+  persistFailure: string | null
 }
 
 /** The browser's PNG codec: the canvas encodes, an `Image` decodes. */
@@ -79,8 +87,8 @@ function storage(): Storage | null {
   }
 }
 
-/** The in-memory folder tree, restored from `localStorage` and persisted after every write. */
-function memoryFs(): MemoryFs {
+/** The in-memory folder tree, restored from `localStorage` and persisted once writes settle; a failure is kept for the session to report. */
+function memoryFs(onFailure: (message: string) => void): MemoryFs {
   const store = storage()
   let fs: MemoryFs
   try {
@@ -89,27 +97,44 @@ function memoryFs(): MemoryFs {
   } catch {
     fs = new MemoryFs()
   }
-  fs.onChange = () => {
+  let pending: ReturnType<typeof setTimeout> | undefined
+  const persist = (): void => {
+    pending = undefined
     try {
       store?.setItem(MEMORY_FS_KEY, fs.snapshot())
-    } catch {
-      // Quota or a private window; the tree lives on in memory for the session.
+    } catch (error) {
+      // Quota or a private window: the tree lives on in memory for the session, and the editor says so.
+      onFailure(`This browser cannot keep the project: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
+  fs.onChange = () => {
+    clearTimeout(pending)
+    pending = setTimeout(persist, SNAPSHOT_DELAY_MS)
+  }
+  window.addEventListener('pagehide', () => {
+    if (pending !== undefined) {
+      clearTimeout(pending)
+      persist()
+    }
+  })
   return fs
 }
 
 /** The session for this build: the shell's filesystem and dialogs when there is a shell, the memory tree otherwise. */
 export async function createSession(): Promise<Session> {
   const shell = desktopShell()
-  if (shell) return { fs: shell.fs, codec: canvasCodec, dialogs: shell.dialogs, menu: shell.menu ?? null, lastWriteAt: 0 }
-  const fs = memoryFs()
+  if (shell) return { fs: shell.fs, codec: canvasCodec, dialogs: shell.dialogs, menu: shell.menu ?? null, lastWriteAt: 0, persistFailure: null }
+  const session: Session = { fs: new MemoryFs(), codec: canvasCodec, dialogs: null, menu: null, lastWriteAt: 0, persistFailure: null }
+  const fs = memoryFs((message) => {
+    session.persistFailure = message
+  })
+  ;(session as { fs: ProjectFs }).fs = fs
   // First run in a browser: the sample project, so there is something to open.
   if (!(await fs.exists(`${SAMPLE_FOLDER}/papercut.json`))) {
     const placeholder = generatePlaceholderTerrainSet(16)
     await createProjectFolder(fs, SAMPLE_FOLDER, { name: 'Sample Valley', texelDensity: 16, placeholder, firstMap: createSampleMap() }, canvasCodec)
   }
-  return { fs, codec: canvasCodec, dialogs: null, menu: null, lastWriteAt: 0 }
+  return session
 }
 
 // --- recents ---------------------------------------------------------------
@@ -131,35 +156,92 @@ export function setReopenLast(on: boolean): void {
   storage()?.setItem(REOPEN_KEY, on ? '1' : '0')
 }
 
+/** The folder that was open when the page last ran, or `null`: what a reload comes back to. */
+export function openFolder(): string | null {
+  return storage()?.getItem(OPEN_FOLDER_KEY) ?? null
+}
+
+function rememberOpen(folder: string | null): void {
+  if (folder === null) storage()?.removeItem(OPEN_FOLDER_KEY)
+  else storage()?.setItem(OPEN_FOLDER_KEY, folder)
+}
+
+function lastMapIn(folder: string): string | null {
+  return storage()?.getItem(LAST_MAP_PREFIX + folder) ?? null
+}
+
+/** A write per path at a time: the autosave and an explicit save landing together cannot interleave on one file. */
+const inFlight = new Map<string, Promise<unknown>>()
+function queued<T>(path: string, work: () => Promise<T>): Promise<T> {
+  const previous = inFlight.get(path) ?? Promise.resolve()
+  const next = previous.then(work, work)
+  inFlight.set(path, next.catch(() => undefined))
+  return next
+}
+
 // --- opening ---------------------------------------------------------------
 
 const notify = (host: Host, notice: string | null): void => void host.dispatch('view.set', { notice })
 
-/** Put an opened project and its sheets in front of the editor: the project, then its first map, then the art. */
+/**
+ * Put an opened project and its sheets in front of the editor: the map first — the one open there last, else the
+ * first listed map that is in the folder — read and checked BEFORE the project is switched, so a project whose maps
+ * cannot be read is refused whole rather than opened onto a placeholder that nothing would ever write.
+ */
 async function install(host: Host, session: Session, folder: string, opened: OpenedProject): Promise<void> {
-  const loaded = refusal(host.dispatch('project.load', { folder, json: serializeProject(opened.project) }))
-  if (loaded !== null) throw new Error(loaded)
-  let path = opened.project.maps[0] ?? null
-  if (path === null) {
-    // A project with no map is not one the editor made, but it is not refused: it gets a first map.
-    const added = await addMap(session.fs, folder, opened.project, createMap(32, 32, opened.project.name))
-    path = added.path
-    host.dispatch('project.maps.set', { maps: added.project.maps })
+  let project = opened.project
+  const candidates = [lastMapIn(folder), ...project.maps].filter((p): p is string => p !== null && project.maps.includes(p))
+  let path: string | null = null
+  for (const candidate of candidates) {
+    if (await session.fs.exists(joinPath(folder, candidate))) {
+      path = candidate
+      break
+    }
   }
-  await openMapAt(host, session, path)
+  let doc
+  if (path === null) {
+    // A project with no readable map is not one the editor made, but it is not refused: it gets a first map.
+    doc = createMap(32, 32, project.name)
+    const added = await addMap(session.fs, folder, project, doc)
+    path = added.path
+    project = added.project
+  } else {
+    try {
+      doc = await readMap(session.fs, folder, path)
+    } catch (error) {
+      throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+    }
+  }
+  const json = serialize(doc)
+  const loaded = refusal(host.dispatch('project.load', { folder, json: serializeProject(project) }))
+  if (loaded !== null) throw new Error(loaded)
+  const why = refusal(host.dispatch('document.load', { json }))
+  if (why !== null) {
+    host.dispatch('project.close')
+    throw new Error(`${path}: ${why}`)
+  }
+  host.dispatch('project.current', { map: path })
+  rememberOpen(folder)
   host.children.viewport.send({ type: 'terrain', sets: opened.sets, warning: opened.warnings.length ? opened.warnings.join('\n') : null })
-  saveRecents(remember(recents(), { name: opened.project.name, folder, openedAt: Date.now() }))
+  saveRecents(remember(recents(), { name: project.name, folder, openedAt: Date.now() }))
 }
 
-/** Open the project in `folder`. Throws with a message the startup screen shows; a folder that is not there is dropped from recents. */
+/** Whether an error says the thing is simply not there, as opposed to unreadable. */
+function isMissing(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return /\[ENOENT\]/.test(message)
+}
+
+/** Open the project in `folder`, saving the one that is open first. Throws with a message the startup screen shows; a folder that is not there is dropped from recents. */
 export async function openProjectAt(host: Host, session: Session, folder: string): Promise<void> {
   let opened
   try {
     opened = await openProject(session.fs, folder, session.codec)
   } catch (error) {
-    saveRecents(forget(recents(), folder))
+    if (isMissing(error)) saveRecents(forget(recents(), folder))
     throw new Error(`Could not open ${folder}: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
   }
+  if (host.children.project.getSnapshot().context.folder !== null) await saveNow(host, session)
   await install(host, session, folder, opened)
 }
 
@@ -173,6 +255,7 @@ export interface NewProjectSpec {
 export async function createProjectAt(host: Host, session: Session, spec: NewProjectSpec): Promise<void> {
   const placeholder = generatePlaceholderTerrainSet(spec.texelDensity)
   const created = await createProjectFolder(session.fs, spec.folder, { name: spec.name, texelDensity: spec.texelDensity, placeholder }, session.codec)
+  if (host.children.project.getSnapshot().context.folder !== null) await saveNow(host, session)
   await install(host, session, spec.folder, created)
 }
 
@@ -185,11 +268,14 @@ function location(host: Host): { folder: string; map: string | null } {
 /** Open one of the project's maps as the document, saving the one that was open first. */
 export async function openMapAt(host: Host, session: Session, path: string): Promise<void> {
   const { folder, map } = location(host)
-  if (map !== null && map !== path) await writeMap(session.fs, folder, map, host.reader.doc)
+  // The open map is open: nothing to reload, and reloading it would drop the undo history.
+  if (map === path) return
+  if (map !== null) await saveNow(host, session)
   const doc = await readMap(session.fs, folder, path)
   const why = refusal(host.dispatch('document.load', { json: serialize(doc) }))
   if (why !== null) throw new Error(why)
   host.dispatch('project.current', { map: path })
+  storage()?.setItem(LAST_MAP_PREFIX + folder, path)
 }
 
 /** A new, empty map in the project, listed last and opened. */
@@ -205,8 +291,13 @@ export async function newMapIn(host: Host, session: Session, name: string, width
 export async function saveNow(host: Host, session: Session): Promise<string> {
   const { folder, map } = location(host)
   session.lastWriteAt = Date.now()
-  await writeProject(session.fs, folder, host.children.project.getSnapshot().context.project)
-  if (map !== null) await writeMap(session.fs, folder, map, host.reader.doc)
+  // Both writes start at once, the map's first: on `pagehide` the page may not live to see a second one begin.
+  const project = host.children.project.getSnapshot().context.project
+  const doc = host.reader.doc
+  await Promise.all([
+    map === null ? Promise.resolve() : queued(joinPath(folder, map), () => writeMap(session.fs, folder, map, doc)),
+    queued(joinPath(folder, 'papercut.json'), () => writeProject(session.fs, folder, project)),
+  ])
   return map ?? 'papercut.json'
 }
 
@@ -241,7 +332,11 @@ export async function updateTerrainSet(host: Host, session: Session, sheet: stri
     host.dispatch('project.sheets.set', { sheets })
     await writeProject(session.fs, folder, host.children.project.getSnapshot().context.project)
   }
-  await reloadSheets(host, session, folder)
+  // The one set, swapped in over its image: no other sheet is re-read for a rename.
+  const { loadedTerrain, terrainWarning } = host.children.viewport.getSnapshot().context
+  const swapped = loadedTerrain.some((s) => s.set.sheet === sheet)
+  if (swapped) host.children.viewport.send({ type: 'terrain', sets: loadedTerrain.map((s) => (s.set.sheet === sheet ? { set: { ...set, sheet }, image: s.image } : s)), warning: terrainWarning })
+  else await reloadSheets(host, session, folder)
 }
 
 /** Take a sheet off the project's list. The files stay in the folder; the materials that pointed into it draw from the placeholder or as colour. */
@@ -279,14 +374,22 @@ export async function addImagesTo(host: Host, session: Session, files: readonly 
     // A sheet with no sidecar still has to be an image this codec can read: found out now, not at the next open.
     await session.codec.decode(bytes)
   }
-  await addSheetTo(host, session, { name: image.name, bytes, tile: set?.tile ?? project.resolution.texelDensity, set })
-  return image.name
+  const tile = set?.tile ?? project.resolution.texelDensity
+  await addSheetTo(host, session, { name: image.name, bytes, tile, set })
+  return tile === project.resolution.texelDensity ? image.name : `${image.name} — ${tile} px tiles, but the project is ${project.resolution.texelDensity} px; it is listed and not drawn`
 }
 
-/** Save, then close: back to the startup screen. */
+/** Save, then close: back to the startup screen. A save that fails keeps the project open, and says so. */
 export async function closeProject(host: Host, session: Session): Promise<void> {
-  await saveNow(host, session)
+  try {
+    await saveNow(host, session)
+  } catch (error) {
+    throw new Error(`Not closed — the project could not be saved: ${error instanceof Error ? error.message : String(error)}`, { cause: error })
+  }
   host.dispatch('project.close')
+  // The document too: a closed project's map must not linger to be written into the next one.
+  host.dispatch('document.new', { width: 2, height: 2, name: 'No map' })
+  rememberOpen(null)
   host.children.viewport.send({ type: 'terrain', sets: [], warning: null })
   notify(host, null)
 }
@@ -295,9 +398,10 @@ export async function closeProject(host: Host, session: Session): Promise<void> 
 export async function exportCurrentMap(host: Host): Promise<string> {
   const doc = host.reader.doc
   const project = host.children.project.getSnapshot().context.project
-  // The generated terrain set, as before #47 when the exporter generated its own: an artist's loaded set still previews but does not export.
+  // The same sets the stage draws with — the project's sheets, the generated placeholder standing in — so what is exported is what was seen.
   const art = artFor(project)
-  const bytes = await exportGltf(doc, { merge: false, textures: art.textures, terrain: art.generatedTerrain, materials: project.materials, resolution: project.resolution, sprites: art.sprites, encodePng: encodePngWithCanvas })
+  const terrain = drawableTerrain(art.generatedTerrain, host.children.viewport.getSnapshot().context.loadedTerrain as readonly LoadedSet[], project.resolution.texelDensity)
+  const bytes = await exportGltf(doc, { merge: false, textures: art.textures, terrain, materials: project.materials, resolution: project.resolution, sprites: art.sprites, encodePng: encodePngWithCanvas })
   const blob = new Blob([bytes], { type: 'model/gltf-binary' })
   const file = `${doc.name.replace(/\s+/g, '-').toLowerCase()}.glb`
   const url = URL.createObjectURL(blob)
@@ -319,6 +423,8 @@ export function installShellMenu(host: Host, session: Session): () => void {
   const notify = (notice: string): void => run(host, 'view.set', { notice })
   const attempt = (work: Promise<unknown>): void => void work.catch((error: unknown) => notify(error instanceof Error ? error.message : String(error)))
   const onCommand = (command: MenuCommand): void => {
+    const open = host.children.project.getSnapshot().context.folder !== null
+    if (!open && (command.id === 'map.new' || command.id === 'file.save' || command.id === 'file.export' || command.id === 'project.settings' || command.id === 'project.close')) return
     switch (command.id) {
       case 'project.new':
         run(host, 'view.set', { dialog: 'new-project' })
@@ -375,22 +481,25 @@ export function watchProjectSheets(host: Host, session: Session): () => void {
   if (!watch) return () => undefined
   let stop: (() => void) | null = null
   let watching: string | null = null
+  let generation = 0
   let settle: ReturnType<typeof setTimeout> | undefined
   const start = (folder: string): void => {
     watching = folder
+    const mine = ++generation
     watch(joinPath(folder, SHEETS_DIR), () => {
       if (Date.now() - session.lastWriteAt < OWN_WRITE_WINDOW_MS) return
       clearTimeout(settle)
       settle = setTimeout(() => void reloadSheets(host, session, folder).catch(() => undefined), WATCH_SETTLE_MS)
     })
       .then((end) => {
-        if (watching === folder) stop = end
+        if (generation === mine) stop = end
         else end()
       })
       .catch(() => undefined)
   }
   const end = (): void => {
     clearTimeout(settle)
+    generation += 1
     stop?.()
     stop = null
     watching = null
