@@ -45,6 +45,10 @@ const CORE_BINDINGS: readonly KeyBinding[] = [
   { chord: 'ctrl+shift+z', command: 'redo' },
   { chord: 'meta+shift+z', command: 'redo' },
 
+  // Project settings on the chord every editor uses for preferences.
+  { chord: 'ctrl+,', command: 'view.set', args: { settings: 'general' } },
+  { chord: 'meta+,', command: 'view.set', args: { settings: 'general' } },
+
   // The rail's subjects, on the letters the reference art apps use for them
   // (2026-09-12 ruling): `V` for Select as Figma, Photoshop and Blender have
   // it, and Escape returns to Select from anywhere, which is the convention

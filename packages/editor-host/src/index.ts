@@ -52,7 +52,8 @@ export type { MaterialsSetArgs, MapsSetArgs, ProjectContext, ProjectCurrentArgs,
 export { VIEW_OWNER, selectionSubject, viewKeys } from './view'
 export { VIEWPORT_OWNER, sameSurface } from './viewport'
 export type { BrushCells, CameraReadout, FrameStats, ViewportState } from './viewport'
-export type { Selection, ViewContext, ViewSettings } from './view'
+export { SETTINGS_SECTIONS } from './view'
+export type { Selection, SettingsSection, ViewContext, ViewSettings } from './view'
 
 export { HostProvider, useDocument, useDocumentSelector, useHost, useHostRef, useHostSelector, useProject, useProjectSelector, useToolsSelector, useViewSelector, useViewportSelector } from './react'
 export type { DocumentSelectOptions } from './react'

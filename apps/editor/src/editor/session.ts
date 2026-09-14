@@ -15,10 +15,11 @@
  * hand the viewport the sheets. Nothing in an actor touches a file.
  */
 
-import { createMap, serialize, serializeProject, type RgbaImage } from '@papercut/document'
+import { SHEETS_DIR, createMap, serialize, serializeProject, sheetName, type RgbaImage } from '@papercut/document'
 import type { Host } from '@papercut/editor-host'
 import { createSampleMap, generatePlaceholderTerrainSet } from '@papercut/fixtures'
-import { MemoryFs, addMap, addSheet, createProjectFolder, forget, openProject, parseRecents, readMap, remember, writeMap, writeProject, type ImageCodec, type NewSheet, type OpenedProject, type ProjectFs, type RecentProject } from '@papercut/project'
+import { parseTerrainSet, serializeTerrainSet, type TerrainSet } from '@papercut/geometry'
+import { MemoryFs, addMap, addSheet, createProjectFolder, forget, joinPath, openProject, parseRecents, readMap, remember, writeMap, writeProject, type ImageCodec, type NewSheet, type OpenedProject, type ProjectFs, type RecentProject } from '@papercut/project'
 import { desktopShell, type ShellDialogs } from '@papercut/shell-api'
 
 import { refusal } from './commands'
@@ -209,6 +210,67 @@ export async function addSheetTo(host: Host, session: Session, sheet: NewSheet):
   host.dispatch('project.sheets.set', { sheets: next.sheets })
   const reopened = await openProject(session.fs, folder, session.codec)
   host.children.viewport.send({ type: 'terrain', sets: reopened.sets, warning: reopened.warnings.length ? reopened.warnings.join('\n') : null })
+}
+
+/** Reload the project's sheets from its folder into the viewport, after something in `sheets/` changed. */
+async function reloadSheets(host: Host, session: Session, folder: string): Promise<void> {
+  const reopened = await openProject(session.fs, folder, session.codec)
+  host.children.viewport.send({ type: 'terrain', sets: reopened.sets, warning: reopened.warnings.length ? reopened.warnings.join('\n') : null })
+}
+
+/** Write a sheet's terrain set to its sidecar — creating and listing the sidecar for a sheet that had none — and reload. */
+export async function updateTerrainSet(host: Host, session: Session, sheet: string, set: TerrainSet): Promise<void> {
+  const { folder } = location(host)
+  const project = host.children.project.getSnapshot().context.project
+  const entry = project.sheets.find((s) => sheetName(s.path) === sheet)
+  if (!entry) throw new Error(`${sheet} is not a sheet of this project.`)
+  const sidecar = entry.terrainSet ?? `${SHEETS_DIR}/${sheet.replace(/\.[^.]+$/, '')}.terrain.json`
+  await session.fs.writeFile(joinPath(folder, sidecar), serializeTerrainSet({ ...set, sheet }))
+  if (entry.terrainSet !== sidecar) {
+    const sheets = project.sheets.map((s) => (s === entry ? { ...s, terrainSet: sidecar } : { ...s }))
+    host.dispatch('project.sheets.set', { sheets })
+    await writeProject(session.fs, folder, host.children.project.getSnapshot().context.project)
+  }
+  await reloadSheets(host, session, folder)
+}
+
+/** Take a sheet off the project's list. The files stay in the folder; the materials that pointed into it draw from the placeholder or as colour. */
+export async function unlistSheet(host: Host, session: Session, sheet: string): Promise<void> {
+  const { folder } = location(host)
+  const project = host.children.project.getSnapshot().context.project
+  host.dispatch('project.sheets.set', { sheets: project.sheets.filter((s) => sheetName(s.path) !== sheet).map((s) => ({ ...s })) })
+  await writeProject(session.fs, folder, host.children.project.getSnapshot().context.project)
+  await reloadSheets(host, session, folder)
+}
+
+/** Change what the project says about a sheet: its tile size. Reloads, since the check against the sidecar depends on it. */
+export async function setSheetTile(host: Host, session: Session, sheet: string, tile: number): Promise<void> {
+  const { folder } = location(host)
+  const project = host.children.project.getSnapshot().context.project
+  host.dispatch('project.sheets.set', { sheets: project.sheets.map((s) => (sheetName(s.path) === sheet ? { ...s, tile } : { ...s })) })
+  await writeProject(session.fs, folder, host.children.project.getSnapshot().context.project)
+  await reloadSheets(host, session, folder)
+}
+
+/**
+ * Files picked for the project: an image, and its sidecar if it was picked with it. An image alone is listed at the
+ * project's tile size with no terrain set — a sprite sheet, say — and gets one the moment a terrain is added to it.
+ */
+export async function addImagesTo(host: Host, session: Session, files: readonly File[]): Promise<string> {
+  const image = files.find((f) => !f.name.endsWith('.json'))
+  const sidecar = files.find((f) => f.name.endsWith('.json'))
+  if (!image) throw new Error('Pick an image (and its .terrain.json, if it has one).')
+  const project = host.children.project.getSnapshot().context.project
+  const bytes = new Uint8Array(await image.arrayBuffer())
+  let set: TerrainSet | null = null
+  if (sidecar) {
+    set = parseTerrainSet(JSON.parse(await sidecar.text()))
+  } else {
+    // A sheet with no sidecar still has to be an image this codec can read: found out now, not at the next open.
+    await session.codec.decode(bytes)
+  }
+  await addSheetTo(host, session, { name: image.name, bytes, tile: set?.tile ?? project.resolution.texelDensity, set })
+  return image.name
 }
 
 /** Save, then close: back to the startup screen. */

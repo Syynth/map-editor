@@ -96,6 +96,7 @@ export function TopBar({ platform, session }: { platform: Platform; session: Ses
         <MenuDivider />
         <MenuItem icon="plus" title="New map…" onClick={() => setNaming('')} />
         <MenuDivider />
+          <MenuItem icon="settings" title="Project settings…" kbd={chordFor('view.set', { settings: 'general' }, platform)} onClick={() => run(host, 'view.set', { settings: 'general' })} />
           <MenuItem icon="close" title="Close project" onClick={() => attempt(closeProject(host, session), 'Closed')} />
         </Menu>
       </Brand>

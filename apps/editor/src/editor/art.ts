@@ -55,8 +55,10 @@ export function artFor(project: ReadonlyProjectDoc): GeneratedArt {
 }
 
 export interface Art extends GeneratedArt {
-  /** What the terrain draws with: the loaded terrain set if there is one, else the generated one. */
+  /** What the terrain draws with: the project's sheets at the profile's tile size, the generated placeholder standing in for what is missing. */
   readonly terrain: LoadedSet[]
+  /** The project's sheets as they loaded, every tile size, for the settings to list. */
+  readonly loadedTerrain: readonly LoadedSet[]
   readonly terrainWarning: string | null
 }
 
@@ -77,5 +79,5 @@ export function useArt(): Art {
     const names = new Set(usable.map((s) => s.set.sheet))
     return [...generatedTerrain.filter((s) => !names.has(s.set.sheet)), ...usable]
   }, [loaded, generatedTerrain, density])
-  return { terrain, generatedTerrain, sprites: spritesFor(density), textures: texturesFor(density), terrainWarning }
+  return { terrain, loadedTerrain: loaded, generatedTerrain, sprites: spritesFor(density), textures: texturesFor(density), terrainWarning }
 }

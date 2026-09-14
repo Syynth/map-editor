@@ -1488,3 +1488,298 @@ body {
   font-size: 11.5px;
   color: var(--ui-warn);
 }
+
+/* --- the settings modal ----------------------------------------------------- */
+
+.ui-settings {
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  color: var(--ui-ink);
+  height: min(720px, calc(100vh - 80px));
+  overflow: hidden;
+}
+
+.ui-settings-body {
+  display: grid;
+  grid-template-columns: 196px minmax(0, 1fr);
+  height: 100%;
+  padding: 0;
+}
+
+.ui-settings-rail {
+  background: var(--ui-bg-2);
+  border-right: 1px solid var(--ui-line);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.ui-settings-scope {
+  display: flex;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-line);
+}
+
+.ui-settings-scope-btn {
+  flex: 1;
+  height: 22px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ui-ink-2);
+  font: 12px var(--ui-font);
+  cursor: pointer;
+}
+
+.ui-settings-scope-btn.is-active {
+  background: var(--ui-accent);
+  color: var(--ui-accent-ink);
+  font-weight: 600;
+}
+
+.ui-settings-scope-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.ui-settings-rail-note {
+  padding: 0 4px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ui-ink-3);
+}
+
+.ui-settings-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ui-ink-2);
+  font: 12.5px var(--ui-font);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-settings-item:hover {
+  color: var(--ui-ink);
+}
+
+.ui-settings-item.is-active {
+  background: var(--ui-panel);
+  color: var(--ui-accent);
+}
+
+.ui-settings-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ui-settings-head {
+  height: 34px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--ui-line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+}
+
+.ui-settings-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ui-settings-aside {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--ui-ink-3);
+}
+
+.ui-settings-close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ui-ink-3);
+  cursor: pointer;
+}
+
+.ui-settings-close:hover {
+  background: var(--ui-panel-2);
+  color: var(--ui-ink);
+}
+
+.ui-settings-content {
+  padding: 20px 28px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.ui-settings-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ui-settings-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ui-settings-block-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ui-settings-block-action {
+  display: flex;
+  gap: 6px;
+}
+
+.ui-settings-note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--ui-ink-3);
+}
+
+.ui-table {
+  display: grid;
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  background: var(--ui-bg-2);
+  overflow: hidden;
+  padding-top: 8px;
+}
+
+.ui-table-th {
+  font: 600 10.5px/1 var(--ui-font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-ink-3);
+  padding: 0 10px 6px;
+}
+
+.ui-table-td {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--ui-panel-2);
+  font-size: 12px;
+  color: var(--ui-ink-2);
+  min-width: 0;
+}
+
+.ui-table-td.is-link {
+  cursor: pointer;
+}
+
+.ui-table-td.is-active {
+  background: var(--ui-panel-2);
+  color: var(--ui-ink);
+}
+
+.ui-table-td.is-muted {
+  color: var(--ui-ink-3);
+}
+
+.ui-table-td .ui-num,
+.ui-table-td code {
+  font-family: var(--ui-font-mono);
+}
+
+.ui-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex: none;
+}
+
+.ui-status-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ui-status-text.is-ok {
+  color: var(--ui-ok);
+}
+
+.ui-status-text.is-warn {
+  color: var(--ui-warn);
+}
+
+.ui-status-text.is-accent {
+  color: var(--ui-accent);
+}
+
+.ui-status-text.is-muted {
+  color: var(--ui-ink-3);
+}
+
+.ui-field-grid {
+  display: grid;
+  gap: 12px 20px;
+}
+
+.ui-sheet-preview {
+  border: 1px solid var(--ui-line);
+  border-radius: 3px;
+  background: #0f1115;
+  padding: 1px;
+  overflow: auto;
+  max-height: 220px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.ui-sheet-preview img {
+  display: block;
+}
+
+/* In the settings pane a field stacks its label over its control, brink's single-column form; the inspector keeps its rows. */
+.ui-settings-content .ui-field,
+.ui-field-grid .ui-field {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 5px;
+}
+
+.ui-settings-content .ui-field-label {
+  font-size: 11px;
+  color: var(--ui-ink-3);
+}
+
+.ui-settings-content .ui-row {
+  min-height: 28px;
+}
+
+.ui-settings-block-action .mantine-TextInput-root,
+.ui-settings-block-action .ui-btn.is-file {
+  min-width: 160px;
+}

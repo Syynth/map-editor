@@ -25,6 +25,7 @@ import { InspectorRegion } from './inspector'
 import { detectPlatform, installKeyDispatcher } from './keys'
 import { Rail } from './rail'
 import { saveNow, type Session } from './session'
+import { ProjectSettings } from './settings'
 import { Stage } from './stage'
 import { Startup } from './startup'
 import { StatusBar } from './status'
@@ -83,13 +84,16 @@ export default function App({ session }: { session: Session }) {
   if (folder === null) return <Startup session={session} />
 
   return (
-    <Frame
-      top={<TopBar platform={platform} session={session} />}
-      rail={<Rail platform={platform} />}
-      bar={<ContextBar platform={platform} />}
-      stage={<Stage platform={platform} />}
-      inspector={<InspectorRegion platform={platform} session={session} />}
-      status={<StatusBar />}
-    />
+    <>
+      <ProjectSettings session={session} />
+      <Frame
+        top={<TopBar platform={platform} session={session} />}
+        rail={<Rail platform={platform} />}
+        bar={<ContextBar platform={platform} />}
+        stage={<Stage platform={platform} />}
+        inspector={<InspectorRegion platform={platform} />}
+        status={<StatusBar />}
+      />
+    </>
   )
 }

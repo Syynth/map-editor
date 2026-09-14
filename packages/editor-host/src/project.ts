@@ -58,10 +58,23 @@ const sheetsSet = z
 
 const mapsSet = z.object({ maps: z.array(relativePath) }).strict()
 
+const cameraRig = z
+  .object({
+    yaw: z.number(),
+    pitch: z.number(),
+    distance: z.number().min(0),
+    fov: z.number().min(1).max(179),
+    bounds: z.object({ yawMin: z.number(), yawMax: z.number(), pitchMin: z.number(), pitchMax: z.number(), distMin: z.number().min(0), distMax: z.number().min(0) }).strict(),
+    yawSnapDeg: z.number().min(0).max(180),
+    projection: z.enum(['perspective', 'orthographic']),
+  })
+  .strict()
 const projectSettings = z
   .object({
     name: z.string().min(1).exactOptional(),
     resolution: z.object({ texelDensity: z.int().min(1), filtering: z.enum(['nearest', 'linear']) }).strict().exactOptional(),
+    /** The rig every new map starts from, whole. */
+    camera: cameraRig.exactOptional(),
   })
   .strict()
 
@@ -124,8 +137,8 @@ export function projectLogicWith(initial: ProjectDoc, folder: string | null = nu
             const { project } = context
             switch (event.id) {
               case 'project.set': {
-                const { name, resolution } = event.args as ProjectSettings
-                return { context: { project: { ...project, ...(name === undefined ? {} : { name }), ...(resolution === undefined ? {} : { resolution: resolution }) } } }
+                const { name, resolution, camera } = event.args as ProjectSettings
+                return { context: { project: { ...project, ...(name === undefined ? {} : { name }), ...(resolution === undefined ? {} : { resolution }), ...(camera === undefined ? {} : { camera }) } } }
               }
               case 'project.materials.set':
                 return { context: { project: { ...project, materials: (event.args as MaterialsSetArgs).materials.map((m) => ({ ...m })) } } }
