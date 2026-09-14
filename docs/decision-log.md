@@ -492,3 +492,36 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** Amends the dual-grid ruling of the same date. A transition tile is authored as the transition itself (half grass, half path) and tagged per corner; the tile at a cell corner is the one tagged exactly like its four cells, for any number of terrains. Two, three or four terrains meeting at a corner is allowed. Where no tile is authored for the exact combination, the corner is composited with no extra art: the lowest terrain in the library order from its edge set, then each higher terrain's edge-set tile over it. Composited corners are shown in the editor (a toggleable mark) and the distinct missing combinations are counted and named, so transitions are drawn on demand; an authored tile always wins over the composite. Library order matters only for composited corners and for which terrain is the shape when a template is placed.
 - **WHY:** A complete set for six terrains is about 1,300 tiles, so restricting corners to pairs is an authoring budget, not a property of the model. Compositing from the edge sets gives every corner a plausible look for free, and showing what was composited turns the gap into a to-do list the artist works off as the level needs it.
+
+## Materials are a project setting, not a map setting
+- **WHEN:** 2026-09-14
+- **PROJECT:** papercut
+- **SYSTEM:** cross-system (document, project format, feature-terrain)
+- **SCOPE:** architectural
+- **WHAT:** The material library (id, name, role, top and side terrain refs, priority order) lives in the project file, `papercut.json`, and every map in the project paints from it; a map stores only the material ids its voxels hold. Sheets and their terrain-set sidecars are listed by the project too. A map opened with no project falls back to the built-in placeholder set.
+- **WHY:** A material is the artist's palette, and a palette that is per map cannot be shared: two maps in one project would drift, and "terrain type management" as a project setting (the LDtk model) is only possible if the project owns the list. Ids stay stable so moving the list out of the map does not touch what voxels store.
+- **STATUS:** amended 2026-09-14 — the fallback for a map with no project is moot; see "The app opens projects only; a map is opened within its project" below.
+
+## The resolution profile is a project setting, with no per-map override
+- **WHEN:** 2026-09-14
+- **PROJECT:** papercut
+- **SYSTEM:** project format
+- **SCOPE:** moderate
+- **WHAT:** The resolution profile (texel density and filtering) is asked for when the project is created and stored in `papercut.json`. Every sheet added to the project is checked against it and a mismatch is reported, never rescaled. No per-map override; the brief's cascade is deferred until a map actually needs one.
+- **WHY:** Mixed texel density is the fastest way to make pixel art in 3D look wrong (brief, resolution section). One profile per project makes every sheet and every map line up by construction, and an override is a warning surface nobody has asked for yet.
+
+## The project file lists its maps, in order
+- **WHEN:** 2026-09-14
+- **PROJECT:** papercut
+- **SYSTEM:** project format
+- **SCOPE:** minor/local
+- **WHAT:** `papercut.json` lists the project's maps by path, in order, the way LDtk's world list does. The list is the project's map order in the UI; a map file present in `maps/` but absent from the list is reported, not silently included or ignored.
+- **WHY:** An ordered list is authored intent (which map comes first, which are part of the game) where a folder glob is an accident of filenames. Listing also lets a missing file be reported, the same rule the sheet list follows.
+
+## The app opens projects only; a map is opened within its project
+- **WHEN:** 2026-09-14
+- **PROJECT:** papercut
+- **SYSTEM:** project format
+- **SCOPE:** architectural
+- **WHAT:** There is no door for a loose `.map.json`, no standalone-map mode, and no migration of today's map files: the project format starts fresh and the map format is defined as the project's. Recents are projects.
+- **WHY:** Nobody has made a map yet; the project is a day and a half old, so there is no legacy to keep alive, and a second way in (brink needs two because a story can be one file) would only add a code path and a badge for an identity papercut does not have.

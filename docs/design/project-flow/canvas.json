@@ -1,0 +1,22 @@
+{
+  "artboards": [
+    { "file": "Model.dc.html", "x": 0, "y": -600, "w": 1120, "h": 480, "title": "The model" },
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 880, "h": 690, "title": "Startup" },
+    { "file": "NewProject.dc.html", "x": 960, "y": 0, "w": 560, "h": 600, "title": "New Project" },
+    { "file": "Shell.dc.html", "x": 0, "y": 820, "w": 1200, "h": 720, "title": "Editor with a project open" },
+    { "file": "Sheets.dc.html", "x": 0, "y": 1680, "w": 960, "h": 760, "title": "Project settings — Sheets" },
+    { "file": "Terrains.dc.html", "x": 1040, "y": 1680, "w": 960, "h": 760, "title": "Project settings — Terrain sets" },
+    { "file": "Materials.dc.html", "x": 2080, "y": 1680, "w": 960, "h": 760, "title": "Project settings — Materials" },
+    { "file": "Format.dc.html", "x": 0, "y": 2580, "w": 1120, "h": 640, "title": "The format" }
+  ],
+  "annotations": [
+    { "id": "note-model", "x": 1180, "y": -600, "w": 320, "text": "Mirrors brink's two doors: opening IS choosing what you work in.\n\nUnlike brink there is one identity, the project, so recents carry no kind badge and there is no door for a loose map file (decided 2026-09-14)." },
+    { "id": "note-startup", "x": 1580, "y": 0, "w": 300, "text": "Texel density is asked at creation because it is the one setting every sheet is checked against afterwards. Changing it later is a project-wide event, not a field." },
+    { "id": "note-shell", "x": 1260, "y": 820, "w": 320, "text": "The project name in the top bar is the door into the project: maps, new map, settings. No binder dock — papercut's frame has a rail and an inspector, and the map list is short.\n\nThe Materials section in the inspector stays for picking; editing moves to Project settings." },
+    { "id": "note-sheets", "x": 0, "y": 2480, "w": 320, "text": "LDtk's Tilesets tab, in our terms: the project LISTS its images, so a missing or mis-sized one is a row with a status, not a blank texture (#148)." },
+    { "id": "note-terrains", "x": 1040, "y": 2480, "w": 320, "text": "Terrain type management. Tags stay in the sidecar beside the PNG; this section reads them. The tile tagger itself is #146 and not drawn here.\n\nThe Transitions list is the project-wide 'to author' count." },
+    { "id": "note-materials", "x": 2080, "y": 2480, "w": 320, "text": "DECIDED 2026-09-14: materials are a project setting. The library lives in papercut.json; a map stores only the ids its voxels hold. The app opens projects only, so a map never needs a fallback." },
+    { "id": "note-format", "x": 1180, "y": 2580, "w": 320, "text": "DECIDED 2026-09-14: one resolution profile per project, no per-map override; sheets are checked against it, never rescaled.\n\nDECIDED 2026-09-14: papercut.json lists maps in order; a file in maps/ but not the list is reported." }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -26,3 +26,11 @@
   stamp per pair on top. The decisions it records are in `docs/decision-log.md` under that
   date. Published copy:
   https://claude.ai/code/artifact/49647e2f-c4ab-45d6-9472-4c308f52df16
+- [`project-flow/`](project-flow/README.md) — the 2026-09-14 project format and flow as a
+  design canvas: a project is a folder anchored on `papercut.json`; the startup screen's two
+  doors and kind-badged recents mirror brink; the editor's project popover; and Project
+  settings in brink's rail-and-scope modal with LDtk's shape — Sheets (image management),
+  Terrain sets (the sidecars and the project-wide "to author" list) and Materials (the
+  library, now a project setting). The decisions it settled are in `docs/decision-log.md`
+  under that date. Published copy:
+  https://claude.ai/code/artifact/ce6e13d2-54a1-44c4-a23d-b83a4123c009

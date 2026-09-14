@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font: 13px/1.4 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+           background: #15171c; color: #e8eaf0; -webkit-font-smoothing: antialiased; }
+    a { color: #e9a23b; } a:hover { color: #f0ad4b; }
+    .k { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #7b8294; }
+    .mono { font-family: 'IBM Plex Mono', Menlo, monospace; }
+  </style>
+</helmet>
+<div style="width: 880px; height: 690px; background: #15171c; display: flex; flex-direction: column; overflow: hidden;">
+
+  <!-- title strip, the shell's own -->
+  <div style="height: 30px; background: #1b1e25; border-bottom: 1px solid #353b4a; display: flex; align-items: center; padding: 0 12px; gap: 8px; flex-shrink: 0;">
+    <div style="display: flex; gap: 6px;">
+      <div style="width: 11px; height: 11px; border-radius: 50%; background: #e5636f;"></div>
+      <div style="width: 11px; height: 11px; border-radius: 50%; background: #e9a23b;"></div>
+      <div style="width: 11px; height: 11px; border-radius: 50%; background: #7bc47f;"></div>
+    </div>
+    <div style="font-size: 12px; color: #7b8294; margin-left: 6px;">Papercut</div>
+  </div>
+
+  <div style="flex-grow: 1; display: flex; align-items: center; justify-content: center; padding: 0 64px;
+              background: radial-gradient(120% 80% at 50% -10%, #1d2029 0%, #15171c 55%);">
+    <div style="width: 100%; max-width: 560px; display: flex; flex-direction: column; align-items: center; gap: 30px;">
+
+      <!-- lockup: the mark, then the wordmark as the top bar sets it -->
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 14px;">
+        <svg width="84" height="84" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 10px 26px rgb(0 0 0 / .5));" aria-label="Papercut">
+          <path d="M60,0 C12,0 0,12 0,60 C0,108 12,120 60,120 C108,120 120,108 120,60 C120,12 108,0 60,0 Z" fill="#242833"></path>
+          <path d="M34 26 H72 L90 44 V94 H34 Z" fill="#e9a23b"></path>
+          <path d="M72 26 V44 H90 Z" fill="#1a1305"></path>
+          <path d="M44 58 H80 M44 70 H80 M44 82 H66" stroke="#1a1305" stroke-width="4" stroke-linecap="round" fill="none"></path>
+        </svg>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+          <div style="font-size: 25px; font-weight: 600; letter-spacing: .01em; color: #e8eaf0;">papercut</div>
+          <div style="font-size: 12.5px; color: #7b8294; text-align: center;">Open a project to begin.</div>
+        </div>
+      </div>
+
+      <!-- the two doors -->
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%;">
+        <div style="border: 1px solid #353b4a; border-radius: 6px; background: #1b1e25; padding: 14px 15px; display: flex; flex-direction: column; gap: 7px; cursor: pointer;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #7bc47f;"></div>
+            <div style="font-size: 12.5px; font-weight: 600; color: #e8eaf0;">New Project…</div>
+          </div>
+          <div style="font-size: 11.5px; line-height: 1.5; color: #7b8294;">Pick a folder. Creates papercut.json, a first map and the placeholder sheet.</div>
+        </div>
+        <div style="border: 1px solid #353b4a; border-radius: 6px; background: #1b1e25; padding: 14px 15px; display: flex; flex-direction: column; gap: 7px; cursor: pointer;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 6px; height: 6px; border-radius: 2px; background: #e9a23b;"></div>
+            <div style="font-size: 12.5px; font-weight: 600; color: #e8eaf0;">Open…</div>
+          </div>
+          <div style="font-size: 11.5px; line-height: 1.5; color: #7b8294;">Open a papercut.json. The folder it sits in is the project.</div>
+        </div>
+      </div>
+
+      <!-- recents -->
+      <div style="display: flex; flex-direction: column; gap: 7px; width: 100%;">
+        <div class="k">Recent</div>
+        <div style="display: flex; flex-direction: column; border: 1px solid #353b4a; border-radius: 6px; overflow: hidden; background: #111318;">
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #1b1e25; border-bottom: 1px solid #242833;">
+            <div style="font-size: 12px; color: #e8eaf0; flex-grow: 1;">Harbour Town</div>
+            <div class="mono" style="font-size: 10.5px; color: #7b8294;">~/levels/harbour</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #15171c; border-bottom: 1px solid #242833;">
+            <div style="font-size: 12px; color: #e8eaf0; flex-grow: 1;">Nightjar Woods</div>
+            <div class="mono" style="font-size: 10.5px; color: #7b8294;">~/levels/nightjar</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #15171c;">
+            <div style="font-size: 12px; color: #e8eaf0; flex-grow: 1;">Scratch</div>
+            <div class="mono" style="font-size: 10.5px; color: #7b8294;">~/scratch</div>
+          </div>
+        </div>
+      </div>
+
+      <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+        <div style="width: 13px; height: 13px; border-radius: 3px; border: 1px solid #414859; background: #111318;"></div>
+        <span style="font-size: 11.5px; color: #aab0c0;">Reopen last project on launch</span>
+      </label>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
