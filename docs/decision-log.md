@@ -436,3 +436,11 @@ Each entry:
 - **SCOPE:** minor/local
 - **WHAT:** Amends "Papercut gets its own signing credentials, after an unsigned end-to-end build". When signing is set up, papercut signs with the team's existing Developer ID Application certificate rather than a new one. It gets its own App Store Connect API key for notarization and its own CI secrets. The order is unchanged: signing still comes after the unsigned pipeline works end to end, through CI.
 - **WHY:** A Developer ID certificate identifies the team, not an app, and Apple limits how many a team can have. A second one would add nothing, because both would carry the same name and Team ID. The notarization key is the credential that can actually be scoped and revoked per project, so it's the one kept separate.
+
+## The desktop app reports its web bundle version alongside the shell version
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** minor/local
+- **WHAT:** Wherever the desktop app reports its version (for now, the About panel), it shows both the shell's release version and the web bundle it's serving: the bundle's sequence number and short commit, or "built-in bundle" before any update. For example, `0.1.0 (bundle 25 · 9c649e3)`. It updates when a reload switches bundles.
+- **WHY:** The bundle updates without the shell's version changing, so the shell version alone doesn't tell you which editor is running. Two installs of the same release can be on different bundles, and a bug report or a check that an update landed needs both numbers.
