@@ -34,9 +34,6 @@ export const colors = {
 export const fonts = {
   ui: "'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif",
   mono: "'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace",
-  /** The Google Fonts stylesheet that supplies both faces; the provider loads it once. */
-  stylesheet:
-    'https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap',
 } as const
 
 /** Base font size for the chrome. The mockups are set at 13px; the app was 13px before. */

@@ -54,17 +54,14 @@ const CHECK_INTERVAL_MS = 15 * 60_000
  * `<style>` tag at runtime. Scripts get no such allowance — nothing in the
  * built bundle is inline — so a script injected into the page cannot run.
  * `blob:` and `data:` images cover the sprite sheets the editor loads from
- * picked files (`URL.createObjectURL`) and the inline favicon.
- *
- * Google Fonts is the one remote origin, because `packages/ui/src/tokens.ts`
- * loads IBM Plex from it. Offline the editor falls back to its system font
- * stack; bundling the font files would remove this exception.
+ * picked files (`URL.createObjectURL`) and the inline favicon. No remote
+ * origin appears anywhere: the fonts ship in the bundle (packages/ui/src/styles.css).
  */
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src 'self' https://fonts.gstatic.com",
+  "style-src 'self' 'unsafe-inline'",
+  "font-src 'self'",
   "img-src 'self' blob: data:",
   "connect-src 'self' blob: data:",
   "worker-src 'self' blob:",
