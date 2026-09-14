@@ -4,6 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {},
+  "papercut": {
+    "minShellApi": 1
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
