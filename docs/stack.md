@@ -20,7 +20,7 @@ repository structure rather than technology choice.
 | Forms | `@mantine/form` |
 | Control flow | XState — actors all the way up |
 | Document state | Bespoke mutable store with a revision counter (**not** a library) |
-| Desktop shell | Electron or Tauri — still open, decided by a heavy-scene smoke test |
+| Desktop shell | Electron; the web UI bundle updates separately from the signed shell |
 
 ## Three kinds of state, deliberately kept separate
 
@@ -259,8 +259,8 @@ and §14 makes the extras spec a public contract other engines implement.
 
 ### Platform
 - [ ] A file I/O abstraction. The browser File API is used today and Electron
-      and Tauri differ here — an interface now keeps the deferred shell decision
-      cheap.
+      reaches the disk through its preload script — an interface keeps the web
+      build and the desktop shell on one code path.
 - [ ] Autosave and crash recovery.
 - [ ] A preferences store: keybindings, theme, recent files.
 

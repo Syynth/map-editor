@@ -102,6 +102,7 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** Four choices were consciously left open rather than guessed at. **Electron vs Tauri** — the prototype stayed a plain Vite web app, which keeps HMR and defers the choice until there is a heavy scene to smoke-test both with. **Meshing in a worker** — not done; benchmarked instead. **WebGL2 vs WebGPU** — WebGL2, since nothing in the slice needs compute. **Terrain as a voxel view** (brief §7) — closed as "no, not now"; terrain stays a heightfield. Relatedly, the tool layer was left as a switch statement over three tools rather than a plugin API.
 - **WHY:** Each deferral was cheap to hold open and expensive to get wrong. The mesher is a pure function with no three.js import, so moving it into a worker stays a wiring change rather than a rewrite — and the benchmark said it is not needed: a brush tick costs about 1 ms once neighbour dirtying is restricted to cells actually on a chunk border, against 6.9 ms for the naive 3x3 neighbourhood. Coupling the heightfield to a voxel grid without evidence is an expensive decision made blind, and blocks are not in the slice. The tool layer stayed concrete for the same reason the rest did: brief section 4's generality waits until a second template kind exists to generalise from, because a plugin API invented before its second consumer is an API designed against one example.
+- **STATUS:** Electron vs Tauri settled 2026-09-13 — Electron, see "The desktop shell is Electron" below. The other three deferrals stand.
 
 ## Tests and scripts are exempt from the custom lint rules
 - **WHEN:** 2026-09-11
@@ -361,3 +362,27 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** A chamfered view cube overlays the viewport corner. Clicking a face, edge or corner animates the editor camera to that view; clicking the same view again toggles the editor between perspective and orthographic; dragging the cube orbits. That projection is editor view state on the view actor (`view.set {projection}`), alongside showGrid and gameCamera — NOT the document's `camera.projection`, which stays the game's rig. Game-camera mode and play honour the rig's projection; free editing honours the view's. Views from below are inert on the cube: the terrain is a top skin, there is nothing to see under it.
 - **WHY:** Aligning to a face and flipping to ortho is how you inspect and line things up while building, the way Blender's numpad views work; it says nothing about how the game looks, and one map is built under many views. Making the toggle a document edit would dirty the level, land in undo, and change the shipped game each time someone squared up a wall.
+
+## Web UI updates ship separately from the Electron shell, without code signing
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** architectural
+- **WHAT:** The desktop app updates in two layers. The web UI bundle (the `apps/editor` build) is rebuilt often and updated in place in installed apps, with no code signing and no reinstall. The Electron shell (main process, preload, native integration) updates through a full signed installer release, and only when a shell change needs one.
+- **WHY:** The web UI is where changes happen often, and those changes should reach the desktop app as fast as they reach Pages. If every UI change needed a signed, notarized installer, each one would carry the full cost of a shell release: signing, notarization, and a full app download. Keeping the shell small and rarely changed limits that cost to the rare changes that need it.
+
+## Web bundles are signed downloads, applied through a reload prompt
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** architectural
+- **WHAT:** CI publishes each web bundle next to the Pages deploy as `bundle.zip` plus a `manifest.json` (version, sha256, `minShellApi`), signed with a key held in a CI secret. The shell checks the manifest's signature against a public key built into the app, then unpacks the bundle to a versioned folder in the app's data directory and serves the active bundle through a custom `app://` protocol. Every installer includes a starting bundle. A bundle that needs a newer shell API is held back until the shell updates. The window never loads the remote Pages site directly. When a new bundle is ready, the user sees "Update ready, reload": the document is saved, then the window reloads into the new bundle.
+- **WHY:** The renderer will have file access through the preload script, so a tampered bundle could do real damage. Checking a signature means only CI can ship UI code to installed apps, and a hash served from the same host as the bundle wouldn't guarantee that. Unpacking into versioned folders keeps the app working offline and makes rollback a pointer switch. A reload throws away in-memory state, so the user decides when it happens, and the document is saved first.
+
+## The desktop shell is Electron
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** architectural
+- **WHAT:** The desktop shell is Electron, built in `apps/desktop`. This settles the Electron-vs-Tauri question that "Decisions deliberately deferred during the prototype" held open. The heavy-scene smoke test planned to decide it won't be run.
+- **WHY:** The owner has used Tauri and is unhappy with it. Its main advantage is a Rust backend, and papercut has no use for one: the app is a TypeScript web UI in a thin desktop wrapper. The goal is a shell that works predictably. Electron ships its own Chromium, so the editor runs on the same engine on every platform instead of each OS's webview. Its packaging and update path is mature and widely used. A smoke test wouldn't change a choice already made on first-hand experience.
