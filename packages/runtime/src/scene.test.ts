@@ -262,7 +262,7 @@ describe('textures the scene no longer draws with go back to the GPU', () => {
     // What the terrain draws with is the atlas built from the set, not the sheet itself: 32 tiles across, the set's first tile first.
     const atlas = material.map as THREE.DataTexture
     const pixels = (texture: THREE.DataTexture) => [...(texture.image.data as Uint8Array).slice(0, 4)]
-    expect(atlas.image.width).toBe(32 * TILE)
+    expect(atlas.image.width).toBe(64 * TILE)
     expect(pixels(atlas)).toEqual([0, 255, 0, 255])
     let released = 0
     atlas.addEventListener('dispose', () => void (released += 1))

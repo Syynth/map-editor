@@ -128,8 +128,9 @@ describe('the runtime atlas', () => {
     // Grass is lowest: its full edge tile (mask 15, sheet index 27) goes under. Dirt's edge tile for SW + SE
     // (mask 12, sheet index 60) goes over it, opaque in the bottom half only.
     const width = atlas.image.width
-    const dx = (first.tile % 32) * T
-    const dy = Math.floor(first.tile / 32) * T
+    const columns = width / T
+    const dx = (first.tile % columns) * T
+    const dy = Math.floor(first.tile / columns) * T
     const at = (x: number, y: number) => atlas.image.data.subarray(((dy + y) * width + dx + x) * 4, ((dy + y) * width + dx + x) * 4 + 4)
     expect([at(0, 0)[0], at(0, 0)[3]]).toEqual([27, 255])
     expect([at(0, T - 1)[0], at(0, T - 1)[3]]).toEqual([60, 255])

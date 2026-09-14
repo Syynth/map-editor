@@ -11,13 +11,16 @@
  * can draw from several sheets. An exact tile can only come from one set,
  * where every terrain at the corner lives; a composite may mix sets.
  *
- * The atlas fills as strokes create combinations it has not seen, and it is
- * a FIXED SIZE from the start: `ATLAS_ROWS` of `ATLAS_COLUMNS` tiles. A UV
- * is a fraction of the whole image, so an image that grew taller would move
- * every UV already meshed against it (the first cut of this did exactly that,
- * and the first chunks of a map sampled the wrong rows). Filling bumps
- * `version`, which is what the runtime keys its texture upload on; nothing
- * is ever moved, so a tile id and its UVs are stable for the atlas's life.
+ * The atlas fills as strokes create combinations it has not seen, and its
+ * SIZE IS FIXED at construction: `ATLAS_COLUMNS` across, and as many rows as
+ * every tagged tile of every set needs plus room for composites. A UV is a
+ * fraction of the whole image, so an image that grew taller would move every
+ * UV already meshed against it (the first cut of this did exactly that, and
+ * the first chunks of a map sampled the wrong rows). Filling bumps `version`,
+ * which is what the runtime keys its texture upload on; nothing is ever
+ * moved, so a tile id and its UVs are stable for the atlas's life. RPG Maker
+ * sheets converted whole tag thousands of tiles, which is why the height is
+ * counted rather than assumed.
  *
  * Pure RGBA over plain buffers: no canvas, so the meshing worker and a
  * headless export can build one.
@@ -58,12 +61,17 @@ export interface CompositeReport {
   tile: number
 }
 
-const ATLAS_COLUMNS = 32
-/** 64 rows of 32: 2048 tiles, more than a level's worth of transitions; 2 MB of RGBA at 16 px. */
-const ATLAS_ROWS = 64
+const ATLAS_COLUMNS = 64
+/** Room kept for corners nobody drew, beyond the tagged tiles: more than a level's worth of transitions. */
+const COMPOSITE_ROOM = 1024
+const MIN_ROWS = 16
+/** GPUs stop at 8192 px a side; at 16 px that is 512 rows. */
+const MAX_ROWS = 8192 / 16
 
 export class TerrainAtlas {
   readonly tile: number
+  /** The atlas's height in tiles, fixed at construction. */
+  readonly rows: number
   private next = 0
   private readonly buffer: Uint8ClampedArray<ArrayBuffer>
   /** Corners answered so far, keyed by the four interned terrain ids packed into one number. */
@@ -99,14 +107,18 @@ export class TerrainAtlas {
       this.sets.set(loaded.set.sheet, loaded)
     }
     this.tile = tile
-    this.buffer = new Uint8ClampedArray(ATLAS_COLUMNS * tile * ATLAS_ROWS * tile * 4)
+    const tagged = sets.reduce((n, loaded) => n + loaded.set.tiles.size, 0)
+    const rows = Math.max(MIN_ROWS, Math.ceil((tagged + COMPOSITE_ROOM) / ATLAS_COLUMNS))
+    if (rows * tile > 8192 || rows > MAX_ROWS) throw new Error(`The terrain sets tag ${tagged} tiles of ${tile} px; an atlas that tall (${rows * tile} px) exceeds what a GPU takes.`)
+    this.rows = rows
+    this.buffer = new Uint8ClampedArray(ATLAS_COLUMNS * tile * rows * tile * 4)
     // Every tagged tile of every set is in the atlas from the start, so an exact answer never grows it.
     for (const loaded of sets) for (const index of loaded.set.tiles.keys()) this.sheetTile(loaded, index)
   }
 
   /** The whole atlas; the same buffer every time, so a consumer keys its upload on `version`, not on identity. */
   get image(): RgbaImage {
-    return { width: ATLAS_COLUMNS * this.tile, height: ATLAS_ROWS * this.tile, data: this.buffer }
+    return { width: ATLAS_COLUMNS * this.tile, height: this.rows * this.tile, data: this.buffer }
   }
 
   /** How many of the atlas's tiles are taken. */
@@ -140,7 +152,7 @@ export class TerrainAtlas {
   uv(tile: number, quadrant: number): [number, number, number, number] {
     const column = tile % ATLAS_COLUMNS
     const row = Math.floor(tile / ATLAS_COLUMNS)
-    const rows = ATLAS_ROWS
+    const rows = this.rows
     const half = quadrant < 0 ? 1 : 0.5
     const qx = quadrant < 0 ? 0 : quadrant % 2 ? 0.5 : 0
     const qy = quadrant < 0 ? 0 : quadrant > 1 ? 0.5 : 0
@@ -232,7 +244,7 @@ export class TerrainAtlas {
 
   /** A fresh, transparent tile. The atlas does not grow: a level that composes two thousand distinct corners has a different problem. */
   private allocate(): number {
-    if (this.next >= ATLAS_COLUMNS * ATLAS_ROWS) throw new Error(`The terrain atlas is full: ${ATLAS_COLUMNS * ATLAS_ROWS} tiles. Author transitions instead of compositing them.`)
+    if (this.next >= ATLAS_COLUMNS * this.rows) throw new Error(`The terrain atlas is full: ${ATLAS_COLUMNS * this.rows} tiles. Author transitions instead of compositing them.`)
     return this.next++
   }
 
