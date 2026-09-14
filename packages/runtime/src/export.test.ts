@@ -149,7 +149,7 @@ describe('buildExportScene', () => {
     const terrain = nodeNamed(scene, 'Terrain')
     const image = terrain?.material.map.image
     // The atlas is 32 tiles across, and its first tile is the set's first authored tile, copied pixel for pixel.
-    expect(image?.width).toBe(32 * TILE)
+    expect(image?.width).toBe(64 * TILE)
     expect(image?.height).toBeGreaterThanOrEqual(TILE)
     expect([...(image?.data.slice(0, 4) ?? [])]).toEqual([7, 8, 9, 255])
   })

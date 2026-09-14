@@ -35,7 +35,7 @@ export const nodeFs: ProjectFs = {
   },
 }
 
-/** `fast-png` both ways; a PNG that is not 8-bit RGBA is widened to it, since the atlas wants exactly that. */
+/** `fast-png` both ways; a PNG that is not 8-bit RGBA — grey, RGB, or a palette with RGBA entries, which is what RPG Maker's sheets are — is widened to it, since the atlas wants exactly that. */
 export const fastPngCodec: ImageCodec = {
   encode: (image: RgbaImage) => Promise.resolve(encode({ width: image.width, height: image.height, data: image.data, channels: 4 })),
   decode: (bytes) => {
@@ -44,7 +44,15 @@ export const fastPngCodec: ImageCodec = {
     const pixels = png.width * png.height
     const data = new Uint8ClampedArray(pixels * 4)
     const source = png.data
-    if (png.channels === 4) data.set(source)
+    if (png.palette) {
+      for (let i = 0; i < pixels; i++) {
+        const entry = png.palette[source[i]] ?? [0, 0, 0, 0]
+        data[i * 4] = entry[0]
+        data[i * 4 + 1] = entry[1]
+        data[i * 4 + 2] = entry[2]
+        data[i * 4 + 3] = entry[3] ?? (png.transparency && source[i] < png.transparency.length ? png.transparency[source[i]] : 255)
+      }
+    } else if (png.channels === 4) data.set(source)
     else {
       for (let i = 0; i < pixels; i++) {
         const base = i * png.channels
