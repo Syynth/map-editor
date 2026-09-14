@@ -45,6 +45,20 @@ electronFuses:
 
 mac:
   category: public.app-category.graphics-design
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # The wording macOS shows when the app first touches a protected location.
+  # They live in the shell's Info.plist, so they ship in the first build,
+  # before any filesystem feature exists: rewording or adding one later is a
+  # full app update. A folder picked through the shell's own dialogs needs no
+  # prompt — choosing it is the consent.
+  extendInfo:
+    NSDocumentsFolderUsageDescription: Papercut opens and saves maps and assets in folders you choose.
+    NSDesktopFolderUsageDescription: Papercut opens and saves maps and assets in folders you choose.
+    NSDownloadsFolderUsageDescription: Papercut opens and saves maps and assets in folders you choose.
+    NSRemovableVolumesUsageDescription: Papercut opens and saves maps and assets on drives you choose.
+    NSNetworkVolumesUsageDescription: Papercut opens and saves maps and assets on network drives you choose.
   target:
     - dmg
     - zip

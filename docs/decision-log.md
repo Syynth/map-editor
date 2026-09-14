@@ -378,6 +378,7 @@ Each entry:
 - **SCOPE:** architectural
 - **WHAT:** CI publishes each web bundle next to the Pages deploy as `bundle.zip` plus a `manifest.json` (version, sha256, `minShellApi`), signed with a key held in a CI secret. The shell checks the manifest's signature against a public key built into the app, then unpacks the bundle to a versioned folder in the app's data directory and serves the active bundle through a custom `app://` protocol. Every installer includes a starting bundle. A bundle that needs a newer shell API is held back until the shell updates. The window never loads the remote Pages site directly. When a new bundle is ready, the user sees "Update ready, reload": the document is saved, then the window reloads into the new bundle.
 - **WHY:** The renderer will have file access through the preload script, so a tampered bundle could do real damage. Checking a signature means only CI can ship UI code to installed apps, and a hash served from the same host as the bundle wouldn't guarantee that. Unpacking into versioned folders keeps the app working offline and makes rollback a pointer switch. A reload throws away in-memory state, so the user decides when it happens, and the document is saved first.
+- **STATUS:** amended 2026-09-13 — no `bundle.zip`; see "Web bundles are delivered as a signed per-file manifest, not a zip" below.
 
 ## The desktop shell is Electron
 - **WHEN:** 2026-09-13
@@ -402,3 +403,27 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** The Electron app's `appId` (the macOS bundle identifier) is `dev.syynth.papercut`, and its product name is `Papercut`. This intentionally breaks from brink's `dev.<product>.<app>` pattern (`dev.brink.studio`).
 - **WHY:** The ID names the publisher, not the product, so future apps can share the `dev.syynth` prefix. It needs to be picked once and kept: signing, notarization, and the permissions and keychain entries macOS grants the app are all tied to it. The product name needs the same care, because Electron names the app's data folder after it, and renaming would strand autosaves and downloaded bundles.
+
+## Web bundles are delivered as a signed per-file manifest, not a zip
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** moderate
+- **WHAT:** Amends "Web bundles are signed downloads, applied through a reload prompt". There's no `bundle.zip`. CI publishes a signed `manifest.json` next to the Pages deploy, listing every file in the bundle with its path, size and sha256, plus the version and `minShellApi`. The shell downloads each file directly from the Pages site and checks it against the manifest before switching to the new version. A file whose hash matches one in the version already installed is copied locally instead of downloaded. The rest of that entry still holds: the signature check, versioned folders, `app://`, the reload prompt.
+- **WHY:** Pages already serves every file in the bundle, so a zip would be a second copy of the same bytes. The signature covers every file's hash, so the security stays the same. Vite names assets by content hash, so most files are unchanged between commits and an update only fetches what changed. There's no zip step in CI and no unzip dependency in the shell.
+
+## Every bundle declares the shell API it needs, and a mismatch asks for a full app update
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** moderate
+- **WHAT:** Every signed bundle manifest includes `minShellApi`, the lowest shell API version (`SHELL_API_VERSION`, which the preload exposes) the bundle works with. The value comes from the editor, where the code that depends on the shell lives. If a newer bundle's `minShellApi` is above the running shell's version, the shell doesn't install it and tells the user a full app update is needed. It's never silently skipped. Only the shell API version counts; the shell's release version is ignored.
+- **WHY:** The update path, a live bundle reload or a full reinstall, has to be decided from data the bundle carries, not guessed from what changed. An API version changes only when the preload's surface changes, so ordinary shell releases don't force every bundle to need a newer app. Telling the user means an out-of-date app doesn't quietly stop getting updates.
+
+## The first shell ships a generic, folder-scoped filesystem API as a Developer ID app
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** architectural
+- **WHAT:** The first shell build exposes a generic filesystem API to the web bundle: read, write, list, stat, mkdir, rename, delete and watch, plus native open and save dialogs. Every path must fall inside a folder the user granted through a native dialog, and the main process enforces this. Grants persist across launches and can be revoked. The macOS build is a Developer ID app without the App Sandbox, using the hardened-runtime entitlements Electron needs plus Info.plist usage descriptions for the protected folders (Documents, Desktop, Downloads, removable and network volumes). The app won't target the Mac App Store.
+- **WHY:** The owner wants to iterate on what the app does with the filesystem, and anything in the shell (preload API, entitlements, Info.plist) changes only through a full app update. A generic API in the first build lets file features change freely through bundle updates. Limiting access to granted folders means a bad or compromised bundle can reach your project folders but not `~/.ssh` or the rest of your home folder. The App Sandbox and the Mac App Store are ruled out because the app updates its own bundles, and the App Store wouldn't allow that.

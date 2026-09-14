@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened-runtime entitlements for the Electron shell. No App Sandbox
+  (docs/decision-log.md, "The first shell ships a generic, folder-scoped
+  filesystem API as a Developer ID app"), so nothing here is about files:
+  outside the sandbox the app reaches the disk as the user, subject only to
+  macOS's per-folder consent prompts, whose wording is in electron-builder.yml.
+
+  allow-jit: V8 compiles JavaScript to machine code at runtime; the hardened
+  runtime forbids writable-executable memory without it.
+
+  disable-library-validation: while the app is only signed ad hoc, its
+  frameworks carry no Team ID for library validation to match, and the app
+  will not launch without it. Remove it once the app is signed with a
+  Developer ID — every framework then shares the app's Team ID.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+  </dict>
+</plist>

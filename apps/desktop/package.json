@@ -15,6 +15,7 @@
     "package": "electron-builder --publish never"
   },
   "devDependencies": {
+    "@papercut/shell-api": "workspace:*",
     "@types/node": "^22.20.2",
     "electron": "44.3.0",
     "electron-builder": "26.15.3",

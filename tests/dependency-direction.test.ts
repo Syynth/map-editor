@@ -87,6 +87,11 @@ const PLACEMENT: Record<string, Placement> = {
   // PLACEMENT keys, except the literals 'app' and 'feature', which stand for
   // any package of that kind.
   '@papercut/ui': { kind: 'side', rank: 1, visibleTo: ['app', 'feature', '@papercut/editor-host'] },
+  // The desktop shell's contract with the bundle it hosts: types and one
+  // constant, depending on nothing. Off the side for the same reason as `ui` —
+  // the shell is the editor's host, and a game embedding `runtime` has no shell
+  // to talk to.
+  '@papercut/shell-api': { kind: 'side', rank: 0, visibleTo: ['app', 'feature', '@papercut/editor-host'] },
   '@papercut/geometry': { kind: 'layer', rank: 2 },
   '@papercut/runtime': { kind: 'layer', rank: 3 },
   '@papercut/viewport-contrib': { kind: 'layer', rank: 3, planned: true },

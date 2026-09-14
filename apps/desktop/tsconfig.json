@@ -22,9 +22,11 @@
     "types": ["node"]
   },
 
-  // No `references`: the shell imports no workspace package. The editor it
-  // hosts is a built bundle it serves as files, not a module it imports —
-  // apps are leaves (tests/dependency-direction.test.ts), and that is what
-  // lets the web bundle ship without the shell.
-  "include": ["src", "tsup.config.ts"]
+  // The editor the shell hosts is a built bundle it serves as files, not a
+  // module it imports — apps are leaves (tests/dependency-direction.test.ts),
+  // and that is what lets the web bundle ship without the shell. The one
+  // workspace import is the contract both sides compile against.
+  "include": ["src", "tools", "tsup.config.ts"],
+
+  "references": [{ "path": "../../packages/shell-api" }]
 }

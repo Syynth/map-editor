@@ -12,6 +12,9 @@ import { defineConfig } from 'tsup'
  * `preload.cjs`, which is the name `src/main.ts` points at.
  *
  * `electron` stays external — it is the runtime, not a dependency to bundle.
+ * `@papercut/shell-api` is bundled in: tsup only externalises `dependencies`,
+ * and the shell declares it as a devDependency so electron-builder packs no
+ * `node_modules` at all — the asar holds `dist/` and nothing else.
  */
 export default defineConfig([
   {
