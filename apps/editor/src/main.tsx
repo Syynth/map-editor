@@ -6,7 +6,7 @@ import { HostProvider, createHost } from '@papercut/editor-host'
 import { UiProvider } from '@papercut/ui'
 
 import App from './editor/App'
-import { loadAutosave } from './editor/autosave'
+import { loadAutosave, loadAutosaveProject } from './editor/autosave'
 import { features } from './features'
 // The vocabulary's stylesheet — Mantine's base plus the frame — then the
 // app's own remainder, which only paints what the vocabulary does not.
@@ -30,7 +30,7 @@ const source = createDocument(loadAutosave())
 // The features are installed here and nowhere else (#35): only an app composes
 // a feature into a host. Their commands are dispatchable from this point on,
 // and the panels they declare are what the left-hand column renders.
-const host = createHost({ document: source, features })
+const host = createHost({ document: source, project: loadAutosaveProject(), features })
 
 // `UiProvider` sits outside the host: it is the one place Mantine is mounted
 // and the tokens become CSS variables, and it needs nothing from the host.

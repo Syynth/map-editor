@@ -5,12 +5,12 @@
  * two are picked together, because the editor cannot read a sibling file
  * from a browser file picker. The sheet is checked against the sidecar's own
  * size, not against any layout the editor expects — there is none — and a
- * tile size that differs from the map's texel density is reported rather
+ * tile size that differs from the project's texel density is reported rather
  * than rescaled, because a sheet authored at another density is the fastest
  * way to make pixel art in 3D look wrong (brief section 10).
  */
 
-import type { ReadonlyMapDoc, RgbaImage } from '@papercut/document'
+import type { ResolutionProfile, RgbaImage } from '@papercut/document'
 import { parseTerrainSet, type LoadedSet } from '@papercut/geometry'
 
 export interface TerrainLoadResult {
@@ -40,7 +40,7 @@ function decode(file: File): Promise<RgbaImage> {
 }
 
 /** Load a terrain set from the files picked together: one `.terrain.json` (or `.json`) and one image. */
-export async function loadTerrainSetFiles(files: readonly File[], doc: ReadonlyMapDoc): Promise<TerrainLoadResult> {
+export async function loadTerrainSetFiles(files: readonly File[], resolution: ResolutionProfile): Promise<TerrainLoadResult> {
   const sidecar = files.find((f) => f.name.endsWith('.json'))
   const image = files.find((f) => !f.name.endsWith('.json'))
   if (!sidecar || !image) throw new Error('Pick the sheet PNG and its .terrain.json together.')
@@ -51,8 +51,8 @@ export async function loadTerrainSetFiles(files: readonly File[], doc: ReadonlyM
     throw new Error(`${image.name} is ${pixels.width}x${pixels.height}, but ${sidecar.name} describes a ${set.columns}×${set.rows} sheet of ${set.tile}px tiles (${expected.width}x${expected.height}).`)
   }
   const warning =
-    set.tile === doc.texelDensity
+    set.tile === resolution.texelDensity
       ? null
-      : `${sidecar.name} has ${set.tile}px tiles; this map is ${doc.texelDensity}px per tile. Set the map's texel density to ${set.tile} to match the art.`
+      : `${sidecar.name} has ${set.tile}px tiles; this project is ${resolution.texelDensity}px per tile. Set the project's texel density to ${set.tile} to match the art.`
   return { set: { set, image: pixels }, warning }
 }

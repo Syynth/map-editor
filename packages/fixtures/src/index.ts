@@ -21,7 +21,7 @@
  * Written out rather than `export *`, matching the other packages.
  */
 
-export { createSampleMap } from './sample'
+export { createSampleMap, createSampleProject } from './sample'
 export { PLACEHOLDER_PAIRS, PLACEHOLDER_TERRAINS, generatePlaceholderTerrainSet, generateTerrainSetArt } from './terrainset'
 export type { PlaceholderTerrain, PlaceholderTerrainSet } from './terrainset'
 export { bakedDir } from './baked-dir'

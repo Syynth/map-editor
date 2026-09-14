@@ -8,10 +8,11 @@
  * functions, rather than the string spelled out in both files.
  */
 
-import { deserialize, serialize, type ReadonlyMapDoc } from '@papercut/document'
-import { createSampleMap } from '@papercut/fixtures'
+import { deserialize, parseProject, serialize, serializeProject, type ProjectDoc, type ReadonlyMapDoc, type ReadonlyProjectDoc } from '@papercut/document'
+import { createSampleMap, createSampleProject } from '@papercut/fixtures'
 
 const AUTOSAVE_KEY = 'papercut:autosave'
+const PROJECT_AUTOSAVE_KEY = 'papercut:autosave-project'
 
 export function loadAutosave() {
   try {
@@ -22,6 +23,25 @@ export function loadAutosave() {
   }
   // Defaults look decent: a first run opens a landscape, not a flat plane.
   return createSampleMap()
+}
+
+/** The project the map belongs to, from its own slot; the sample's when there is none. Until the project lives on disk (phase 2 of the project work), this is where its settings persist in the browser. */
+export function loadAutosaveProject(): ProjectDoc {
+  try {
+    const text = localStorage.getItem(PROJECT_AUTOSAVE_KEY)
+    if (text) return parseProject(text)
+  } catch {
+    // As for the map: a stale project slot should never stop the editor opening.
+  }
+  return createSampleProject()
+}
+
+export function saveAutosaveProject(project: ReadonlyProjectDoc): void {
+  try {
+    localStorage.setItem(PROJECT_AUTOSAVE_KEY, serializeProject(project))
+  } catch {
+    // Quota or a private window; autosave is a convenience, not a promise.
+  }
 }
 
 export function saveAutosave(doc: ReadonlyMapDoc): void {

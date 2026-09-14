@@ -47,10 +47,12 @@ export type { PickSample, PointerModifiers, StrokeSample, ToolsSnapshot } from '
 export { TOOLS_OWNER, toolKeys } from './tools'
 export type { FeatureParams, ToolId, ToolSettings, ToolsContext } from './tools'
 
+export { PROJECT_OWNER } from './project'
+export type { MaterialsSetArgs, MapsSetArgs, ProjectContext, ProjectSettings, SheetsSetArgs } from './project'
 export { VIEW_OWNER, selectionSubject, viewKeys } from './view'
 export { VIEWPORT_OWNER, sameSurface } from './viewport'
 export type { BrushCells, CameraReadout, FrameStats, ViewportState } from './viewport'
 export type { Selection, ViewContext, ViewSettings } from './view'
 
-export { HostProvider, useDocument, useDocumentSelector, useHost, useHostRef, useHostSelector, useToolsSelector, useViewSelector, useViewportSelector } from './react'
+export { HostProvider, useDocument, useDocumentSelector, useHost, useHostRef, useHostSelector, useProject, useToolsSelector, useViewSelector, useViewportSelector } from './react'
 export type { DocumentSelectOptions } from './react'

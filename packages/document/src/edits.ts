@@ -25,7 +25,7 @@ import type { SketchStructure, Structure, StructureBase, VoxelStructure } from '
 
 export type TerrainField = 'material' | 'shape' | 'water'
 export type PaintLayer = 'faces' | 'tint'
-export type DocField = 'name' | 'texelDensity' | 'filtering' | 'camera' | 'atmosphere' | 'materials' | 'surfaceMaterials'
+export type DocField = 'name' | 'camera' | 'atmosphere' | 'surfaceMaterials'
 export type SketchField = 'points' | 'closed' | 'layers' | 'wall' | 'lip' | 'capMaterial' | 'wallMaterial'
 export type StructureMetaField = 'name' | 'parent' | 'placement'
 

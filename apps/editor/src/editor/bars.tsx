@@ -11,8 +11,8 @@
 
 import type { Selection } from '@papercut/editor-host'
 import { mergeParams, type EditorParams } from './params'
-import { useDocument, useHost, useToolsSelector, useViewSelector } from '@papercut/editor-host'
-import type { ReadonlyMapDoc, SnapMode } from '@papercut/document'
+import { useDocument, useHost, useProject, useToolsSelector, useViewSelector } from '@papercut/editor-host'
+import type { MaterialDef, ReadonlyMapDoc, ReadonlyProjectDoc, SnapMode } from '@papercut/document'
 import { SPRITE_NAMES } from '@papercut/fixtures/textures'
 import type { TerrainPanelProps } from '@papercut/feature-terrain'
 import { always, chordFor, evaluate, panels, tools, type PanelSlot, type Platform } from '@papercut/registry'
@@ -22,6 +22,7 @@ import { useMemo, type ComponentType } from 'react'
 import { run, setParams } from './commands'
 
 const wholeDocument = (doc: ReadonlyMapDoc): ReadonlyMapDoc => doc
+const materialsOf = (project: ReadonlyProjectDoc): readonly MaterialDef[] => project.materials
 
 /**
  * The context bar as a region: the active tool's bar, re-rendered when the tool, its parameters or the selection change,
@@ -33,11 +34,12 @@ export function ContextBar({ platform }: { platform: Platform }) {
   const params = useMemo(() => mergeParams(tools), [tools])
   const selection = useViewSelector((snapshot) => snapshot.context.selection)
   const doc = useDocument(wholeDocument, { settled: true })
+  const materials = useProject(materialsOf)
   const set = (changes: Partial<EditorParams>): void => setParams(host, changes)
   if (params.tool === 'select')
     return <SelectBar doc={doc} selection={selection} params={params} set={set} platform={platform} onDelete={() => run(host, 'selection.delete')} onClear={() => run(host, 'selection.set', { id: null })} />
   if (params.tool === 'object') return <ObjectBar params={params} set={set} />
-  return <FeaturePanels slot="bar" tool={params.tool} doc={doc} params={params} platform={platform} selection={selection} />
+  return <FeaturePanels slot="bar" tool={params.tool} doc={doc} materials={materials} params={params} platform={platform} selection={selection} />
 }
 
 /**
@@ -58,6 +60,7 @@ export function FeaturePanels({
   slot,
   tool,
   doc,
+  materials,
   params,
   platform,
   selection,
@@ -65,6 +68,8 @@ export function FeaturePanels({
   slot: PanelSlot
   tool: string
   doc: ReadonlyMapDoc
+  /** The project's material library, for a feature's material chips. */
+  materials: readonly MaterialDef[]
   params: EditorParams
   platform: Platform
   selection: Selection | null
@@ -86,7 +91,7 @@ export function FeaturePanels({
         .filter((decl) => panels.ownerOf(decl.id) === owner && (decl.slot ?? 'inspector') === slot && evaluate(decl.when ?? always, keys).available)
         .map((decl) => {
           const Component = decl.component as ComponentType<TerrainPanelProps & { dispatch?: (id: string, args?: unknown) => void; selection?: Selection | null }>
-          return <Component key={decl.id} doc={doc} params={params} set={setOwn} platform={platform} dispatch={(id, args) => void host.dispatch(id, args)} selection={selection} />
+          return <Component key={decl.id} doc={doc} materials={materials} params={params} set={setOwn} platform={platform} dispatch={(id, args) => void host.dispatch(id, args)} selection={selection} />
         })}
     </>
   )

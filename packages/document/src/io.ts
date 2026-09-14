@@ -8,7 +8,6 @@
 
 import {
   AIR,
-  DEFAULT_MATERIALS,
   MAX_LAYERS,
   SHAPE_COUNT,
   FORMAT_VERSION,
@@ -18,9 +17,7 @@ import {
   makeAtmosphere,
   type MapDoc,
   type MapObject,
-  type MaterialDef,
   type ReadonlyMapDoc,
-  type TerrainRef,
 } from './document'
 import { DEFAULT_WALL_PROFILE } from './ops'
 import { defaultSurfaceMaterials, type SketchStructure, type Structure, type VoxelStructure } from './structure'
@@ -102,30 +99,6 @@ function normaliseStructure(raw: Record<string, unknown>, id: string): Structure
   throw new LoadError(`Structure ${id} has an unknown kind: ${String(raw.kind)}.`)
 }
 
-/** A material names its terrains or it is not a material; the rest defaults. */
-function normaliseMaterials(raw: unknown): MapDoc['materials'] {
-  if (!Array.isArray(raw)) return DEFAULT_MATERIALS.map((m) => ({ ...m }))
-  if (raw.length === 0) throw new LoadError('A map has at least one material.')
-  const ids = new Set<number>()
-  return raw.map((value, index) => {
-    const m = value as Partial<MaterialDef>
-    const top = m.top as Partial<TerrainRef> | undefined
-    if (!top || typeof top.sheet !== 'string' || typeof top.terrain !== 'string') throw new LoadError(`Material ${index} names no terrain.`)
-    const side = m.side as Partial<TerrainRef> | undefined
-    const id = typeof m.id === 'number' && Number.isInteger(m.id) && m.id >= 0 ? m.id : index
-    if (ids.has(id)) throw new LoadError(`Two materials share the id ${id}.`)
-    ids.add(id)
-    return {
-      id,
-      name: typeof m.name === 'string' ? m.name : `Material ${index + 1}`,
-      color: typeof m.color === 'number' ? m.color : 0x808080,
-      role: m.role === 'top' || m.role === 'wall' ? m.role : 'any',
-      top: { sheet: top.sheet, terrain: top.terrain },
-      ...(side && typeof side.sheet === 'string' && typeof side.terrain === 'string' ? { side: { sheet: side.sheet, terrain: side.terrain } } : {}),
-    }
-  })
-}
-
 export function deserialize(text: string): MapDoc {
   let raw: Record<string, unknown>
   try {
@@ -162,9 +135,6 @@ export function deserialize(text: string): MapDoc {
     formatVersion: FORMAT_VERSION,
     id: (raw.id as string) ?? base.id,
     name: (raw.name as string) ?? 'Untitled Map',
-    texelDensity: (raw.texelDensity as number) ?? 16,
-    filtering: (raw.filtering as MapDoc['filtering']) ?? 'nearest',
-    materials: normaliseMaterials(raw.materials),
     surfaceMaterials: { ...defaultSurfaceMaterials(), ...((raw.surfaceMaterials as MapDoc['surfaceMaterials']) ?? {}) },
     structures,
     structureOrder,

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import manifest from '../baked/manifest.json'
-import { createSampleMap } from './sample'
+import { createSampleProject } from './sample'
 import { spriteFootprints } from './textures'
 
 /**
@@ -15,11 +15,12 @@ import { spriteFootprints } from './textures'
  * re-run. `tests/baked-fixtures.test.ts` covers the files themselves.
  */
 describe('the checked-in bake', () => {
-  const doc = createSampleMap()
+  const project = createSampleProject()
+  const density = project.resolution.texelDensity
 
-  it('was baked from the sample map as it is now', () => {
-    expect(manifest.texelDensity).toBe(doc.texelDensity)
-    expect(manifest.materials).toEqual(doc.materials.map(({ name, color }) => ({ name, color })))
+  it('was baked from the sample project as it is now', () => {
+    expect(manifest.texelDensity).toBe(density)
+    expect(manifest.materials).toEqual(project.materials.map(({ name, color }) => ({ name, color })))
   })
 
   it('carries every sprite the library defines, at its current footprint', () => {
@@ -32,8 +33,8 @@ describe('the checked-in bake', () => {
           heightTiles: sprite.heightTiles,
           emissive: sprite.emissive,
           frame: {
-            width: Math.round(sprite.widthTiles * doc.texelDensity),
-            height: Math.round(sprite.heightTiles * doc.texelDensity),
+            width: Math.round(sprite.widthTiles * density),
+            height: Math.round(sprite.heightTiles * density),
           },
           facings: Array.from({ length: sprite.facings }, (_, index) => `sprites/${sprite.name}.${index}.png`),
         },

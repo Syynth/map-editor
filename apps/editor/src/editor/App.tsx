@@ -19,7 +19,7 @@ import { useEffect, useMemo } from 'react'
 import { useHost } from '@papercut/editor-host'
 import { Frame } from '@papercut/ui'
 
-import { saveAutosave } from './autosave'
+import { saveAutosave, saveAutosaveProject } from './autosave'
 import { ContextBar } from './bars'
 import { InspectorRegion } from './inspector'
 import { detectPlatform, installKeyDispatcher } from './keys'
@@ -64,10 +64,13 @@ export default function App() {
       saveAutosave(host.reader.doc)
     }
     window.addEventListener('pagehide', flush)
+    // The project is small and edited rarely, so it is saved as it changes, no delay.
+    const project = host.children.project.subscribe((snapshot) => saveAutosaveProject(snapshot.context.project))
     return () => {
       window.removeEventListener('pagehide', flush)
       clearTimeout(pending)
       unsubscribe()
+      project.unsubscribe()
     }
   }, [host])
 

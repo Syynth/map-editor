@@ -10,7 +10,7 @@
 
 import { readFile, writeFile } from 'node:fs/promises'
 
-import { deserialize } from '@papercut/document'
+import { createProject, deserialize } from '@papercut/document'
 import { exportGltf } from '@papercut/runtime/export'
 
 import { generatePlaceholderTerrainSet } from '@papercut/fixtures'
@@ -48,9 +48,12 @@ export async function exportMapFile(
   // flag for an artist's own sheet would decode it through the same
   // `fast-png`, into the same `RgbaImage` shape, right here.
   const { sprites } = await loadBakedAssets()
-  const terrain = [generatePlaceholderTerrainSet(doc.texelDensity)]
+  // Until the CLI opens a project (the second phase of the project work), a map exports under the default project:
+  // the placeholder materials at the default density, which is what every map made so far paints with.
+  const project = createProject()
+  const terrain = [generatePlaceholderTerrainSet(project.resolution.texelDensity)]
 
-  const bytes = new Uint8Array(await exportGltf(doc, { merge: options.merge, terrain, sprites, textures: {}, encodePng: encodePngPure }))
+  const bytes = new Uint8Array(await exportGltf(doc, { merge: options.merge, terrain, materials: project.materials, resolution: project.resolution, sprites, textures: {}, encodePng: encodePngPure }))
   await writeFile(outputPath, bytes)
 
   return { name: doc.name, bytes: bytes.byteLength }

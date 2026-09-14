@@ -12,10 +12,13 @@
  */
 
 import {
+  DEFAULT_MATERIALS,
   DIR_VECTORS,
   cellIndex,
   columnTopAt,
+  MAPS_DIR,
   createMap,
+  createProject,
   createSketch,
   defaultFacing,
   faceKey,
@@ -28,6 +31,7 @@ import {
   voxelIndex,
   type MapDoc,
   type MapObject,
+  type ProjectDoc,
   type VoxelStructure,
 } from '@papercut/document'
 
@@ -63,11 +67,19 @@ function place(
   doc.objectOrder.push(object.id)
 }
 
+/** The project the sample map belongs to: the defaults, and the sample as its one map. */
+export function createSampleProject(): ProjectDoc {
+  const project = createProject('Sample Valley')
+  project.maps = [`${MAPS_DIR}/sample-valley.map.json`]
+  return project
+}
+
 export function createSampleMap(width = 36, height = 36): MapDoc {
   const doc = createMap(width, height, 'Sample Valley')
   const ground = doc.structures.ground as VoxelStructure
+  // The sample paints with the project defaults (`createSampleProject`), named here so a renumbering shows up as an error.
   const material = (name: string): number => {
-    const found = doc.materials.find((m) => m.name === name)
+    const found = DEFAULT_MATERIALS.find((m) => m.name === name)
     if (!found) throw new Error(`The sample map wants a ${name} material.`)
     return found.id
   }

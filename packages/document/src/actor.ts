@@ -50,7 +50,6 @@ import type {
   CameraChanges,
   DocumentLoadArgs,
   DocumentNewArgs,
-  MaterialsSetArgs,
   ObjectUpdateArgs,
   SketchNewArgs,
   SketchPointAddArgs,
@@ -220,10 +219,6 @@ export function documentLogic(writer: DocumentWriter, reader: DocumentReader) {
             } else if (event.id === 'atmosphere.set') {
               const atmosphere = { ...reader.doc.atmosphere, ...(event.args as AtmosphereChanges) }
               enq(() => writer.apply('Atmosphere', [{ t: 'doc', field: 'atmosphere', value: atmosphere }]))
-            } else if (event.id === 'materials.set') {
-              // The list whole, as one field of the document: a reorder is a priority change and undoes as one.
-              const { materials } = event.args as MaterialsSetArgs
-              enq(() => writer.apply('Materials', [{ t: 'doc', field: 'materials', value: materials }]))
             } else if (event.id === 'document.load') {
               // Parsed again here, having already parsed in the schema: the
               // schema's copy is what turns a bad file into an `invalid-args`

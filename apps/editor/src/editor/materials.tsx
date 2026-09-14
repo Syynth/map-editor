@@ -1,5 +1,5 @@
 /**
- * The Materials section of the Terrain inspector (spec §4): the map's
+ * The Materials section of the Terrain inspector (spec §4): the project's
  * materials in priority order, each with a swatch from its terrain set, its
  * role and how much of the map uses it; the active one opened up to edit
  * its name, role, terrains and colour, with which transitions to the other
@@ -7,15 +7,15 @@
  *
  * This is the app's rather than the terrain feature's because the swatches
  * need pixels: the loaded terrain sets live on the composition root's art,
- * which no feature package holds. Every edit is one `materials.set` with the
- * whole list, because the list's order is the materials' priority and a
+ * which no feature package holds. Every edit is one `project.materials.set`
+ * with the whole list, because the list's order is the materials' priority and a
  * reorder is as much an edit as a rename.
  */
 
 import { useMemo } from 'react'
 
 import { AIR, PLACEHOLDER_SHEET, materialById, nextMaterialId, type MaterialDef, type ReadonlyMapDoc, type RgbaImage, type TerrainRef } from '@papercut/document'
-import { useDocumentSelector, useHost } from '@papercut/editor-host'
+import { useDocumentSelector, useHost, useProject } from '@papercut/editor-host'
 import { exactTile, pairAuthored, terrainKey, type LoadedSet } from '@papercut/geometry'
 import { Action, Actions, ColorInput, Field, Item, List, Note, Row, Segmented, Select, Section, TextInput } from '@papercut/ui'
 
@@ -52,6 +52,8 @@ function swatchFor(sets: readonly LoadedSet[], ref: TerrainRef): string | undefi
   return index === null ? undefined : `url(${tileUrl(loaded, index)}) center / cover`
 }
 
+const materialsOf = (project: { readonly materials: readonly MaterialDef[] }): readonly MaterialDef[] => project.materials
+
 const cssColor = (color: number): string => `#${color.toString(16).padStart(6, '0')}`
 const refKey = (ref: TerrainRef): string => terrainKey(ref.sheet, ref.terrain)
 const parseRef = (key: string): TerrainRef => ({ sheet: key.slice(0, key.lastIndexOf('/')), terrain: key.slice(key.lastIndexOf('/') + 1) })
@@ -59,7 +61,6 @@ const parseRef = (key: string): TerrainRef => ({ sheet: key.slice(0, key.lastInd
 /** How many voxels and face overrides use each material, by id. Walks every voxel, so it is selected settled. */
 function usage(doc: ReadonlyMapDoc): Record<number, number> {
   const counts: Record<number, number> = {}
-  for (const m of doc.materials) counts[m.id] = 0
   for (const id of doc.structureOrder) {
     const s = doc.structures[id]
     if (!s || s.kind !== 'voxel') continue
@@ -75,16 +76,16 @@ const sameCounts = (a: Record<number, number>, b: Record<number, number>): boole
 }
 
 /** `active` is the active material's ID, what the brush paints and what a voxel stores — never a position in the list. */
-export function MaterialsSection({ doc, active, sets }: { doc: ReadonlyMapDoc; active: number; sets: readonly LoadedSet[] }) {
+export function MaterialsSection({ active, sets }: { active: number; sets: readonly LoadedSet[] }) {
   const host = useHost()
   const counts = useDocumentSelector(usage, { equal: sameCounts, settled: true })
-  const materials = doc.materials
+  const materials = useProject(materialsOf)
   const material = materialById(materials, active)
   const position = materials.findIndex((m) => m.id === active)
   const terrains = useMemo(() => sets.flatMap((s) => s.set.terrains.map((t) => ({ value: terrainKey(s.set.sheet, t.id), label: `${t.name} · ${s.set.sheet}` }))), [sets])
 
   // The list whole, every time: its order is the priority. Ids never move, so no voxel changes what it is made of.
-  const commit = (next: readonly MaterialDef[]): void => void run(host, 'materials.set', { materials: next.map((m) => ({ ...m })) })
+  const commit = (next: readonly MaterialDef[]): void => void run(host, 'project.materials.set', { materials: next.map((m) => ({ ...m })) })
   const select = (id: number): void => void run(host, 'terrain.params', { material: id })
   const change = (changes: Partial<MaterialDef>): void => {
     if (!material) return

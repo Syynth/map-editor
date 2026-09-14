@@ -11,8 +11,8 @@
 
 import { useMemo } from 'react'
 
-import { materialById, type Atmosphere, type CameraRig, type DeepReadonly, type MapObject, type Placement, type ReadonlyMapDoc } from '@papercut/document'
-import { useDocument, useHost, useToolsSelector, useViewSelector, type Selection } from '@papercut/editor-host'
+import { materialById, type Atmosphere, type CameraRig, type DeepReadonly, type MapObject, type MaterialDef, type Placement, type ReadonlyMapDoc, type ReadonlyProjectDoc } from '@papercut/document'
+import { useDocument, useHost, useProject, useToolsSelector, useViewSelector, type Selection } from '@papercut/editor-host'
 import { mergeParams, type EditorParams } from './params'
 import { chordFor, type Platform } from '@papercut/registry'
 import { FileButton, InspectorHead, Note, Section } from '@papercut/ui'
@@ -39,6 +39,7 @@ import {
 const TITLES: Record<string, string> = { select: 'Select', terrain: 'Terrain', object: 'Objects' }
 
 const wholeDocument = (doc: ReadonlyMapDoc): ReadonlyMapDoc => doc
+const materialsOf = (project: ReadonlyProjectDoc): readonly MaterialDef[] => project.materials
 
 /**
  * The inspector as a region: it reads the document settled — once a stroke has closed, not on every tick of a drag — and
@@ -54,13 +55,14 @@ export function InspectorRegion({ platform }: { platform: Platform }) {
   const levelOpen = useViewSelector((snapshot) => snapshot.context.levelOpen)
   const notice = useViewSelector((snapshot) => snapshot.context.notice)
   const art = useArt()
+  const materials = useProject(materialsOf)
 
   const selected = selection?.kind === 'object' ? (doc.objects[selection.id] ?? null) : null
   const updateObject = (id: string, changes: Partial<MapObject>): void => run(host, 'objects.update', { id, changes })
 
   const onLoadTerrain = async (files: File[]): Promise<void> => {
     try {
-      const result = await loadTerrainSetFiles(files, host.reader.doc)
+      const result = await loadTerrainSetFiles(files, host.children.project.getSnapshot().context.project.resolution)
       host.children.viewport.send({ type: 'terrain', set: result.set, warning: result.warning })
     } catch (error) {
       host.children.viewport.send({ type: 'terrain', set: null, warning: String(error) })
@@ -78,6 +80,7 @@ export function InspectorRegion({ platform }: { platform: Platform }) {
       levelOpen={levelOpen}
       onLevelToggle={(open) => run(host, 'view.set', { levelOpen: open })}
       terrain={art.terrain}
+      materials={materials}
       terrainWarning={art.terrainWarning}
       onLoadTerrain={(files) => void onLoadTerrain(files)}
       onSelect={(id) => {
@@ -112,6 +115,7 @@ export function Inspector({
   levelOpen,
   onLevelToggle,
   terrain,
+  materials,
   terrainWarning,
   onLoadTerrain,
   onSelect,
@@ -134,6 +138,8 @@ export function Inspector({
   onLevelToggle: (open: boolean) => void
   /** The terrain sets the map draws from, for the material swatches. */
   terrain: readonly LoadedSet[]
+  /** The project's material library, for the chips and the terrain-set summary. */
+  materials: readonly MaterialDef[]
   terrainWarning: string | null
   onLoadTerrain: (files: File[]) => void
   /** Select an object by id, from the outliner or the coverage list. */
@@ -176,17 +182,17 @@ export function Inspector({
 
       {isTerrain ? (
         <Section title={params.terrainMode === 'sculpt' ? 'Sculpt' : 'Paint'} summary={params.terrainMode === 'sculpt' && params.sculptVerb === 'ramp' ? 'ramp' : `${params.brush.size} · ${params.brush.shape}`}>
-          <FeaturePanels slot="inspector" tool={params.tool} doc={doc} params={params} platform={platform} selection={selection} />
+          <FeaturePanels slot="inspector" tool={params.tool} doc={doc} materials={materials} params={params} platform={platform} selection={selection} />
         </Section>
       ) : null}
-      {isTerrain ? <MaterialsSection doc={doc} active={params.material} sets={terrain} /> : null}
+      {isTerrain ? <MaterialsSection active={params.material} sets={terrain} /> : null}
 
       {/* The terrain set is the app's: an artist loads a sheet and its sidecar
           here, and the generated fallback comes from the composition root
           (#47). Authoring a sidecar in the editor is a follow-up; until then
           this is the one door for the artist's own art. */}
       {isTerrain ? (
-        <Section title="Terrain set" summary={materialById(doc.materials, params.material)?.top.sheet ?? '—'} defaultOpen={false}>
+        <Section title="Terrain set" summary={materialById(materials, params.material)?.top.sheet ?? '—'} defaultOpen={false}>
           <Note>Every material draws from a terrain set: a sheet and the sidecar that tags its tiles. Pick both files together.</Note>
           <FileButton icon="open" title="Load sheet + sidecar" accept="image/png,image/*,.json,application/json" multiple onFiles={onLoadTerrain} />
           {terrainWarning ? <Note tone="warn">{terrainWarning}</Note> : null}

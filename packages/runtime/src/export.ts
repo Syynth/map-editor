@@ -22,8 +22,10 @@ import {
   frameOf,
   levelBounds,
   levelCentre,
+  type MaterialDef,
   type ReadonlyVoxel,
   type ReadonlyMapDoc,
+  type ResolutionProfile,
   type RgbaImage,
   type SpriteAsset,
 } from '@papercut/document'
@@ -40,8 +42,12 @@ export interface ExportOptions {
   merge: boolean
   /** Fill-and-edge textures by the names the document's surface materials use. */
   textures: Record<string, RgbaImage>
-  /** The terrain sets the map's materials draw from, with their sheets — generated or the artist's. */
+  /** The terrain sets the materials draw from, with their sheets — generated or the artist's. */
   terrain: LoadedSet[]
+  /** The project's material library: what a voxel's id means. */
+  materials: readonly MaterialDef[]
+  /** The project's resolution profile, written into the extras and deciding how textures sample. */
+  resolution: ResolutionProfile
   /** Keyed by `MapObject.sprite`; an unknown name falls back to `rock`. */
   sprites: Record<string, SpriteAsset>
   /** Encodes each embedded texture. See `PngEncoder` for who supplies what. */
@@ -92,11 +98,11 @@ function spriteExtras(asset: SpriteAsset, doc: ReadonlyMapDoc, object: ReadonlyM
 export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): THREE.Scene {
   const scene = new THREE.Scene()
   scene.name = doc.name
-  const nearest = doc.filtering === 'nearest'
+  const nearest = options.resolution.filtering === 'nearest'
 
   // --- terrain --------------------------------------------------------------
   // The atlas is textured after the chunks are meshed: a corner nobody drew is baked into it on first sight.
-  const look = createTerrainLook(doc.materials, options.terrain)
+  const look = createTerrainLook(options.materials, options.terrain)
   const terrainMaterial = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 1,
@@ -309,9 +315,9 @@ export function buildExportScene(doc: ReadonlyMapDoc, options: ExportOptions): T
       name: doc.name,
       bounds: levelBounds(doc),
       resolutionProfile: {
-        texelDensity: doc.texelDensity,
-        filtering: doc.filtering,
-        snapToTexel: doc.filtering === 'nearest',
+        texelDensity: options.resolution.texelDensity,
+        filtering: options.resolution.filtering,
+        snapToTexel: options.resolution.filtering === 'nearest',
       },
       cameraRig: doc.camera,
       atmosphere: {

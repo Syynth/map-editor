@@ -202,7 +202,7 @@ async function counts() {
     // The column tops, derived the way `topHeight` derives them: the page has the raw document, not the helpers.
     const { width, height } = ground.size
     // The material the paint step brushes on; a top's material is its top voxel's.
-    const path = doc.materials.find((m) => m.name === 'Path')?.id ?? -1
+    const path = window.__host.children.project.getSnapshot().context.project.materials.find((m) => m.name === 'Path')?.id ?? -1
     let ramps = 0
     let heightSum = 0
     let pathCells = 0
@@ -413,7 +413,7 @@ await shot('paint-verbs', 'Tab switches to Paint. There is no tile palette: the 
 // and looked up by id rather than assumed to sit at a fixed index.
 await clickText('Material', '.left')
 await page.evaluate(() => {
-  const path = window.__host.reader.doc.materials.find((m) => m.name === 'Path')?.id ?? -1
+  const path = window.__host.children.project.getSnapshot().context.project.materials.find((m) => m.name === 'Path')?.id ?? -1
   if (path < 0) throw new Error('the sample map has no "path" material to paint with')
   return window.__host.dispatch('terrain.params', { material: path })
 })

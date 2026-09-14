@@ -26,7 +26,9 @@ import {
   levelBounds,
   structureOf,
   toWorld,
+  type MaterialDef,
   type ReadonlyMapDoc,
+  type ReadonlyProjectDoc,
   type ReadonlyVoxel,
   type SurfaceAddress,
   columnHeights,
@@ -37,6 +39,7 @@ import {
   useDocumentSelector,
   useHost,
   useHostSelector,
+  useProject,
   useToolsSelector,
   useViewSelector,
   useViewportSelector,
@@ -60,6 +63,8 @@ const same = Object.is
 const isPlaying = (snapshot: { value: unknown }): boolean => snapshot.value === 'play'
 const wholeDocument = (doc: ReadonlyMapDoc): ReadonlyMapDoc => doc
 const atmosphereOf = (doc: ReadonlyMapDoc): ReadonlyMapDoc['atmosphere'] => doc.atmosphere
+const materialsOf = (project: ReadonlyProjectDoc): readonly MaterialDef[] => project.materials
+const filteringOf = (project: ReadonlyProjectDoc): 'nearest' | 'linear' => project.resolution.filtering
 
 function firstVoxel(doc: ReadonlyMapDoc): ReadonlyVoxel | undefined {
   for (const id of doc.structureOrder) {
@@ -96,10 +101,14 @@ export function Stage({ platform }: { platform: Platform }) {
   const layers = useViewSelector((snapshot) => snapshot.context.layers)
   const atmosphere = useDocumentSelector(atmosphereOf, { equal: same })
   const art = useArt()
+  const materials = useProject(materialsOf)
+  const filtering = useProject(filteringOf)
 
   // What the viewport is constructed with; the effects below push every later change.
   const artRef = useRef(art)
   artRef.current = art
+  const lookRef = useRef({ materials, filtering })
+  lookRef.current = { materials, filtering }
 
   // --- lifecycle --------------------------------------------------------------
   useEffect(() => {
@@ -108,7 +117,7 @@ export function Stage({ platform }: { platform: Platform }) {
     const observed = host.children.viewport
     // Pointer input is not a command: it goes straight to the host's gesture actor, which answers with what the press
     // turned out to be (#11).
-    const viewport = new Viewport(canvas, host.reader, { terrain: artRef.current.terrain, sprites: artRef.current.sprites, textures: artRef.current.textures }, {
+    const viewport = new Viewport(canvas, host.reader, { terrain: artRef.current.terrain, sprites: artRef.current.sprites, textures: artRef.current.textures, materials: lookRef.current.materials, filtering: lookRef.current.filtering }, {
       onPointerDown: (press) => void host.input.pointerDown(press),
       onPointerMove: (motion) => host.input.pointerMove(motion),
       onPointerUp: (release) => host.input.pointerUp(release),
@@ -174,7 +183,7 @@ export function Stage({ platform }: { platform: Platform }) {
     viewportRef.current?.refreshAtmosphere()
   }, [atmosphere])
 
-  // A change to the generated terrain set (the document's texel density changed) sets aside a set the artist loaded,
+  // A change to the generated terrain set (the project's texel density changed) sets aside a set the artist loaded,
   // as it always has; what the terrain draws with is whichever of the two is current.
   useEffect(() => {
     host.children.viewport.send({ type: 'terrain', set: null, warning: null })
@@ -185,6 +194,12 @@ export function Stage({ platform }: { platform: Platform }) {
   useEffect(() => {
     viewportRef.current?.loadSprites(art.sprites)
   }, [art.sprites])
+  useEffect(() => {
+    viewportRef.current?.setMaterials(materials)
+  }, [materials])
+  useEffect(() => {
+    viewportRef.current?.setFiltering(filtering)
+  }, [filtering])
 
   return (
     <>

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DEFAULT_MATERIALS,
   CORNER_OFFSETS,
   DIR_VECTORS,
   HALF,
@@ -54,9 +55,9 @@ function placeholderSet(): LoadedSet {
   return { set, image: solid(16 * TILE, 8 * TILE, [0, 255, 0, 255]) }
 }
 
-/** Mesh one chunk of the ground through a fresh look over the map's materials. */
+/** Mesh one chunk of the ground through a fresh look over the default materials, the ones the sample paints with. */
 function mesh(doc: MapDoc, key: string): TerrainChunkMesh {
-  return meshTerrainChunk(ground(doc), key, createTerrainLook(doc.materials, [placeholderSet()]))
+  return meshTerrainChunk(ground(doc), key, createTerrainLook(DEFAULT_MATERIALS, [placeholderSet()]))
 }
 
 /**
@@ -413,7 +414,7 @@ describe('walls beside slopes', () => {
     setHeight(doc, 0, 0, 4)
     setHeight(doc, 0, 1, 4)
     setRamp(doc, 0, 1, 0)
-    const look = createTerrainLook(doc.materials, [placeholderSet()])
+    const look = createTerrainLook(DEFAULT_MATERIALS, [placeholderSet()])
     const { solid } = meshTerrainChunk(ground(doc), '0,0', look)
     const { width, height, data } = look.atlas.image
     let walls = 0

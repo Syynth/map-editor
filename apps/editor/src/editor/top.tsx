@@ -66,10 +66,11 @@ export function TopBar({ platform }: { platform: Platform }) {
     notify('Exporting…')
     try {
       const doc = reader.doc
+      const project = host.children.project.getSnapshot().context.project
       // The generated terrain set, as before #47 when the exporter generated its own: an artist's loaded set still
       // previews but does not export.
-      const art = artFor(doc)
-      const bytes = await exportGltf(doc, { merge: false, textures: art.textures, terrain: art.generatedTerrain, sprites: art.sprites, encodePng: encodePngWithCanvas })
+      const art = artFor(project)
+      const bytes = await exportGltf(doc, { merge: false, textures: art.textures, terrain: art.generatedTerrain, materials: project.materials, resolution: project.resolution, sprites: art.sprites, encodePng: encodePngWithCanvas })
       const blob = new Blob([bytes], { type: 'model/gltf-binary' })
       const file = `${slug(doc.name)}.glb`
       download(blob, file)

@@ -102,12 +102,23 @@ underneath. A binding may also **shadow** a chord — consume it and do nothing
 — or **unbind** one, which removes a rule so whatever sat under it becomes
 reachable again.
 
+## Project
+
+A folder anchored on `papercut.json`, holding what every map in it shares: the
+material library, the resolution profile (texel density and filtering), the
+sheets the materials draw from with their terrain-set sidecars, the camera rig
+new maps start from, and the maps themselves in order. The app opens projects,
+and a map only within its project (rulings of 2026-09-14). Held live by the
+host's project actor; edited by `project.*` commands, which are settings, not
+undoable edits.
+
 ## Map
 
 The level being edited: terrain, paint, objects, and the settings that describe
-how they are lit and viewed. "Map" is the artist's word and the document's
-word; it is unrelated to a wayfinder map, which is a planning artifact on the
-issue tracker.
+how they are lit and viewed — its own, never what the [Project](#project)
+holds. A voxel names its material by an id in the project's library. "Map" is
+the artist's word and the document's word; it is unrelated to a wayfinder map,
+which is a planning artifact on the issue tracker.
 
 ## Half-tile
 

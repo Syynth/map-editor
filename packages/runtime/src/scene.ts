@@ -40,6 +40,7 @@ import {
   type SpriteAsset,
   type DocumentTarget,
   columnHeights,
+  type MaterialDef,
 } from '@papercut/document'
 import { createTerrainLook, meshSketch, meshTerrainChunk, type EdgeSpec, type LoadedSet, type MeshBuffers, type SketchMesh, type TerrainLook } from '@papercut/geometry'
 import { ObjectView, releaseReplaced, releaseTexture, rgbaTexture, spriteImages, type ObjectViewContext } from './billboard'
@@ -95,8 +96,12 @@ export interface SceneStats {
 }
 
 export interface SceneAssets {
-  /** The terrain sets the map's materials draw from, with their sheets — generated or the artist's. */
+  /** The terrain sets the materials draw from, with their sheets — generated or the artist's. */
   terrain: LoadedSet[]
+  /** The project's material library, in priority order: what a voxel's id means. */
+  materials: readonly MaterialDef[]
+  /** The project's resolution profile's filtering: nearest for pixel art. */
+  filtering: 'nearest' | 'linear'
   sprites: Record<string, SpriteAsset>
   /** Fill-and-edge textures by the names the document's surface materials use. */
   textures: Record<string, RgbaImage>
@@ -164,8 +169,9 @@ export class RuntimeScene {
   private sets: LoadedSet[]
   /** The look the chunks were meshed with: the atlas and what each material draws with. Replaced whole, never edited. */
   private look: TerrainLook
-  /** The materials the look was built from: a document patch swaps the array, and the look has to follow. */
-  private lookMaterials: ReadonlyMapDoc['materials']
+  /** The project's materials the look was built from. */
+  private materials: readonly MaterialDef[]
+  private filtering: 'nearest' | 'linear'
   /** The atlas image on the GPU, and the atlas version it was taken at. */
   private atlasImage: RgbaImage | null = null
   private atlasVersion = -1
@@ -181,8 +187,9 @@ export class RuntimeScene {
   constructor(doc: ReadonlyMapDoc, assets: SceneAssets) {
     this.doc = doc
     this.sets = assets.terrain
-    this.look = createTerrainLook(doc.materials, this.sets)
-    this.lookMaterials = doc.materials
+    this.materials = assets.materials
+    this.filtering = assets.filtering
+    this.look = createTerrainLook(this.materials, this.sets)
     this.sprites = assets.sprites
     this.textures = assets.textures
 
@@ -230,23 +237,31 @@ export class RuntimeScene {
   }
 
   setDocument(doc: ReadonlyMapDoc): void {
-    const filteringChanged = doc.filtering !== this.doc.filtering
-    const materialsChanged = doc.materials !== this.doc.materials
     this.doc = doc
-    if (filteringChanged) {
-      this.dropViews()
-      this.applyAtlas(true)
-      for (const material of this.surfaceMaterials.values()) material.dispose()
-      this.surfaceMaterials.clear()
-    }
-    // The materials are the look: their terrains and their order. Every chunk was meshed against the old one.
-    if (materialsChanged) this.relook()
   }
 
   /** Draw the terrain from these terrain sets — an artist's, or the generated one — remeshing every chunk against them. */
   refreshTerrain(sets: LoadedSet[]): void {
     this.sets = sets
     this.relook()
+  }
+
+  /** The materials are the look: their terrains and their order. Every chunk was meshed against the old list, so all are remeshed. */
+  setMaterials(materials: readonly MaterialDef[]): void {
+    if (materials === this.materials) return
+    this.materials = materials
+    this.relook()
+  }
+
+  /** Nearest or linear sampling for every texture: the atlas, the sprites, the sketch fills. */
+  setFiltering(filtering: 'nearest' | 'linear'): void {
+    if (filtering === this.filtering) return
+    this.filtering = filtering
+    this.dropViews()
+    this.applyAtlas(true)
+    for (const material of this.surfaceMaterials.values()) material.dispose()
+    this.surfaceMaterials.clear()
+    this.sky.apply(this.doc.atmosphere, this.sprites, this.filtering === 'nearest')
   }
 
   /** The transitions composed somewhere on screen, named once each: the artist's to-do list (spec §3). Counted over the chunks as they stand, so painting a corner over takes it off the list. */
@@ -257,8 +272,7 @@ export class RuntimeScene {
   }
 
   private relook(): void {
-    this.look = createTerrainLook(this.doc.materials, this.sets)
-    this.lookMaterials = this.doc.materials
+    this.look = createTerrainLook(this.materials, this.sets)
     for (const [id, view] of this.structures) {
       const voxel = this.doc.structures[id]
       if (!voxel || voxel.kind !== 'voxel') continue
@@ -273,7 +287,7 @@ export class RuntimeScene {
     const previous = this.sprites
     this.sprites = sprites
     this.dropViews()
-    this.sky.apply(this.doc.atmosphere, this.sprites, this.doc.filtering === 'nearest')
+    this.sky.apply(this.doc.atmosphere, this.sprites, this.filtering === 'nearest')
     releaseReplaced(spriteImages(previous), spriteImages(sprites))
   }
 
@@ -287,7 +301,7 @@ export class RuntimeScene {
     const { atlas } = this.look
     if (!force && atlas.version === this.atlasVersion) return
     const image = atlas.image
-    this.terrainMaterial.map = rgbaTexture(image, this.doc.filtering === 'nearest')
+    this.terrainMaterial.map = rgbaTexture(image, this.filtering === 'nearest')
     this.terrainMaterial.needsUpdate = true
     if (this.atlasImage && this.atlasImage !== image) releaseTexture(this.atlasImage)
     this.atlasImage = image
@@ -314,7 +328,7 @@ export class RuntimeScene {
     this.hemisphere.color.setHex(atmosphere.skyHorizon)
     this.hemisphere.groundColor.setHex(atmosphere.fogColor)
     this.hemisphere.intensity = atmosphere.ambientIntensity
-    this.sky.apply(atmosphere, this.sprites, this.doc.filtering === 'nearest')
+    this.sky.apply(atmosphere, this.sprites, this.filtering === 'nearest')
   }
 
   /** The middle of the level's extent, derived from its structures. */
@@ -480,7 +494,7 @@ export class RuntimeScene {
     if (!material) {
       const image = textureName ? this.textures[textureName] : undefined
       material = new THREE.MeshStandardMaterial({
-        map: image ? rgbaTexture(image, this.doc.filtering === 'nearest') : null,
+        map: image ? rgbaTexture(image, this.filtering === 'nearest') : null,
         color: image ? 0xffffff : 0xb06cd6,
         vertexColors: true,
         roughness: 1,
@@ -563,7 +577,6 @@ export class RuntimeScene {
   /** Rebuild everything: the document's set of structures is authoritative. */
   rebuildAll(): void {
     const start = performance.now()
-    if (this.doc.materials !== this.lookMaterials) this.relook()
     const wanted = new Set(this.doc.structureOrder)
     for (const id of [...this.structures.keys()]) if (!wanted.has(id)) this.dropStructure(id)
     for (const id of this.doc.structureOrder) this.buildStructure(id)
@@ -577,13 +590,6 @@ export class RuntimeScene {
    */
   rebuild(dirty: { chunks: readonly string[]; structures: readonly string[]; moved?: readonly string[] }): void {
     const start = performance.now()
-    // A materials edit reaches the scene as a document patch that marks every chunk dirty; the look it meshes with
-    // has to be the new list's, or nothing on screen changes until a reload.
-    if (this.doc.materials !== this.lookMaterials) {
-      this.relook()
-      this.finishStats(start, this.doc.structureOrder.length)
-      return
-    }
     const whole = new Set(dirty.structures)
     for (const id of whole) this.buildStructure(id)
     for (const id of dirty.moved ?? []) {
