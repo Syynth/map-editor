@@ -395,6 +395,7 @@ Each entry:
 - **SCOPE:** moderate
 - **WHAT:** Papercut's macOS signing uses its own credentials (certificate, notarization API key or app-specific password, CI secrets), set up alongside brink's rather than reusing them. brink (`~/code/rs/brink`) is a reference for the process only. Signing comes after an unsigned build works end to end: packaged app, bundle updater, and CI publishing.
 - **WHY:** Separate credentials mean one project's secrets can be revoked or rotated, or can leak, without affecting the other. Proving the whole update pipeline unsigned first means a signing failure can't hide a pipeline bug, or the other way round.
+- **STATUS:** amended 2026-09-13 — the Developer ID certificate is the team's existing one; see "Papercut reuses the team's Developer ID certificate, with its own notarization key" below.
 
 ## The desktop app's bundle ID is dev.syynth.papercut
 - **WHEN:** 2026-09-13
@@ -427,3 +428,11 @@ Each entry:
 - **SCOPE:** architectural
 - **WHAT:** The first shell build exposes a generic filesystem API to the web bundle: read, write, list, stat, mkdir, rename, delete and watch, plus native open and save dialogs. Every path must fall inside a folder the user granted through a native dialog, and the main process enforces this. Grants persist across launches and can be revoked. The macOS build is a Developer ID app without the App Sandbox, using the hardened-runtime entitlements Electron needs plus Info.plist usage descriptions for the protected folders (Documents, Desktop, Downloads, removable and network volumes). The app won't target the Mac App Store.
 - **WHY:** The owner wants to iterate on what the app does with the filesystem, and anything in the shell (preload API, entitlements, Info.plist) changes only through a full app update. A generic API in the first build lets file features change freely through bundle updates. Limiting access to granted folders means a bad or compromised bundle can reach your project folders but not `~/.ssh` or the rest of your home folder. The App Sandbox and the Mac App Store are ruled out because the app updates its own bundles, and the App Store wouldn't allow that.
+
+## Papercut reuses the team's Developer ID certificate, with its own notarization key
+- **WHEN:** 2026-09-13
+- **PROJECT:** papercut
+- **SYSTEM:** desktop-shell
+- **SCOPE:** minor/local
+- **WHAT:** Amends "Papercut gets its own signing credentials, after an unsigned end-to-end build". When signing is set up, papercut signs with the team's existing Developer ID Application certificate rather than a new one. It gets its own App Store Connect API key for notarization and its own CI secrets. The order is unchanged: signing still comes after the unsigned pipeline works end to end, through CI.
+- **WHY:** A Developer ID certificate identifies the team, not an app, and Apple limits how many a team can have. A second one would add nothing, because both would carry the same name and Team ID. The notarization key is the credential that can actually be scoped and revoked per project, so it's the one kept separate.
