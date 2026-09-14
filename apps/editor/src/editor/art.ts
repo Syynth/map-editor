@@ -8,9 +8,11 @@
  * same images — which the runtime's texture cache is keyed by — rather than
  * three copies.
  *
- * A terrain set the artist loaded from files lives on the viewport actor and
- * is drawn beside the generated one until the project's texel density
- * changes.
+ * The project's own sheets, loaded from its folder, live on the viewport
+ * actor; they are drawn beside the generated placeholder, standing in for it
+ * where they share a name. A sheet at another tile size than the profile's
+ * is left out here — the atlas is one tile size — and reported by the
+ * project settings instead.
  * When the artist can configure terrains and sheets live, this is the one
  * place that learns where the art comes from.
  */
@@ -64,11 +66,16 @@ const densityOf = (project: ReadonlyProjectDoc): number => project.resolution.te
 export function useArt(): Art {
   const density = useProject(densityOf)
   // The host holds what this app loaded, in the narrowest shape that says what it is; this is the one reader.
-  const loaded = useViewportSelector((snapshot) => snapshot.context.loadedTerrain) as LoadedSet | null
+  const loaded = useViewportSelector((snapshot) => snapshot.context.loadedTerrain) as readonly LoadedSet[]
   const terrainWarning = useViewportSelector((snapshot) => snapshot.context.terrainWarning)
   const generatedTerrain = terrainFor(density)
-  // The loaded set joins the generated one rather than replacing it: the default materials point into the placeholder
+  // The loaded sets join the generated one rather than replacing it: the default materials point into the placeholder
   // sheet, and would draw as nothing without it. A set named like a generated one stands in for it.
-  const terrain = useMemo(() => (loaded ? [...generatedTerrain.filter((s) => s.set.sheet !== loaded.set.sheet), loaded] : generatedTerrain), [loaded, generatedTerrain])
+  const terrain = useMemo(() => {
+    const usable = loaded.filter((s) => s.set.tile === density)
+    if (usable.length === 0) return generatedTerrain
+    const names = new Set(usable.map((s) => s.set.sheet))
+    return [...generatedTerrain.filter((s) => !names.has(s.set.sheet)), ...usable]
+  }, [loaded, generatedTerrain, density])
   return { terrain, generatedTerrain, sprites: spritesFor(density), textures: texturesFor(density), terrainWarning }
 }

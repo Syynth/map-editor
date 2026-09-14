@@ -183,11 +183,6 @@ export function Stage({ platform }: { platform: Platform }) {
     viewportRef.current?.refreshAtmosphere()
   }, [atmosphere])
 
-  // A change to the generated terrain set (the project's texel density changed) sets aside a set the artist loaded,
-  // as it always has; what the terrain draws with is whichever of the two is current.
-  useEffect(() => {
-    host.children.viewport.send({ type: 'terrain', set: null, warning: null })
-  }, [host, art.generatedTerrain])
   useEffect(() => {
     viewportRef.current?.loadTerrain(art.terrain)
   }, [art.terrain])

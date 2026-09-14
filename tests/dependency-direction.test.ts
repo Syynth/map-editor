@@ -94,6 +94,8 @@ const PLACEMENT: Record<string, Placement> = {
   '@papercut/shell-api': { kind: 'side', rank: 0, visibleTo: ['app', 'feature', '@papercut/editor-host'] },
   '@papercut/geometry': { kind: 'layer', rank: 2 },
   '@papercut/runtime': { kind: 'layer', rank: 3 },
+  // The project on disk: pure over a filesystem seam, over `document` and `geometry`; the apps open folders through it.
+  '@papercut/project': { kind: 'layer', rank: 3 },
   '@papercut/viewport-contrib': { kind: 'layer', rank: 3, planned: true },
   '@papercut/viewport': { kind: 'layer', rank: 4 },
   '@papercut/fixtures': { kind: 'layer', rank: 4 },

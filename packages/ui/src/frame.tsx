@@ -77,12 +77,14 @@ export function Frame({
 
 // --- top bar -------------------------------------------------------------------
 
-export function Brand({ name, level, dirty }: { name: string; level: string; dirty?: boolean }) {
+/** The app's name, then whatever stands between it and the level — the project's crumb — then the level. */
+export function Brand({ name, level, dirty, children }: { name: string; level: string; dirty?: boolean; children?: ReactNode }) {
   return (
     <>
       <span className="ui-top-brand">{name}</span>
+      {children}
       <span className="ui-top-crumb">
-        / <b>{level}</b>
+        {children ? '›' : '/'} <b>{level}</b>
       </span>
       {dirty ? <span className="ui-top-dirty" title="Unsaved changes" /> : null}
     </>

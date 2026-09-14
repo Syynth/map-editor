@@ -1,4 +1,4 @@
-import { FORMAT_VERSION, HALF, addObject, createDocument, createMap, createProject, defaultFacing, frameOf, groundHeight, materialById, raise, removeObject, serialize, topHeight, type MapDoc, type MapObject, type Patch, type ProjectDoc, type ReadonlyMapDoc, type SurfaceAddress, type SurfaceKind, type VoxelStructure } from '@papercut/document'
+import { FORMAT_VERSION, HALF, addObject, createDocument, createMap, createProject, serializeProject, defaultFacing, frameOf, groundHeight, materialById, raise, removeObject, serialize, topHeight, type MapDoc, type MapObject, type Patch, type ProjectDoc, type ReadonlyMapDoc, type SurfaceAddress, type SurfaceKind, type VoxelStructure } from '@papercut/document'
 import { commands, defineFeature, dispose, provideFeature, type HotHandle, reserveOwner, tools as toolDeclarations } from '@papercut/registry'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from 'xstate'
@@ -166,6 +166,29 @@ describe('the document commands, routed to the document actor', () => {
     expect(dispatch('project.sheets.set', { sheets: [{ path: 'sheets/a.png', tile: 16, terrainSet: 'sheets/a.terrain.json' }] })).toEqual({ ok: true })
     expect(project().sheets).toEqual([{ path: 'sheets/a.png', tile: 16, terrainSet: 'sheets/a.terrain.json' }])
     host.stop()
+  })
+
+  it('opens a project from its file text and folder, tracks the current map, and closes back to none', () => {
+    const { host, dispatch } = makeHost()
+    const project = () => host.children.project.getSnapshot().context
+    expect(project().folder).toBeNull()
+    // Closing needs a project to close: the key says none is open.
+    expect(dispatch('project.close')).toMatchObject({ ok: false, kind: 'unavailable' })
+    // A file that will not parse is refused as invalid-args carrying the load error, and nothing changes.
+    expect(dispatch('project.load', { folder: '/p', json: '{"formatVersion": 2}' })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(project().folder).toBeNull()
+    const opened = createProject('Harbour Town', 16)
+    opened.maps = ['maps/a.map.json']
+    expect(dispatch('project.load', { folder: '/projects/harbour', json: serializeProject(opened) })).toEqual({ ok: true })
+    expect(project()).toMatchObject({ folder: '/projects/harbour', map: null })
+    expect(project().project).toEqual(opened)
+    expect(host.contextKeys()['project.open']).toBe(true)
+    expect(dispatch('project.current', { map: 'maps/a.map.json' })).toEqual({ ok: true })
+    expect(project().map).toBe('maps/a.map.json')
+    expect(dispatch('project.current', { map: '../escape.map.json' })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('project.close')).toEqual({ ok: true })
+    expect(project()).toMatchObject({ folder: null, map: null })
+    expect(project().project.name).toBe('Untitled Project')
   })
 
   it('merges the camera rig and the atmosphere, one entry each', () => {
@@ -976,14 +999,14 @@ describe('the viewport actor: what the viewport observed', () => {
     expect(viewport.getSnapshot().context).toMatchObject({ stats: { fps: 60 }, softwareRenderer: true })
   })
 
-  it('holds a loaded terrain set and what loading it said, until told to go back to the generated one', () => {
+  it("holds the project's loaded terrain sets and what loading them said, until the project closes", () => {
     const { host } = makeHost()
     const image = { width: 64, height: 64, data: new Uint8ClampedArray(64 * 64 * 4) }
     const set = { set: { sheet: 'ground.png', tile: 16, columns: 4, rows: 4 }, image }
-    host.children.viewport.send({ type: 'terrain', set, warning: 'expected 16 × 5 tiles' })
-    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedTerrain: set, terrainWarning: 'expected 16 × 5 tiles' })
-    host.children.viewport.send({ type: 'terrain', set: null, warning: null })
-    expect(host.children.viewport.getSnapshot().context.loadedTerrain).toBeNull()
+    host.children.viewport.send({ type: 'terrain', sets: [set], warning: 'sheets/cliffs.png: no such file' })
+    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedTerrain: [set], terrainWarning: 'sheets/cliffs.png: no such file' })
+    host.children.viewport.send({ type: 'terrain', sets: [], warning: null })
+    expect(host.children.viewport.getSnapshot().context.loadedTerrain).toEqual([])
     expect(host.children.viewport.getSnapshot().context.terrainWarning).toBeNull()
   })
 

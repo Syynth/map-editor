@@ -1,6 +1,7 @@
 /**
- * The top bar: the level's name, undo and redo, the view toggles, file
- * actions, and play.
+ * The top bar: the project and the map, undo and redo, the view toggles,
+ * save and export, and play. The project's name opens its menu: the maps,
+ * a new map, closing it.
  *
  * It selects the handful of values it shows and nothing else, so it does not
  * re-render while the pointer moves or a stroke paints. File actions read the
@@ -8,20 +9,24 @@
  * happened through the view actor's `notice`, which the inspector shows.
  */
 
-import { useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 
-import { serialize, type ReadonlyMapDoc } from '@papercut/document'
-import { useDocumentSelector, useHost, useHostSelector, useViewSelector } from '@papercut/editor-host'
+import type { ReadonlyMapDoc, ReadonlyProjectDoc } from '@papercut/document'
+import { useDocumentSelector, useHost, useHostSelector, useProject, useProjectSelector, useViewSelector } from '@papercut/editor-host'
 import { chordFor, type Platform } from '@papercut/registry'
 import { exportGltf } from '@papercut/runtime/export'
-import { Brand, FileButton, TopButton, TopGroup, TopGrow, TopSep } from '@papercut/ui'
+import { Action, Brand, Dialog, Field, Menu, MenuDivider, MenuItem, MenuLabel, TextInput, TopButton, TopCrumb, TopGroup, TopGrow, TopSep } from '@papercut/ui'
 
 import { artFor } from './art'
-import { refusal, run } from './commands'
+import { run } from './commands'
 import { encodePngWithCanvas } from './rgba'
+import { closeProject, newMapIn, openMapAt, saveNow, type Session } from './session'
 
 const nameOf = (doc: ReadonlyMapDoc): string => doc.name
-const isPlaying = (snapshot: { value: unknown }): boolean => snapshot.value === 'play'
+const projectNameOf = (project: ReadonlyProjectDoc): string => project.name
+const mapsOf = (project: ReadonlyProjectDoc): readonly string[] => project.maps
+/** A map's name as the menu lists it, from its path: `maps/harbour-road.map.json` → `harbour-road`. */
+const mapLabel = (path: string): string => path.slice(path.lastIndexOf('/') + 1).replace(/\.map\.json$/, '')
 
 /** Hand the browser a file to save. */
 function download(blob: Blob, name: string): void {
@@ -34,11 +39,16 @@ function download(blob: Blob, name: string): void {
 }
 
 const slug = (name: string): string => name.replace(/\s+/g, '-').toLowerCase()
+const isPlaying = (snapshot: { value: unknown }): boolean => snapshot.value === 'play'
 
-export function TopBar({ platform }: { platform: Platform }) {
+export function TopBar({ platform, session }: { platform: Platform; session: Session }) {
   const host = useHost()
   const { reader } = host
   const name = useDocumentSelector(nameOf, { equal: Object.is })
+  const projectName = useProject(projectNameOf)
+  const maps = useProject(mapsOf)
+  const current = useProjectSelector((snapshot) => snapshot.context.map)
+  const [naming, setNaming] = useState<string | null>(null)
   const canUndo = useSyncExternalStore(reader.subscribe, () => reader.canUndo())
   const canRedo = useSyncExternalStore(reader.subscribe, () => reader.canRedo())
   const showGrid = useViewSelector((snapshot) => snapshot.context.showGrid)
@@ -46,20 +56,15 @@ export function TopBar({ platform }: { platform: Platform }) {
   const playing = useHostSelector(isPlaying)
 
   const notify = (notice: string): void => run(host, 'view.set', { notice })
-
-  const onSave = (): void => {
-    const doc = reader.doc
-    const file = `${slug(doc.name)}.map.json`
-    download(new Blob([serialize(doc)], { type: 'application/json' }), file)
-    notify(`Saved ${file}`)
+  const attempt = (work: Promise<unknown>, done: string): void => {
+    work.then(() => notify(done)).catch((error: unknown) => notify(error instanceof Error ? error.message : String(error)))
   }
 
-  const onLoad = async (file: File): Promise<void> => {
-    // The file's TEXT is the argument (#2: plain serialisable data). A map that will not parse comes back as an
-    // `invalid-args` refusal carrying the load error's own message, which is what the artist is shown. The viewport
-    // notices the new document itself, off `reader.generation`.
-    const why = refusal(host.dispatch('document.load', { json: await file.text() }))
-    notify(why ?? `Loaded ${file.name}`)
+  const onSave = (): void => attempt(saveNow(host, session), 'Saved')
+  const onNewMap = (): void => {
+    const mapName = naming?.trim()
+    setNaming(null)
+    if (mapName) attempt(newMapIn(host, session, mapName), `New map ${mapName}`)
   }
 
   const onExport = async (): Promise<void> => {
@@ -82,7 +87,34 @@ export function TopBar({ platform }: { platform: Platform }) {
 
   return (
     <>
-      <Brand name="papercut" level={name} />
+      <Brand name="papercut" level={name}>
+        <Menu trigger={<TopCrumb label={projectName} title="The project: its maps and settings" />}>
+        <MenuLabel>Maps</MenuLabel>
+        {maps.map((path) => (
+          <MenuItem key={path} icon="map" title={mapLabel(path)} active={path === current} meta={path === current ? 'open' : undefined} onClick={() => attempt(openMapAt(host, session, path), `Opened ${mapLabel(path)}`)} />
+        ))}
+        <MenuDivider />
+        <MenuItem icon="plus" title="New map…" onClick={() => setNaming('')} />
+        <MenuDivider />
+          <MenuItem icon="close" title="Close project" onClick={() => attempt(closeProject(host, session), 'Closed')} />
+        </Menu>
+      </Brand>
+      <Dialog
+        opened={naming !== null}
+        onClose={() => setNaming(null)}
+        title="New map"
+        description="An empty 32 × 32 map, listed after the others and opened."
+        footer={
+          <>
+            <Action title="Cancel" onClick={() => setNaming(null)} />
+            <Action title="Create map" tone="accent" disabled={!naming?.trim()} onClick={onNewMap} />
+          </>
+        }
+      >
+        <Field label="Name">
+          <TextInput value={naming ?? ''} onChange={setNaming} placeholder="Harbour Road" />
+        </Field>
+      </Dialog>
       <TopGrow />
       <TopGroup>
         <TopButton icon="undo" title="Undo" kbd={chordFor('undo', undefined, platform)} disabled={!canUndo} onClick={() => run(host, 'undo')} />
@@ -103,7 +135,6 @@ export function TopBar({ platform }: { platform: Platform }) {
       <TopGrow />
       <TopGroup>
         <TopButton icon="save" title="Save" labelled onClick={onSave} />
-        <FileButton icon="open" title="Load" accept=".json,application/json" onFile={(file) => void onLoad(file)} />
         <TopButton icon="export" title="Export glTF" labelled onClick={() => void onExport()} />
       </TopGroup>
       <TopButton

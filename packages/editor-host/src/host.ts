@@ -113,7 +113,7 @@ import {
 
 import { gestureLogic, type Gesture, type GestureLogic, type PointerMotion, type PointerPress, type PointerRelease } from './gesture'
 import { playLogic, type PlayLogic } from './play'
-import { PROJECT_OWNER, projectLogicWith, type ProjectLogic } from './project'
+import { PROJECT_OWNER, projectKeys, projectLogicWith, type ProjectLogic } from './project'
 import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps, type StrokeSample } from './strokes'
 import { TOOLS_OWNER, toolKeys, toolsLogicWith, type FeatureParams, type ToolsLogic } from './tools'
 import { VIEW_OWNER, viewKeys, viewLogic, type Selection, type ViewLogic } from './view'
@@ -662,6 +662,7 @@ export function createHost({ document: source, project = createProject(), clock,
       [toolKeys.tool.id]: tools.context.tool,
       [viewKeys.hasSelection.id]: view.context.selection !== null,
       [viewKeys.gameCamera.id]: view.context.gameCamera,
+      [projectKeys.open.id]: children.project.getSnapshot().context.folder !== null,
       [documentKeys.canUndo.id]: reader.canUndo(),
       [documentKeys.canRedo.id]: reader.canRedo(),
     }

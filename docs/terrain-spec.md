@@ -289,8 +289,10 @@ no migration: an older file is refused. The sample map is regenerated in the new
 and the baked fixtures with it.
 
 The placeholder generator produces the sheet `ground.png` and its terrain
-set in memory, for the project's texel density — nothing is written to disk;
-the editor, the export CLI and the tests each draw their own: an edge set
+set in memory, for the project's texel density. A new project writes them
+into its `sheets/` folder beside the sidecar, so the folder stands on its
+own (2026-09-14); the editor, the export CLI and the tests otherwise draw
+their own: an edge set
 per material and transition blocks for every pair of the sample map's
 materials that meet, drawn the way the prototype draws them (a raster pass
 that rounds and fillets the over-terrain's region, then rims it). Grass

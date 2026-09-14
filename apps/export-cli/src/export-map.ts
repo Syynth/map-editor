@@ -10,14 +10,15 @@
 
 import { readFile, writeFile } from 'node:fs/promises'
 
-import { createProject, deserialize } from '@papercut/document'
-import { exportGltf } from '@papercut/runtime/export'
-
+import { createProject, deserialize, sheetName } from '@papercut/document'
 import { generatePlaceholderTerrainSet } from '@papercut/fixtures'
+import { openProject } from '@papercut/project'
+import { exportGltf } from '@papercut/runtime/export'
 
 import { loadBakedAssets } from './baked-assets'
 import { encodePngPure } from './encode-png'
 import { installNodeFileReader } from './node-file-reader'
+import { fastPngCodec, findProjectFolder, nodeFs } from './project-fs'
 
 export interface ExportMapOptions {
   /** Merge static geometry per chunk for fewer draw calls, losing identity. */
@@ -28,6 +29,10 @@ export interface ExportMapResult {
   /** The document's own name, so a caller can report what it exported. */
   name: string
   bytes: number
+  /** The project folder the map was exported under, or `null` for the default project. */
+  project: string | null
+  /** What the project's sheets had to say while loading, one line each. */
+  warnings: string[]
 }
 
 export async function exportMapFile(
@@ -48,13 +53,18 @@ export async function exportMapFile(
   // flag for an artist's own sheet would decode it through the same
   // `fast-png`, into the same `RgbaImage` shape, right here.
   const { sprites } = await loadBakedAssets()
-  // Until the CLI opens a project (the second phase of the project work), a map exports under the default project:
-  // the placeholder materials at the default density, which is what every map made so far paints with.
-  const project = createProject()
-  const terrain = [generatePlaceholderTerrainSet(project.resolution.texelDensity)]
+  // The map's project, found by walking up to its `papercut.json`: its materials, its resolution and its sheets.
+  // Without one the map exports under the default project, which is what a map made before there were projects
+  // paints with. Either way the generated placeholder stands in for any sheet the folder does not supply.
+  const folder = await findProjectFolder(inputPath)
+  const opened = folder === null ? { project: createProject(), sets: [], warnings: [] } : await openProject(nodeFs, folder, fastPngCodec)
+  const { project } = opened
+  const generated = generatePlaceholderTerrainSet(project.resolution.texelDensity)
+  const usable = opened.sets.filter((s) => s.set.tile === project.resolution.texelDensity)
+  const terrain = [...(usable.some((s) => s.set.sheet === sheetName(generated.set.sheet)) ? [] : [generated]), ...usable]
 
   const bytes = new Uint8Array(await exportGltf(doc, { merge: options.merge, terrain, materials: project.materials, resolution: project.resolution, sprites, textures: {}, encodePng: encodePngPure }))
   await writeFile(outputPath, bytes)
 
-  return { name: doc.name, bytes: bytes.byteLength }
+  return { name: doc.name, bytes: bytes.byteLength, project: folder, warnings: opened.warnings }
 }

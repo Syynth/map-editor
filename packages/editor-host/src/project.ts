@@ -9,17 +9,26 @@
  * changes what it is made of. Nothing here is undoable: these are settings,
  * as brink's are, not strokes.
  *
- * Where the project came from — a folder on disk, the sample in memory —
- * is not this actor's concern. `replace` is how a whole project arrives
- * once one is opened; the host sends it, never a command from outside.
+ * Where the project lives — its folder, and which of its maps the document
+ * currently is — is held here too, as LOCATION and nothing more: the files
+ * are read and written by the app through `@papercut/project`, and what it
+ * read arrives as `project.load` with the file's text, parsed in the schema
+ * the way `document.load` is, so a bad file is an `invalid-args` refusal
+ * rather than a throw. `folder` is `null` while no project is open, which
+ * is what the startup screen shows for.
  */
 
-import type { ProjectDoc } from '@papercut/document'
-import { commands, reserveOwner } from '@papercut/registry'
+import { createProject, parseProject, type ProjectDoc } from '@papercut/document'
+import { commands, defineContextKey, reserveOwner } from '@papercut/registry'
 import { setup, types } from 'xstate'
 import { z } from 'zod'
 
 export const PROJECT_OWNER = reserveOwner('editor-host.project')
+
+export const projectKeys = {
+  /** A project is open: its folder is known. */
+  open: defineContextKey(PROJECT_OWNER, 'project.open', false),
+}
 
 const relativePath = z.string().min(1).refine((p) => !p.startsWith('/') && !p.includes('\\') && !p.split('/').includes('..'), { message: 'a path inside the project' })
 
@@ -56,7 +65,23 @@ const projectSettings = z
   })
   .strict()
 
+/** A project file's text, from the folder it was read in. Parsed here so a file that will not parse is refused as `invalid-args` carrying the load error. */
+const projectLoad = z
+  .object({ folder: z.string().min(1), json: z.string().min(1) })
+  .strict()
+  .check((ctx) => {
+    try {
+      parseProject(ctx.value.json)
+    } catch (error) {
+      ctx.issues.push({ code: 'custom', input: ctx.value, path: ['json'], message: error instanceof Error ? error.message : String(error) })
+    }
+  })
+/** Which of the project's maps the document is, by its path in the project; `null` between maps. */
+const projectCurrent = z.object({ map: relativePath.nullable() }).strict()
+
 export type ProjectSettings = z.infer<typeof projectSettings>
+export type ProjectLoadArgs = z.infer<typeof projectLoad>
+export type ProjectCurrentArgs = z.infer<typeof projectCurrent>
 export type MaterialsSetArgs = z.infer<typeof materialsSet>
 export type SheetsSetArgs = z.infer<typeof sheetsSet>
 export type MapsSetArgs = z.infer<typeof mapsSet>
@@ -65,13 +90,20 @@ commands.declare(PROJECT_OWNER, { id: 'project.set', title: 'Set Project Setting
 commands.declare(PROJECT_OWNER, { id: 'project.materials.set', title: 'Set Materials', category: 'Project', args: materialsSet })
 commands.declare(PROJECT_OWNER, { id: 'project.sheets.set', title: 'Set Sheets', category: 'Project', args: sheetsSet })
 commands.declare(PROJECT_OWNER, { id: 'project.maps.set', title: 'Set Map List', category: 'Project', args: mapsSet })
+commands.declare(PROJECT_OWNER, { id: 'project.load', title: 'Open Project', category: 'File', args: projectLoad })
+commands.declare(PROJECT_OWNER, { id: 'project.current', title: 'Set Current Map', category: 'File', args: projectCurrent })
+commands.declare(PROJECT_OWNER, { id: 'project.close', title: 'Close Project', category: 'File', when: projectKeys.open.is(true) })
 
 export interface ProjectContext {
   readonly project: ProjectDoc
+  /** The project's folder, absolute; `null` while none is open. */
+  readonly folder: string | null
+  /** The document's path in the project, relative to the folder; `null` while none is open. */
+  readonly map: string | null
 }
 
-/** The project logic, seeded with the project the app opened. A closure, not `input`: `input` leaks into the inspector. */
-export function projectLogicWith(initial: ProjectDoc) {
+/** The project logic, seeded with a project and, when the app already knows it, where it lives. A closure, not `input`: `input` leaks into the inspector. */
+export function projectLogicWith(initial: ProjectDoc, folder: string | null = null, map: string | null = null) {
   return setup({
     schemas: {
       context: types<ProjectContext>(),
@@ -83,7 +115,7 @@ export function projectLogicWith(initial: ProjectDoc) {
     },
   }).createMachine({
     id: 'project',
-    context: { project: initial },
+    context: { project: initial, folder, map },
     initial: 'ready',
     states: {
       ready: {
@@ -101,6 +133,14 @@ export function projectLogicWith(initial: ProjectDoc) {
                 return { context: { project: { ...project, sheets: (event.args as SheetsSetArgs).sheets.map((s) => ({ ...s })) } } }
               case 'project.maps.set':
                 return { context: { project: { ...project, maps: [...(event.args as MapsSetArgs).maps] } } }
+              case 'project.load': {
+                const { folder, json } = event.args as ProjectLoadArgs
+                return { context: { project: parseProject(json), folder, map: null } }
+              }
+              case 'project.current':
+                return { context: { map: (event.args as ProjectCurrentArgs).map } }
+              case 'project.close':
+                return { context: { project: createProject(), folder: null, map: null } }
               default:
                 return undefined
             }

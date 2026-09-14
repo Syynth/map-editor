@@ -73,6 +73,9 @@ export {
 } from './frame'
 export type { IconOption } from './frame'
 
+export { Dialog, DialogManifest, Menu, MenuDivider, MenuItem, MenuLabel, TopCrumb } from './overlays'
+export { Checkbox, Door, Doors, ErrorLine, RecentList, RecentRow, StartupScreen, StartupSection } from './startup'
+
 export { BarScrub, Scrub } from './scrub'
 export type { ScrubProps } from './scrub'
 

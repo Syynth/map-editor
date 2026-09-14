@@ -22,6 +22,7 @@ import { run, setParams } from './commands'
 import type { LoadedSet } from '@papercut/geometry'
 
 import { MaterialsSection } from './materials'
+import { addSheetTo, type Session } from './session'
 import { loadTerrainSetFiles } from './sheet'
 
 import { FeaturePanels } from './bars'
@@ -46,7 +47,7 @@ const materialsOf = (project: ReadonlyProjectDoc): readonly MaterialDef[] => pro
  * the tool parameters, selection, level toggle and last notice from their actors, and builds its own commands. Nothing
  * above it passes it state.
  */
-export function InspectorRegion({ platform }: { platform: Platform }) {
+export function InspectorRegion({ platform, session }: { platform: Platform; session: Session }) {
   const host = useHost()
   const doc = useDocument(wholeDocument, { settled: true })
   const tools = useToolsSelector((snapshot) => snapshot.context)
@@ -60,12 +61,17 @@ export function InspectorRegion({ platform }: { platform: Platform }) {
   const selected = selection?.kind === 'object' ? (doc.objects[selection.id] ?? null) : null
   const updateObject = (id: string, changes: Partial<MapObject>): void => run(host, 'objects.update', { id, changes })
 
+  // A sheet and its sidecar, picked together, are copied into the project's `sheets/` and listed; the project's own
+  // sheets are then reloaded, so what the viewport draws is what the folder holds.
   const onLoadTerrain = async (files: File[]): Promise<void> => {
     try {
-      const result = await loadTerrainSetFiles(files, host.children.project.getSnapshot().context.project.resolution)
-      host.children.viewport.send({ type: 'terrain', set: result.set, warning: result.warning })
+      const { set, warning } = await loadTerrainSetFiles(files, host.children.project.getSnapshot().context.project.resolution)
+      const image = files.find((f) => !f.name.endsWith('.json'))
+      if (!image) return
+      await addSheetTo(host, session, { name: image.name, bytes: new Uint8Array(await image.arrayBuffer()), tile: set.set.tile, set: set.set })
+      run(host, 'view.set', { notice: warning ?? `Added ${image.name} to the project` })
     } catch (error) {
-      host.children.viewport.send({ type: 'terrain', set: null, warning: String(error) })
+      run(host, 'view.set', { notice: String(error) })
     }
   }
 
@@ -193,8 +199,8 @@ export function Inspector({
           this is the one door for the artist's own art. */}
       {isTerrain ? (
         <Section title="Terrain set" summary={materialById(materials, params.material)?.top.sheet ?? '—'} defaultOpen={false}>
-          <Note>Every material draws from a terrain set: a sheet and the sidecar that tags its tiles. Pick both files together.</Note>
-          <FileButton icon="open" title="Load sheet + sidecar" accept="image/png,image/*,.json,application/json" multiple onFiles={onLoadTerrain} />
+          <Note>Every material draws from a terrain set: a sheet and the sidecar that tags its tiles. Pick both files together; they are copied into the project.</Note>
+          <FileButton icon="open" title="Add sheet + sidecar" accept="image/png,image/*,.json,application/json" multiple onFiles={onLoadTerrain} />
           {terrainWarning ? <Note tone="warn">{terrainWarning}</Note> : null}
         </Section>
       ) : null}

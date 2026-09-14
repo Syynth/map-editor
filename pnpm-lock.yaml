@@ -199,12 +199,18 @@ importers:
       '@papercut/geometry':
         specifier: workspace:*
         version: link:../../packages/geometry
+      '@papercut/project':
+        specifier: workspace:*
+        version: link:../../packages/project
       '@papercut/registry':
         specifier: workspace:*
         version: link:../../packages/registry
       '@papercut/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
+      '@papercut/shell-api':
+        specifier: workspace:*
+        version: link:../../packages/shell-api
       '@papercut/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -242,6 +248,9 @@ importers:
       '@papercut/fixtures':
         specifier: workspace:*
         version: link:../../packages/fixtures
+      '@papercut/project':
+        specifier: workspace:*
+        version: link:../../packages/project
       '@papercut/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
@@ -425,6 +434,25 @@ importers:
       '@papercut/document':
         specifier: workspace:*
         version: link:../document
+    devDependencies:
+      tsup:
+        specifier: 8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(supports-color@7.2.0)(typescript@6.0.3)
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^5.0.0
+        version: 5.0.0(@types/node@22.20.2)(jsdom@26.1.0(supports-color@7.2.0))(vite@8.3.0(@types/node@22.20.2)(esbuild@0.27.7)(jiti@2.7.0))
+
+  packages/project:
+    dependencies:
+      '@papercut/document':
+        specifier: workspace:*
+        version: link:../document
+      '@papercut/geometry':
+        specifier: workspace:*
+        version: link:../geometry
     devDependencies:
       tsup:
         specifier: 8.5.1
