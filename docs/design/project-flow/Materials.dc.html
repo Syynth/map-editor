@@ -1,0 +1,145 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font: 13px/1.4 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+           background: #15171c; color: #e8eaf0; -webkit-font-smoothing: antialiased; }
+    a { color: #e9a23b; } a:hover { color: #f0ad4b; }
+    .k { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #7b8294; }
+    .mono { font-family: 'IBM Plex Mono', Menlo, monospace; }
+    .rail-item { display: flex; align-items: center; gap: 8px; height: 26px; padding: 0 8px; border-radius: 4px; font-size: 12.5px; color: #aab0c0; }
+    .rail-item.active { background: #242833; color: #e9a23b; }
+    .rail-item svg { flex: none; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid #353b4a; background: #242833; color: #e8eaf0; font-size: 12px; white-space: nowrap; }
+    .btn.primary { background: #e9a23b; color: #1a1305; border-color: #e9a23b; font-weight: 600; }
+    .btn.quiet { border-color: transparent; background: none; color: #aab0c0; }
+    .th { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #7b8294; padding: 0 10px 6px; }
+    .td { font-size: 12px; color: #aab0c0; padding: 8px 10px; border-top: 1px solid #2c3140; display: flex; align-items: center; gap: 8px; min-height: 34px; }
+    .td.first { color: #e8eaf0; }
+    .ok { color: #7bc47f; } .warn { color: #e5636f; }
+    .badge { display: inline-block; font: 500 10px/1 'IBM Plex Mono', Menlo, monospace; letter-spacing: .06em; border: 1px solid #414859; border-radius: 3px; padding: 2px 5px; color: #aab0c0; }
+    .note { font-size: 11.5px; line-height: 1.5; color: #7b8294; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field .lbl { font-size: 11px; color: #7b8294; }
+    .input { height: 28px; border: 1px solid #353b4a; border-radius: 4px; background: #15171c; display: flex; align-items: center; padding: 0 10px; font-size: 12px; color: #e8eaf0; }
+    .sw { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+    .sec { display: flex; flex-direction: column; gap: 10px; }
+    .sec-title { font-size: 13px; font-weight: 600; color: #e8eaf0; }
+  </style>
+</helmet>
+<div style="width: 960px; height: 760px; background: rgba(10, 11, 15, .6); display: flex; align-items: center; justify-content: center;">
+  <div style="width: 920px; height: 720px; background: #242833; border: 1px solid #353b4a; border-radius: 6px; box-shadow: 0 16px 48px rgba(0,0,0,.45); display: grid; grid-template-columns: 196px minmax(0, 1fr); overflow: hidden;">
+
+    <!-- rail: scope switch, search, sections -->
+    <div style="background: #1b1e25; border-right: 1px solid #353b4a; padding: 10px 8px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="display: flex; padding: 2px; border-radius: 6px; background: #15171c; border: 1px solid #353b4a;">
+        <div style="flex: 1; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: #e9a23b; color: #1a1305; font-size: 12px; font-weight: 600;">Project</div>
+        <div style="flex: 1; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 4px; color: #aab0c0; font-size: 12px;">App</div>
+      </div>
+      <div class="note" style="padding: 0 4px;">Written to papercut.json — shared with everyone who opens Harbour Town.</div>
+      <div style="height: 26px; border: 1px solid #353b4a; border-radius: 4px; background: #15171c; display: flex; align-items: center; gap: 6px; padding: 0 8px; color: #7b8294; font-size: 12px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>Search settings
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 2px; margin-top: 4px;">
+        <div class="rail-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"></path><path d="M8 9h8M8 13h5"></path></svg>General</div>
+        <div class="rail-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18"></path></svg>Resolution</div>
+        <div class="rail-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="M21 15l-5-5L5 21"></path></svg>Sheets</div>
+        <div class="rail-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18l5-8 4 5 3-3 6 6z"></path></svg>Terrain sets</div>
+        <div class="rail-item active"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"></path><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"></path></svg>Materials</div>
+        <div class="rail-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3v12H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>Camera rig</div>
+        <div class="rail-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4l-5 8 5 8M16 4l5 8-5 8"></path></svg>Schemas</div>
+      </div>
+      <div style="height: 1px; background: #353b4a; margin: 6px 4px;"></div>
+      <div class="k" style="padding: 0 8px;">App</div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <div class="rail-item" style="color: #7b8294;">Editor</div>
+        <div class="rail-item" style="color: #7b8294;">Appearance</div>
+        <div class="rail-item" style="color: #7b8294;">Keymap</div>
+      </div>
+    </div>
+
+    <!-- pane -->
+    <div style="display: flex; flex-direction: column; min-width: 0;">
+      <div style="height: 34px; padding: 0 12px 0 16px; border-bottom: 1px solid #353b4a; display: flex; align-items: center; justify-content: space-between; flex: none;">
+        <div style="font-size: 13px; font-weight: 600;">Materials</div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="note">5 materials · priority top to bottom</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7b8294" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"></path></svg>
+        </div>
+      </div>
+      <div style="padding: 20px 28px 28px; display: flex; flex-direction: column; gap: 24px; overflow: hidden;">
+
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div class="note">What the brush paints. A material names its top terrain and the terrain its cliff sides take; list order is draw priority where two meet at a corner. Shared by every map in the project.</div>
+          <div class="btn primary"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>Add material</div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 24px 1.1fr .6fr 1.2fr 1.2fr .8fr; border: 1px solid #353b4a; border-radius: 6px; background: #1b1e25; overflow: hidden; padding-top: 8px;">
+          <div class="th"></div><div class="th">Material</div><div class="th">Role</div><div class="th">Top</div><div class="th">Sides</div><div class="th">Used in</div>
+
+          <div class="td" style="color: #414859; padding-right: 0; background: #2c3140;">⋮⋮</div>
+          <div class="td first" style="background: #2c3140;"><span class="sw" style="background: #6aa84f;"></span>Grass</div>
+          <div class="td" style="background: #2c3140;"><span class="badge">top</span></div>
+          <div class="td" style="background: #2c3140;"><span class="sw" style="background: #6aa84f;"></span><span class="mono">ground / grass</span></div>
+          <div class="td" style="background: #2c3140;"><span class="sw" style="background: #8b6b45;"></span><span class="mono">ground / dirt</span></div>
+          <div class="td" style="background: #2c3140;">3 maps</div>
+
+          <div class="td" style="color: #414859; padding-right: 0;">⋮⋮</div>
+          <div class="td first"><span class="sw" style="background: #8b6b45;"></span>Dirt</div>
+          <div class="td"><span class="badge">any</span></div>
+          <div class="td"><span class="sw" style="background: #8b6b45;"></span><span class="mono">ground / dirt</span></div>
+          <div class="td" style="color: #7b8294;">same as top</div>
+          <div class="td">3 maps</div>
+
+          <div class="td" style="color: #414859; padding-right: 0;">⋮⋮</div>
+          <div class="td first"><span class="sw" style="background: #8e8e8e;"></span>Stone wall</div>
+          <div class="td"><span class="badge">wall</span></div>
+          <div class="td"><span class="sw" style="background: #8e8e8e;"></span><span class="mono">cliffs / stone</span></div>
+          <div class="td" style="color: #7b8294;">same as top</div>
+          <div class="td">2 maps</div>
+
+          <div class="td" style="color: #414859; padding-right: 0;">⋮⋮</div>
+          <div class="td first"><span class="sw" style="background: #d9c27e;"></span>Sand</div>
+          <div class="td"><span class="badge">top</span></div>
+          <div class="td"><span class="sw" style="background: #d9c27e;"></span><span class="mono">ground / sand</span></div>
+          <div class="td"><span class="sw" style="background: #8b6b45;"></span><span class="mono">ground / dirt</span></div>
+          <div class="td">1 map</div>
+
+          <div class="td" style="color: #414859; padding-right: 0;">⋮⋮</div>
+          <div class="td first"><span class="sw" style="background: #b08f5e;"></span>Path</div>
+          <div class="td"><span class="badge">top</span></div>
+          <div class="td"><span class="sw" style="background: #b08f5e;"></span><span class="mono">ground / path</span></div>
+          <div class="td"><span class="sw" style="background: #8b6b45;"></span><span class="mono">ground / dirt</span></div>
+          <div class="td">3 maps</div>
+        </div>
+
+        <div class="sec">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div class="sec-title">Grass</div>
+            <div style="display: flex; gap: 6px;"><div class="btn quiet">Duplicate</div><div class="btn quiet" style="color: #e5636f;">Delete</div></div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 20px;">
+            <div class="field"><div class="lbl">Name</div><div class="input">Grass</div></div>
+            <div class="field"><div class="lbl">Role</div><div class="input" style="justify-content: space-between;">Top <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7b8294" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+            <div class="field"><div class="lbl">Swatch</div><div class="input" style="gap: 8px;"><span class="sw" style="background: #6aa84f;"></span><span class="mono">#6aa84f</span></div></div>
+            <div class="field"><div class="lbl">Top terrain</div><div class="input" style="gap: 8px; justify-content: space-between;"><span style="display: flex; gap: 8px; align-items: center;"><span class="sw" style="background: #6aa84f;"></span>ground / grass</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7b8294" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+            <div class="field"><div class="lbl">Side terrain</div><div class="input" style="gap: 8px; justify-content: space-between;"><span style="display: flex; gap: 8px; align-items: center;"><span class="sw" style="background: #8b6b45;"></span>ground / dirt</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#7b8294" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg></div></div>
+            <div class="field"><div class="lbl">Id</div><div class="input mono" style="color: #7b8294;">0 · stable, never reused</div></div>
+          </div>
+          <div class="note">Deleting a material that a map still paints with asks what to repaint it as. Ids are what voxels store, so renaming and reordering never touch a map.</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

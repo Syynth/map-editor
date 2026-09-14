@@ -61,9 +61,9 @@ export interface ViewportState {
   readonly stats: FrameStats
   /** The viewport fell back to a software rasterizer and dropped post-processing. */
   readonly softwareRenderer: boolean
-  /** A terrain set loaded from files, drawn instead of the generated one; `null` draws the generated one. */
-  readonly loadedTerrain: LoadedTerrain | null
-  /** What loading a terrain set had to say: a size mismatch, or why it failed. */
+  /** The project's terrain sets as they loaded from its folder, in its order; a sheet the generated placeholder also draws is drawn from here instead. */
+  readonly loadedTerrain: readonly LoadedTerrain[]
+  /** What loading the project's sheets had to say: a missing file, a size mismatch, one line each. */
   readonly terrainWarning: string | null
 }
 
@@ -83,7 +83,7 @@ const INITIAL: ViewportState = {
   camera: { yaw: 45, pitch: 35, distance: 26, inBounds: true },
   stats: { fps: 0, triangles: 0, meshMs: 0, missingTransitions: [] },
   softwareRenderer: false,
-  loadedTerrain: null,
+  loadedTerrain: [],
   terrainWarning: null,
 }
 
@@ -113,8 +113,8 @@ export const viewportLogic = setup({
       camera: types<{ camera: CameraReadout }>(),
       stats: types<{ stats: FrameStats }>(),
       renderer: types<{ software: boolean }>(),
-      /** A terrain set loaded from files (or `null` to go back to the generated one), and what loading it said. */
-      terrain: types<{ set: LoadedTerrain | null; warning: string | null }>(),
+      /** The project's terrain sets as loaded, and what loading them said. */
+      terrain: types<{ sets: readonly LoadedTerrain[]; warning: string | null }>(),
       command: types<{ id: string; args: unknown }>(),
     },
     emitted: {
@@ -139,7 +139,7 @@ export const viewportLogic = setup({
         stats: ({ event }) => ({ context: { stats: event.stats } }),
         renderer: ({ context, event }) => (context.softwareRenderer === event.software ? undefined : { context: { softwareRenderer: event.software } }),
         terrain: ({ context, event }) =>
-          context.loadedTerrain === event.set && context.terrainWarning === event.warning ? undefined : { context: { loadedTerrain: event.set, terrainWarning: event.warning } },
+          context.loadedTerrain === event.sets && context.terrainWarning === event.warning ? undefined : { context: { loadedTerrain: event.sets, terrainWarning: event.warning } },
         command: ({ event }, enq) => {
           if (event.id === 'viewport.frame') enq.emit({ type: 'frame' })
           else if (event.id === 'viewport.sweep') enq.emit({ type: 'sweep' })

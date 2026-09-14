@@ -22,7 +22,7 @@
 
 import { defaultSurfaceMaterials, type FillEdgeMaterial, type Structure, type VoxelStructure } from './structure'
 
-export const FORMAT_VERSION = 3
+export const FORMAT_VERSION = 4
 
 export type Direction = 0 | 1 | 2 | 3
 /** +X east, +Z south, -X west, -Z north. Index order used everywhere. */
@@ -70,7 +70,7 @@ export interface MapSize {
  * interface, not to any tool.
  */
 export interface VoxelData {
-  /** Index into `materials`, or AIR. */
+  /** The id of a material in the project's library, or AIR. */
   material: number[]
   /** A shape (SHAPE_*); meaningless where the material is AIR. */
   shape: number[]
@@ -223,7 +223,7 @@ export interface TerrainRef {
 /**
  * A terrain material: what a voxel is made of, and which terrains draw it.
  * `top` draws its top faces and, unless `side` says otherwise, its sides;
- * grass-topped dirt is one material with both. The order of the map's
+ * grass-topped dirt is one material with both. The order of the project's
  * materials is their priority: which is the shape when a template is placed
  * for a pair, and the layering of a composited corner.
  */
@@ -243,14 +243,15 @@ export interface MaterialDef {
   side?: TerrainRef
 }
 
+/**
+ * One map of a project. What every map shares — the materials its voxels
+ * name, the resolution profile, the sheets — is the project's (`project.ts`),
+ * never copied here: a map holds only what is its own.
+ */
 export interface MapDoc {
   formatVersion: number
   id: string
   name: string
-  /** Pixels per tile. Texture detail only — never world scale. */
-  texelDensity: number
-  filtering: 'nearest' | 'linear'
-  materials: MaterialDef[]
   /** The fill-and-edge materials sketches are dressed in, by name. */
   surfaceMaterials: Record<string, FillEdgeMaterial>
   /**
@@ -325,12 +326,12 @@ export const DEFAULT_MATERIALS: MaterialDef[] = [
   { id: 4, name: 'Path', color: 0xb08f5e, role: 'top', top: placeholder('path'), side: placeholder('dirt') },
 ]
 
-/** The material a voxel names, by id; `undefined` for an id the map no longer has. */
+/** The material a voxel names, by id; `undefined` for an id the project no longer has. */
 export function materialById(materials: readonly MaterialDef[], id: number): MaterialDef | undefined {
   return materials.find((m) => m.id === id)
 }
 
-/** An id no material of the map has: the next number after the highest. */
+/** An id no material of the project has: the next number after the highest. */
 export function nextMaterialId(materials: readonly MaterialDef[]): number {
   return materials.reduce((max, m) => Math.max(max, m.id + 1), 0)
 }
@@ -474,9 +475,6 @@ export function createMap(width = 32, height = 32, name = 'Untitled Map'): MapDo
     formatVersion: FORMAT_VERSION,
     id: newId('map'),
     name,
-    texelDensity: 16,
-    filtering: 'nearest',
-    materials: DEFAULT_MATERIALS.map((m) => ({ ...m })),
     surfaceMaterials: defaultSurfaceMaterials(),
     structures: { [ground.id]: ground },
     structureOrder: [ground.id],

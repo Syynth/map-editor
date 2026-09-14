@@ -14,7 +14,7 @@
  */
 
 import type { RgbaImage } from '@papercut/document'
-import { createSampleMap } from '@papercut/fixtures'
+import { createSampleProject } from '@papercut/fixtures'
 // See `App.tsx`'s import of the same package for why the generator sits
 // behind its own subpath.
 import { generateSprites } from '@papercut/fixtures/textures'
@@ -45,16 +45,17 @@ export interface BakeResult {
 }
 
 function bake(): BakeResult {
-  const doc = createSampleMap()
+  const project = createSampleProject()
+  const density = project.resolution.texelDensity
   // The terrain set is not baked: `generatePlaceholderTerrainSet` draws it without a canvas, so a headless consumer makes its own.
-  const sprites = generateSprites(doc.texelDensity)
+  const sprites = generateSprites(density)
 
   const files: Record<string, string> = {}
   const manifest: BakeManifest = {
-    source: 'createSampleMap() in packages/fixtures/src/sample.ts, drawn by packages/fixtures/src/textures.ts',
+    source: 'createSampleProject() in packages/fixtures/src/sample.ts, drawn by packages/fixtures/src/textures.ts',
     regenerate: 'pnpm bake',
-    texelDensity: doc.texelDensity,
-    materials: doc.materials.map(({ name, color }) => ({ name, color })),
+    texelDensity: density,
+    materials: project.materials.map(({ name, color }) => ({ name, color })),
     sprites: {},
   }
 

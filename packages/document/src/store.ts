@@ -352,7 +352,7 @@ export class EditorStore implements DocumentWriter {
       for (const id of descendantsOf(this.doc, patch.id)) this.reshaped(id)
     } else if (patch.t === 'structureOrder') {
       for (const id of patch.value) this.reshaped(id)
-    } else if (patch.t === 'doc' && (patch.field === 'materials' || patch.field === 'texelDensity' || patch.field === 'surfaceMaterials')) {
+    } else if (patch.t === 'doc' && patch.field === 'surfaceMaterials') {
       this.markAllDirty()
     }
   }

@@ -33,6 +33,7 @@ import { keymap, reserveOwner, type KeyBinding } from '@papercut/registry'
 // so that importing `editor-host` is what installs the defaults.
 
 import './host'
+import { projectKeys } from './project'
 import { toolKeys } from './tools'
 import { viewKeys } from './view'
 
@@ -44,6 +45,10 @@ const CORE_BINDINGS: readonly KeyBinding[] = [
   { chord: 'meta+z', command: 'undo' },
   { chord: 'ctrl+shift+z', command: 'redo' },
   { chord: 'meta+shift+z', command: 'redo' },
+
+  // Project settings on the chord every editor uses for preferences.
+  { chord: 'ctrl+,', command: 'view.set', args: { settings: 'general' }, when: projectKeys.open.is(true) },
+  { chord: 'meta+,', command: 'view.set', args: { settings: 'general' }, when: projectKeys.open.is(true) },
 
   // The rail's subjects, on the letters the reference art apps use for them
   // (2026-09-12 ruling): `V` for Select as Figma, Photoshop and Blender have

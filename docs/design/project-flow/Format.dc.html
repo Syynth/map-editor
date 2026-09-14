@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font: 13px/1.4 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+           background: #15171c; color: #e8eaf0; -webkit-font-smoothing: antialiased; }
+    a { color: #e9a23b; } a:hover { color: #f0ad4b; }
+    .k { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: #7b8294; }
+    .mono { font-family: 'IBM Plex Mono', Menlo, monospace; }
+    .tree { font: 12px/1.7 'IBM Plex Mono', Menlo, monospace; color: #aab0c0; white-space: pre; }
+    .tree b { color: #e8eaf0; font-weight: 500; }
+    .tree i { color: #7b8294; font-style: normal; }
+    .tree em { color: #e9a23b; font-style: normal; }
+    .code { font: 11.5px/1.6 'IBM Plex Mono', Menlo, monospace; color: #aab0c0; white-space: pre; }
+    .code .key { color: #e8eaf0; }
+    .code .str { color: #7bc47f; }
+    .code .num { color: #d9c27e; }
+    .code .c { color: #7b8294; }
+    .card { border: 1px solid #353b4a; border-radius: 6px; background: #1b1e25; overflow: hidden; }
+    .cardhead { padding: 8px 12px; border-bottom: 1px solid #353b4a; display: flex; align-items: center; justify-content: space-between; }
+    .move { display: flex; flex-direction: column; gap: 6px; font-size: 11.5px; color: #aab0c0; line-height: 1.5; }
+    .move div { display: flex; gap: 8px; align-items: baseline; }
+    .move .mono { color: #e8eaf0; flex: none; min-width: 92px; }
+  </style>
+</helmet>
+<div style="width: 1120px; height: 640px; box-sizing: border-box; overflow: hidden; background: #15171c; padding: 26px 30px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="display: flex; flex-direction: column; gap: 4px;">
+    <div style="font-size: 17px; font-weight: 600;">The project format, as proposed</div>
+    <div style="font-size: 12px; color: #7b8294;">Plain JSON, versioned from day one, read strictly. The folder is the unit of sharing; the project file lists what is in it so a missing file is reported rather than silently blank.</div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 300px minmax(0, 1fr) 300px; gap: 14px; flex-grow: 1; min-height: 0;">
+
+    <div class="card">
+      <div class="cardhead"><span class="k">Folder</span><span class="mono" style="font-size: 11px; color: #7b8294;">~/levels/harbour</span></div>
+      <div class="tree" style="padding: 10px 14px;"><em>papercut.json</em>
+<b>maps/</b>
+  market-square.map.json
+  harbour-road.map.json
+  cliff-path.map.json
+<b>sheets/</b>
+  ground.png
+  ground.terrain.json   <i>sidecar</i>
+  cliffs.png
+  cliffs.terrain.json
+  props-town.png
+<b>schemas/</b>            <i>engine-owned</i>
+  npc.schema.json
+  trigger.schema.json
+<b>build/</b>              <i>export output</i>
+  market-square.glb
+<i>.papercut/</i>           <i>local, ignored</i>
+  recents, last map</div>
+    </div>
+
+    <div class="card" style="display: flex; flex-direction: column; min-height: 0;">
+      <div class="cardhead"><span class="mono" style="font-size: 12px; color: #e9a23b;">papercut.json</span><span class="k">excerpt</span></div>
+      <div class="code" style="padding: 10px 14px; overflow: hidden;">{
+  <span class="key">"formatVersion"</span>: <span class="num">1</span>,
+  <span class="key">"name"</span>: <span class="str">"Harbour Town"</span>,
+  <span class="key">"resolution"</span>: { <span class="key">"texelDensity"</span>: <span class="num">16</span>, <span class="key">"filtering"</span>: <span class="str">"nearest"</span> },
+  <span class="key">"sheets"</span>: [
+    { <span class="key">"path"</span>: <span class="str">"sheets/ground.png"</span>, <span class="key">"tile"</span>: <span class="num">16</span>,
+      <span class="key">"terrainSet"</span>: <span class="str">"sheets/ground.terrain.json"</span> },
+    { <span class="key">"path"</span>: <span class="str">"sheets/cliffs.png"</span>, <span class="key">"tile"</span>: <span class="num">16</span>,
+      <span class="key">"terrainSet"</span>: <span class="str">"sheets/cliffs.terrain.json"</span> },
+    { <span class="key">"path"</span>: <span class="str">"sheets/props-town.png"</span>, <span class="key">"tile"</span>: <span class="num">32</span> },
+    { <span class="key">"path"</span>: <span class="str">"sheets/water.png"</span>, <span class="key">"tile"</span>: <span class="num">16</span> }  <span class="c">← listed, so its absence is reported</span>
+  ],
+  <span class="key">"materials"</span>: [
+    { <span class="key">"id"</span>: <span class="num">0</span>, <span class="key">"name"</span>: <span class="str">"Grass"</span>, <span class="key">"role"</span>: <span class="str">"top"</span>, <span class="key">"color"</span>: <span class="num">6989903</span>,
+      <span class="key">"top"</span>:  { <span class="key">"sheet"</span>: <span class="str">"ground.png"</span>, <span class="key">"terrain"</span>: <span class="str">"grass"</span> },
+      <span class="key">"side"</span>: { <span class="key">"sheet"</span>: <span class="str">"ground.png"</span>, <span class="key">"terrain"</span>: <span class="str">"dirt"</span> } },
+    <span class="c">…</span>
+  ],
+  <span class="key">"camera"</span>: { <span class="c">the rig defaults every map starts from</span> },
+  <span class="key">"maps"</span>: [
+    <span class="str">"maps/market-square.map.json"</span>,
+    <span class="str">"maps/harbour-road.map.json"</span>,
+    <span class="str">"maps/cliff-path.map.json"</span>
+  ],
+  <span class="key">"schemas"</span>: <span class="str">"schemas/"</span>
+}</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <div class="card">
+        <div class="cardhead"><span class="k">Moves out of the map file</span></div>
+        <div class="move" style="padding: 10px 12px;">
+          <div><span class="mono">materials</span><span>the library, by stable id. A map keeps only the ids its voxels store.</span></div>
+          <div><span class="mono">texelDensity</span><span>one resolution profile per project. Per-map override deferred until a map needs one.</span></div>
+          <div><span class="mono">filtering</span><span>with it.</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="cardhead"><span class="k">Stays in the map file</span></div>
+        <div class="move" style="padding: 10px 12px;">
+          <div><span class="mono">structures</span><span>the voxel volumes and sketches, with their paint.</span></div>
+          <div><span class="mono">objects</span><span>placed sprites and their fields.</span></div>
+          <div><span class="mono">camera</span><span>an optional override of the project rig, and camera zones.</span></div>
+          <div><span class="mono">atmosphere</span><span>per map.</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="cardhead"><span class="k">Not in either</span></div>
+        <div class="move" style="padding: 10px 12px;">
+          <div><span class="mono">tile tags</span><span>live in the sheet's sidecar, so a sheet is portable between projects.</span></div>
+          <div><span class="mono">recents, last map</span><span>local state in .papercut/, never shared.</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

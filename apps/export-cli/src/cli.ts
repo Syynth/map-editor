@@ -43,7 +43,8 @@ async function main(argv: string[]): Promise<number> {
   const [inputPath, outputPath] = paths
   try {
     const result = await exportMapFile(inputPath, outputPath, { merge })
-    process.stdout.write(`${outputPath}: ${result.bytes} bytes from "${result.name}"\n`)
+    for (const warning of result.warnings) process.stderr.write(`map-export: ${warning}\n`)
+    process.stdout.write(`${outputPath}: ${result.bytes} bytes from "${result.name}"${result.project ? ` in ${result.project}` : ' (no project above it)'}\n`)
     return 0
   } catch (error) {
     // A bad path or a map this build cannot load is a user error, not a crash

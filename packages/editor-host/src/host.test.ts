@@ -1,4 +1,4 @@
-import { FORMAT_VERSION, HALF, addObject, createDocument, createMap, defaultFacing, frameOf, groundHeight, materialById, raise, removeObject, serialize, topHeight, type MapDoc, type MapObject, type Patch, type ReadonlyMapDoc, type SurfaceAddress, type SurfaceKind, type VoxelStructure } from '@papercut/document'
+import { FORMAT_VERSION, HALF, addObject, createDocument, createMap, createProject, serializeProject, defaultFacing, frameOf, groundHeight, materialById, raise, removeObject, serialize, topHeight, type MapDoc, type MapObject, type Patch, type ProjectDoc, type ReadonlyMapDoc, type SurfaceAddress, type SurfaceKind, type VoxelStructure } from '@papercut/document'
 import { commands, defineFeature, dispose, provideFeature, type HotHandle, reserveOwner, tools as toolDeclarations } from '@papercut/registry'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { SimulatedClock, setup as setupMachine, types, type AnyActorRef } from 'xstate'
@@ -28,9 +28,9 @@ const dispatched = new Set<string>()
 const GHOST_OWNER = reserveOwner('ghost-feature')
 toolDeclarations.declare(GHOST_OWNER, { id: 'ghost', title: 'Ghost' })
 
-function makeHost(features?: readonly Feature[]): { host: Host; clock: SimulatedClock; dispatch: Host['dispatch'] } {
+function makeHost(features?: readonly Feature[], project?: ProjectDoc): { host: Host; clock: SimulatedClock; dispatch: Host['dispatch'] } {
   const clock = new SimulatedClock()
-  const host = createHost({ document: createDocument(createMap(8, 8)), clock, features })
+  const host = createHost({ document: createDocument(createMap(8, 8)), project, clock, features })
   const dispatch: Host['dispatch'] = (id, args) => {
     dispatched.add(id)
     return host.dispatch(id, args)
@@ -130,21 +130,65 @@ describe('the document commands, routed to the document actor', () => {
     expect(host.reader.undoLabel()).toBe('Add object')
   })
 
-  it('replaces the material list whole, so a reorder is one entry', () => {
+  it('replaces the project\'s material list whole, so a reorder is one change and no voxel changes', () => {
     const { host, dispatch } = makeHost()
-    const before = host.reader.doc.materials
+    const project = () => host.children.project.getSnapshot().context.project
+    const before = project().materials
     const reordered = [...before].reverse()
     const voxels = ground(host.reader.doc).voxels.material.slice()
-    expect(dispatch('materials.set', { materials: reordered })).toEqual({ ok: true })
-    expect(host.reader.doc.materials.map((m) => m.id)).toEqual(reordered.map((m) => m.id))
-    expect(host.reader.undoLabel()).toBe('Materials')
+    const undo = host.reader.undoLabel()
+    expect(dispatch('project.materials.set', { materials: reordered })).toEqual({ ok: true })
+    expect(project().materials.map((m) => m.id)).toEqual(reordered.map((m) => m.id))
+    // A project setting, not a document edit: nothing lands on the undo stack.
+    expect(host.reader.undoLabel()).toBe(undo)
     // The list's order is only its priority: a voxel names its material by id, so no voxel changed what it is made of.
     expect(ground(host.reader.doc).voxels.material).toEqual(voxels)
-    expect(materialById(host.reader.doc.materials, voxels[0])?.name).toBe(materialById(before, voxels[0])?.name)
+    expect(materialById(project().materials, voxels[0])?.name).toBe(materialById(before, voxels[0])?.name)
     // A material that names no terrain is not a material.
-    expect(dispatch('materials.set', { materials: [{ id: 9, name: 'X', color: 0, role: 'any' }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('project.materials.set', { materials: [{ id: 9, name: 'X', color: 0, role: 'any' }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
     // And two materials may not share an id: a voxel names its material by it.
-    expect(dispatch('materials.set', { materials: [before[0], { ...before[1], id: before[0].id }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('project.materials.set', { materials: [before[0], { ...before[1], id: before[0].id }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+  })
+
+  it('holds the project the app opened, and takes its settings and lists as commands', () => {
+    const opened = createProject('Harbour Town', 32)
+    const { host, dispatch } = makeHost(undefined, opened)
+    const project = () => host.children.project.getSnapshot().context.project
+    expect(project()).toBe(opened)
+    expect(dispatch('project.set', { name: 'Harbour', resolution: { texelDensity: 16, filtering: 'linear' } })).toEqual({ ok: true })
+    expect(project().name).toBe('Harbour')
+    expect(project().resolution).toEqual({ texelDensity: 16, filtering: 'linear' })
+    expect(dispatch('project.maps.set', { maps: ['maps/a.map.json', 'maps/b.map.json'] })).toEqual({ ok: true })
+    expect(project().maps).toEqual(['maps/a.map.json', 'maps/b.map.json'])
+    // Paths stay inside the folder, and a sheet is named by its file name, so two cannot share one.
+    expect(dispatch('project.maps.set', { maps: ['../outside.map.json'] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('project.sheets.set', { sheets: [{ path: 'sheets/a.png', tile: 16, terrainSet: null }, { path: 'other/a.png', tile: 16, terrainSet: null }] })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('project.sheets.set', { sheets: [{ path: 'sheets/a.png', tile: 16, terrainSet: 'sheets/a.terrain.json' }] })).toEqual({ ok: true })
+    expect(project().sheets).toEqual([{ path: 'sheets/a.png', tile: 16, terrainSet: 'sheets/a.terrain.json' }])
+    host.stop()
+  })
+
+  it('opens a project from its file text and folder, tracks the current map, and closes back to none', () => {
+    const { host, dispatch } = makeHost()
+    const project = () => host.children.project.getSnapshot().context
+    expect(project().folder).toBeNull()
+    // Closing needs a project to close: the key says none is open.
+    expect(dispatch('project.close')).toMatchObject({ ok: false, kind: 'unavailable' })
+    // A file that will not parse is refused as invalid-args carrying the load error, and nothing changes.
+    expect(dispatch('project.load', { folder: '/p', json: '{"formatVersion": 2}' })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(project().folder).toBeNull()
+    const opened = createProject('Harbour Town', 16)
+    opened.maps = ['maps/a.map.json']
+    expect(dispatch('project.load', { folder: '/projects/harbour', json: serializeProject(opened) })).toEqual({ ok: true })
+    expect(project()).toMatchObject({ folder: '/projects/harbour', map: null })
+    expect(project().project).toEqual(opened)
+    expect(host.contextKeys()['project.open']).toBe(true)
+    expect(dispatch('project.current', { map: 'maps/a.map.json' })).toEqual({ ok: true })
+    expect(project().map).toBe('maps/a.map.json')
+    expect(dispatch('project.current', { map: '../escape.map.json' })).toMatchObject({ ok: false, kind: 'invalid-args' })
+    expect(dispatch('project.close')).toEqual({ ok: true })
+    expect(project()).toMatchObject({ folder: null, map: null })
+    expect(project().project.name).toBe('Untitled Project')
   })
 
   it('merges the camera rig and the atmosphere, one entry each', () => {
@@ -955,14 +999,14 @@ describe('the viewport actor: what the viewport observed', () => {
     expect(viewport.getSnapshot().context).toMatchObject({ stats: { fps: 60 }, softwareRenderer: true })
   })
 
-  it('holds a loaded terrain set and what loading it said, until told to go back to the generated one', () => {
+  it("holds the project's loaded terrain sets and what loading them said, until the project closes", () => {
     const { host } = makeHost()
     const image = { width: 64, height: 64, data: new Uint8ClampedArray(64 * 64 * 4) }
     const set = { set: { sheet: 'ground.png', tile: 16, columns: 4, rows: 4 }, image }
-    host.children.viewport.send({ type: 'terrain', set, warning: 'expected 16 × 5 tiles' })
-    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedTerrain: set, terrainWarning: 'expected 16 × 5 tiles' })
-    host.children.viewport.send({ type: 'terrain', set: null, warning: null })
-    expect(host.children.viewport.getSnapshot().context.loadedTerrain).toBeNull()
+    host.children.viewport.send({ type: 'terrain', sets: [set], warning: 'sheets/cliffs.png: no such file' })
+    expect(host.children.viewport.getSnapshot().context).toMatchObject({ loadedTerrain: [set], terrainWarning: 'sheets/cliffs.png: no such file' })
+    host.children.viewport.send({ type: 'terrain', sets: [], warning: null })
+    expect(host.children.viewport.getSnapshot().context.loadedTerrain).toEqual([])
     expect(host.children.viewport.getSnapshot().context.terrainWarning).toBeNull()
   })
 

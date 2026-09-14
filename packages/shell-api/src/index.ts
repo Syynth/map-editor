@@ -16,7 +16,7 @@
  * ships a generic, folder-scoped filesystem API as a Developer ID app").
  */
 
-export const SHELL_API_VERSION = 1
+export const SHELL_API_VERSION = 2
 
 export type EntryKind = 'file' | 'directory' | 'symlink' | 'other'
 
@@ -97,12 +97,42 @@ export interface ShellGrants {
   revoke(path: string): Promise<void>
 }
 
+/**
+ * What the shell's native menu asks the page to do (API 2). The menu is the
+ * shell's — it is what the OS shows — but every item is one of these, sent
+ * to the page, which does the work with what it holds. `project.openRecent`
+ * names a folder the page itself listed through `setRecents`.
+ */
+export type MenuCommand =
+  | { readonly id: 'project.new' | 'project.open' | 'project.close' | 'map.new' | 'file.save' | 'file.export' | 'project.settings' }
+  | { readonly id: 'project.openRecent'; readonly folder: string }
+
+export interface RecentEntry {
+  readonly name: string
+  readonly folder: string
+}
+
+export interface MenuState {
+  /** A project is open: Close Project, New Map, Save, Export and Settings are enabled. */
+  readonly projectOpen: boolean
+}
+
+/** The native menu (API 2): the page listens for its commands and keeps its recents and its state current. */
+export interface ShellMenu {
+  onCommand(listener: (command: MenuCommand) => void): () => void
+  /** What File › Open Recent lists, most recent first. */
+  setRecents(recents: readonly RecentEntry[]): Promise<void>
+  setState(state: MenuState): Promise<void>
+}
+
 export interface ShellApi {
   readonly apiVersion: number
   readonly platform: 'darwin' | 'win32' | 'linux'
   readonly fs: ShellFs
   readonly dialogs: ShellDialogs
   readonly grants: ShellGrants
+  /** Since API 2. Absent on an older shell; a bundle that declares `minShellApi: 2` never sees it absent. */
+  readonly menu?: ShellMenu
 }
 
 /** The name the preload exposes the API under. */

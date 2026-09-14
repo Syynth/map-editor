@@ -38,6 +38,7 @@
   "references": [
     { "path": "../../packages/document" },
     { "path": "../../packages/fixtures" },
+    { "path": "../../packages/project" },
     { "path": "../../packages/runtime" }
   ]
 }

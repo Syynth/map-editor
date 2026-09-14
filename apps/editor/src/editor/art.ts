@@ -1,6 +1,6 @@
 /**
  * The placeholder art: the terrain set, the sprites and the sketch textures
- * the generators draw for the document's texel density.
+ * the generators draw for the project's texel density.
  *
  * Generated once per change of what it is generated from, and shared: the
  * stage draws with it, export writes it. Each keeps the last result for the
@@ -8,23 +8,25 @@
  * same images — which the runtime's texture cache is keyed by — rather than
  * three copies.
  *
- * A terrain set the artist loaded from files lives on the viewport actor and
- * is drawn beside the generated one until the document's texel density
- * changes.
+ * The project's own sheets, loaded from its folder, live on the viewport
+ * actor; they are drawn beside the generated placeholder, standing in for it
+ * where they share a name. A sheet at another tile size than the profile's
+ * is left out here — the atlas is one tile size — and reported by the
+ * project settings instead.
  * When the artist can configure terrains and sheets live, this is the one
  * place that learns where the art comes from.
  */
 
 import { useMemo } from 'react'
 
-import type { ReadonlyMapDoc, RgbaImage, SpriteAsset } from '@papercut/document'
-import { useDocumentSelector, useViewportSelector } from '@papercut/editor-host'
+import type { ReadonlyProjectDoc, RgbaImage, SpriteAsset } from '@papercut/document'
+import { useProject, useViewportSelector } from '@papercut/editor-host'
 import { generatePlaceholderTerrainSet } from '@papercut/fixtures'
 // Behind its own subpath (#48): the sprite generator draws with a canvas, and the package root stays DOM-free.
 import { generateSketchTextures, generateSprites } from '@papercut/fixtures/textures'
 import type { LoadedSet } from '@papercut/geometry'
 
-/** The last result for the last inputs: enough, since the document has one texel density at a time. */
+/** The last result for the last inputs: enough, since the project has one texel density at a time. */
 function lastOf<K extends readonly unknown[], V>(make: (...key: K) => V): (...key: K) => V {
   let last: { key: K; value: V } | null = null
   return (...key) => {
@@ -46,29 +48,43 @@ export interface GeneratedArt {
   readonly textures: Record<string, RgbaImage>
 }
 
-/** The generated art for a document as it stands: for a click handler, which reads rather than subscribes. */
-export function artFor(doc: ReadonlyMapDoc): GeneratedArt {
-  return { generatedTerrain: terrainFor(doc.texelDensity), sprites: spritesFor(doc.texelDensity), textures: texturesFor(doc.texelDensity) }
+/** The generated art for a project as it stands: for a click handler, which reads rather than subscribes. */
+export function artFor(project: ReadonlyProjectDoc): GeneratedArt {
+  const density = project.resolution.texelDensity
+  return { generatedTerrain: terrainFor(density), sprites: spritesFor(density), textures: texturesFor(density) }
 }
 
 export interface Art extends GeneratedArt {
-  /** What the terrain draws with: the loaded terrain set if there is one, else the generated one. */
+  /** What the terrain draws with: the project's sheets at the profile's tile size, the generated placeholder standing in for what is missing. */
   readonly terrain: LoadedSet[]
+  /** The project's sheets as they loaded, every tile size, for the settings to list. */
+  readonly loadedTerrain: readonly LoadedSet[]
   readonly terrainWarning: string | null
 }
 
-const densityOf = (doc: ReadonlyMapDoc): number => doc.texelDensity
-const same = Object.is
+const densityOf = (project: ReadonlyProjectDoc): number => project.resolution.texelDensity
+
+/**
+ * What the terrain draws with: the project's sheets at the profile's tile size, with the generated placeholder
+ * standing in for any it lacks. A sheet at another tile size is left out — the atlas is one tile size — and reported
+ * by the project settings instead.
+ */
+export function drawableTerrain(generated: readonly LoadedSet[], loaded: readonly LoadedSet[], density: number): LoadedSet[] {
+  const usable = loaded.filter((s) => s.set.tile === density)
+  if (usable.length === 0) return [...generated]
+  const names = new Set(usable.map((s) => s.set.sheet))
+  return [...generated.filter((s) => !names.has(s.set.sheet)), ...usable]
+}
 
 /** The art, re-rendering only when what it is made from changes. */
 export function useArt(): Art {
-  const density = useDocumentSelector(densityOf, { equal: same })
+  const density = useProject(densityOf)
   // The host holds what this app loaded, in the narrowest shape that says what it is; this is the one reader.
-  const loaded = useViewportSelector((snapshot) => snapshot.context.loadedTerrain) as LoadedSet | null
+  const loaded = useViewportSelector((snapshot) => snapshot.context.loadedTerrain) as readonly LoadedSet[]
   const terrainWarning = useViewportSelector((snapshot) => snapshot.context.terrainWarning)
   const generatedTerrain = terrainFor(density)
-  // The loaded set joins the generated one rather than replacing it: the default materials point into the placeholder
+  // The loaded sets join the generated one rather than replacing it: the default materials point into the placeholder
   // sheet, and would draw as nothing without it. A set named like a generated one stands in for it.
-  const terrain = useMemo(() => (loaded ? [...generatedTerrain.filter((s) => s.set.sheet !== loaded.set.sheet), loaded] : generatedTerrain), [loaded, generatedTerrain])
-  return { terrain, generatedTerrain, sprites: spritesFor(density), textures: texturesFor(density), terrainWarning }
+  const terrain = useMemo(() => drawableTerrain(generatedTerrain, loaded, density), [loaded, generatedTerrain, density])
+  return { terrain, loadedTerrain: loaded, generatedTerrain, sprites: spritesFor(density), textures: texturesFor(density), terrainWarning }
 }

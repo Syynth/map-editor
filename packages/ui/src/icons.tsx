@@ -280,6 +280,20 @@ const GLYPHS = {
   ),
   plus: <path d="M12 5v14M5 12h14" />,
   chevronDown: <path d="M6 9l6 6 6-6" />,
+  folder: <path d="M3 7h6l2 2h10v10H3z" />,
+  map: (
+    <>
+      <path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z" />
+      <path d="M9 3v15M15 6v15" />
+    </>
+  ),
+  settings: (
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1" />
+    </>
+  ),
+  close: <path d="M18 6L6 18M6 6l12 12" />,
 } satisfies Record<string, ReactElement>
 
 export type IconName = keyof typeof GLYPHS

@@ -19,7 +19,7 @@
  * to the first one; a host that outlives React has no such seam.
  */
 
-import type { ReadonlyMapDoc } from '@papercut/document'
+import type { ReadonlyMapDoc, ReadonlyProjectDoc } from '@papercut/document'
 import { useSelector } from '@xstate/react'
 import { createContext, useContext, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react'
 import type { SnapshotFrom } from 'xstate'
@@ -59,6 +59,16 @@ export function useToolsSelector<T>(selector: (snapshot: SnapshotFrom<HostChildr
 /** A slice of the view actor's snapshot — the grid toggle, the open inspector, the selection. */
 export function useViewSelector<T>(selector: (snapshot: SnapshotFrom<HostChildren['view']>) => T, compare?: Compare<T>): T {
   return useSelector(useHost().children.view, selector, compare)
+}
+
+/** A slice of the project actor's snapshot — where the project lives, which map is open. For the document itself use `useProject`. */
+export function useProjectSelector<T>(selector: (snapshot: SnapshotFrom<HostChildren['project']>) => T, compare?: Compare<T>): T {
+  return useSelector(useHost().children.project, selector, compare)
+}
+
+/** A slice of the project — the materials, the resolution profile, the sheets. Re-renders only when the selected value changes by `compare` (default `===`); the project is replaced whole on every edit, so a list's identity says whether it changed. */
+export function useProject<T>(selector: (project: ReadonlyProjectDoc) => T, compare?: Compare<T>): T {
+  return useSelector(useHost().children.project, (snapshot: SnapshotFrom<HostChildren['project']>) => selector(snapshot.context.project), compare)
 }
 
 /** A slice of the viewport actor — the hovered surface, the camera readout, the frame stats. Select one field: they change at pointer and frame rate. */

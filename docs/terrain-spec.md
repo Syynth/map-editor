@@ -21,7 +21,7 @@ interface VoxelStructure {
   size: { width: number; height: number }
   layers: number
   voxels: {
-    /** Index into the map's materials, or AIR. One entry per voxel. */
+    /** The id of a material in the project's library, or AIR. One entry per voxel. */
     material: number[]
     /** A Shape. One entry per voxel; meaningless for air. */
     shape: number[]
@@ -124,11 +124,14 @@ A = nothing makes B's **edge set**. Art drawn to the template is wired in one
 placement; art that was not is tagged one corner at a time. Both are editor
 operations on the sidecar; the map never sees them.
 
-A map's materials point into terrain sets:
+The project's materials point into terrain sets (ruling of 2026-09-14: the
+library is the project's, in `papercut.json`, never a map's; a map stores
+only the ids its voxels hold):
 
 ```ts
 interface MaterialDef {
-  id: string
+  /** Stable, never reused; what a voxel stores. */
+  id: number
   name: string
   /** Fallback colour when no sheet is loaded, and the swatch. */
   color: number
@@ -141,7 +144,7 @@ interface MaterialDef {
 ```
 
 A material with a `side` is one thing, grass-topped dirt, and needs no wall
-painting to look right. The order of `materials` on the map is the
+painting to look right. The order of `materials` on the project is the
 **priority**: it decides which terrain is the shape when a template is
 placed for a pair, and the layering of composited corners (§3). Nothing
 else reads it.
@@ -249,12 +252,14 @@ shows the other materials as chips beside it.
 
 ### The Materials section
 
-The Terrain inspector lists the map's materials in priority order, drag to
+The Terrain inspector lists the project's materials in priority order, drag to
 reorder, with a swatch from the terrain set, the role, and how many voxels
 and faces use each. Selecting one shows its top terrain's edge set, which
 transitions to the other materials are authored in its terrain set and
 which are not, and the actions: rename, duplicate, edit terrain set, delete.
-New materials are added here.
+New materials are added here. Every edit is `project.materials.set` with
+the whole list, on the host's project actor; it is a project setting, not a
+document edit, so it is not undoable.
 
 ## 5. Commands
 
@@ -278,13 +283,16 @@ stays until the Water tool replaces it (§7, step 5).
 
 ## 6. Format
 
-`formatVersion` becomes 3. Per the 2026-09-12 ruling there is no migration:
-a version-2 file is refused. The sample map is regenerated in the new shape
+`formatVersion` becomes 3, then 4 when the materials and the resolution
+profile move to the project (2026-09-14). Per the 2026-09-12 ruling there is
+no migration: an older file is refused. The sample map is regenerated in the new shape
 and the baked fixtures with it.
 
 The placeholder generator produces the sheet `ground.png` and its terrain
-set in memory, for the map's texel density — nothing is written to disk;
-the editor, the export CLI and the tests each draw their own: an edge set
+set in memory, for the project's texel density. A new project writes them
+into its `sheets/` folder beside the sidecar, so the folder stands on its
+own (2026-09-14); the editor, the export CLI and the tests otherwise draw
+their own: an edge set
 per material and transition blocks for every pair of the sample map's
 materials that meet, drawn the way the prototype draws them (a raster pass
 that rounds and fillets the over-terrain's region, then rims it). Grass

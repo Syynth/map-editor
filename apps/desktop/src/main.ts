@@ -1,12 +1,14 @@
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { SHELL_API_VERSION } from '@papercut/shell-api'
-import { BrowserWindow, app, dialog, net, protocol, session, shell, type IpcMainInvokeEvent } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain, net, protocol, session, shell, type IpcMainInvokeEvent } from 'electron'
 import { TRUSTED_BUNDLE_KEYS } from './bundle-keys'
 import { BUNDLE_ORIGIN, BUNDLE_SCHEME, bundleFileFor } from './bundle-protocol'
 import { activeBundle, type ActiveBundle, type BundleStore } from './bundle-store'
 import { registerShellHandlers } from './fs-handlers'
 import { Grants } from './grants'
+import { installMenu } from './menu'
+import { CHANNEL } from './ipc'
 import { isAppUrl } from './origin'
 import { checkForBundleUpdate, type BundleFeed } from './updater'
 
@@ -122,6 +124,18 @@ void app.whenReady().then(() => {
     if (BrowserWindow.getAllWindows().length === 0) window = createWindow()
   })
 
+  // The native menu sends its commands to the window; the page keeps its recents and its state current.
+  const menu = installMenu(process.platform, () => window, () => void shell.openExternal(RELEASES_URL))
+  ipcMain.handle(CHANNEL.setRecents, (event, recents: unknown) => {
+    if (!isAppFrame(event)) throw new Error('[NOT_ALLOWED] caller is not the app')
+    const isEntry = (r: unknown): r is { name: string; folder: string } => typeof r === 'object' && r !== null && typeof (r as { name?: unknown }).name === 'string' && typeof (r as { folder?: unknown }).folder === 'string'
+    menu.setRecents(Array.isArray(recents) ? (recents as unknown[]).filter(isEntry) : [])
+  })
+  ipcMain.handle(CHANNEL.setMenuState, (event, state: unknown) => {
+    if (!isAppFrame(event)) throw new Error('[NOT_ALLOWED] caller is not the app')
+    menu.setState({ projectOpen: (state as { projectOpen?: unknown } | null)?.projectOpen === true })
+  })
+
   const feed = bundleFeed()
   if (feed) {
     let checking = false
@@ -233,9 +247,10 @@ function createWindow(): BrowserWindow {
 
 /**
  * The reload prompt (docs/decision-log.md, "Web bundles are signed downloads,
- * applied through a reload prompt"). The page saves its autosave on `pagehide`
- * (apps/editor/src/editor/App.tsx), so a reload keeps the map; declining
- * leaves the update active for the next launch.
+ * applied through a reload prompt"). The page writes the open map to its
+ * project folder on `pagehide` and reopens the last project after a reload
+ * (apps/editor/src/editor/App.tsx, main.tsx), so a reload keeps the map;
+ * declining leaves the update active for the next launch.
  */
 async function offerReload(window: BrowserWindow, bundle: ActiveBundle): Promise<boolean> {
   if (window.isDestroyed()) return false

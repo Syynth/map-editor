@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  DEFAULT_MATERIALS,
   CORNER_OFFSETS,
   DIR_VECTORS,
   HALF,
@@ -22,7 +23,7 @@ import {
   type RgbaImage,
   type VoxelStructure,
 } from '@papercut/document'
-import type { LoadedSet } from './atlas'
+import { terrainKey, type LoadedSet } from './atlas'
 import { createTerrainLook } from './look'
 import { meshTerrainChunk, type MeshBuffers, type TerrainChunkMesh } from './terrain'
 import { addTerrain, createTerrainSet, stampTemplate } from './terrainset'
@@ -54,9 +55,9 @@ function placeholderSet(): LoadedSet {
   return { set, image: solid(16 * TILE, 8 * TILE, [0, 255, 0, 255]) }
 }
 
-/** Mesh one chunk of the ground through a fresh look over the map's materials. */
+/** Mesh one chunk of the ground through a fresh look over the default materials, the ones the sample paints with. */
 function mesh(doc: MapDoc, key: string): TerrainChunkMesh {
-  return meshTerrainChunk(ground(doc), key, createTerrainLook(doc.materials, [placeholderSet()]))
+  return meshTerrainChunk(ground(doc), key, createTerrainLook(DEFAULT_MATERIALS, [placeholderSet()]))
 }
 
 /**
@@ -413,7 +414,7 @@ describe('walls beside slopes', () => {
     setHeight(doc, 0, 0, 4)
     setHeight(doc, 0, 1, 4)
     setRamp(doc, 0, 1, 0)
-    const look = createTerrainLook(doc.materials, [placeholderSet()])
+    const look = createTerrainLook(DEFAULT_MATERIALS, [placeholderSet()])
     const { solid } = meshTerrainChunk(ground(doc), '0,0', look)
     const { width, height, data } = look.atlas.image
     let walls = 0
@@ -433,5 +434,20 @@ describe('walls beside slopes', () => {
       expect(data[(py * width + px) * 4 + 3]).toBe(255)
     }
     expect(walls).toBeGreaterThan(0)
+  })
+})
+
+describe('a material whose sheet is not loaded', () => {
+  it('draws as its colour rather than as a hole', () => {
+    const materials = [{ id: 0, name: 'Grass', color: 0x6aa84f, role: 'top' as const, top: { sheet: 'ground.png', terrain: 'grass' } }, { id: 1, name: 'Moss', color: 0x336633, role: 'top' as const, top: { sheet: 'gone.png', terrain: 'moss' } }]
+    const look = createTerrainLook(materials, [placeholderSet()])
+    const answer = look.atlas.tileFor([terrainKey('gone.png', 'moss'), terrainKey('gone.png', 'moss'), terrainKey('gone.png', 'moss'), terrainKey('gone.png', 'moss')])
+    expect(answer.composite).toBe(true)
+    const [u0, v0] = look.atlas.uv(answer.tile, 0)
+    const { width, height, data } = look.atlas.image
+    const x = Math.floor(u0 * width) + 1
+    const y = Math.floor((1 - v0) * height) - 1
+    const at = (y * width + x) * 4
+    expect([data[at], data[at + 1], data[at + 2], data[at + 3]]).toEqual([0x33, 0x66, 0x33, 255])
   })
 })

@@ -65,6 +65,7 @@
     { "path": "packages/feature-sketch" },
     { "path": "packages/fixtures" },
     { "path": "packages/geometry" },
+    { "path": "packages/project" },
     { "path": "packages/registry" },
     { "path": "packages/runtime" },
     { "path": "packages/shell-api" },

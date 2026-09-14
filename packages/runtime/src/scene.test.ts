@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
 
-import { HALF, PLACEHOLDER_SHEET, SURFACE_SKETCH_CAP, SURFACE_TOP, allChunkKeys, createMap, createSketch, fillColumn, topHeight, type RgbaImage, type SpriteAsset, type VoxelStructure } from '@papercut/document'
+import { DEFAULT_MATERIALS, HALF, PLACEHOLDER_SHEET, SURFACE_SKETCH_CAP, SURFACE_TOP, allChunkKeys, createMap, createSketch, fillColumn, topHeight, type RgbaImage, type SpriteAsset, type VoxelStructure } from '@papercut/document'
 import { addTerrain, createTerrainSet, stampTemplate, type LoadedSet } from '@papercut/geometry'
 import { Picker } from './picking'
 import { rgbaTexture } from './billboard'
@@ -36,7 +36,7 @@ const sprites: Record<string, SpriteAsset> = {
 }
 
 function scene(width: number, height: number): RuntimeScene {
-  return new RuntimeScene(createMap(width, height), { terrain: [terrainSet()], sprites, textures: {} })
+  return new RuntimeScene(createMap(width, height), { terrain: [terrainSet()], sprites, textures: {}, materials: DEFAULT_MATERIALS, filtering: 'nearest' })
 }
 
 describe('full rebuild reconciles chunks', () => {
@@ -107,7 +107,7 @@ describe('the layer view is a section cut: nothing is rebuilt', () => {
     island.layers = 6
     doc.structures[island.id] = island
     doc.structureOrder.push(island.id)
-    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {} })
+    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {}, materials: DEFAULT_MATERIALS, filtering: 'nearest' })
     runtime.rebuildAll()
     return { doc, runtime, island, ground: g }
   }
@@ -193,7 +193,7 @@ describe('a structure that moved is re-placed, not remeshed', () => {
       doc.structures[s.id] = s
       doc.structureOrder.push(s.id)
     }
-    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {} })
+    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {}, materials: DEFAULT_MATERIALS, filtering: 'nearest' })
     runtime.rebuildAll()
     const before = runtime.terrainMeshes()
     const disposed: THREE.BufferGeometry[] = []
@@ -227,7 +227,7 @@ describe('bounds of a target', () => {
     island.layers = 2
     doc.structures[island.id] = island
     doc.structureOrder.push(island.id)
-    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {} })
+    const runtime = new RuntimeScene(doc, { terrain: [terrainSet()], sprites, textures: {}, materials: DEFAULT_MATERIALS, filtering: 'nearest' })
     runtime.rebuildAll()
 
     const ground = runtime.boundsOf({ kind: 'structure', id: 'ground' })
@@ -255,7 +255,7 @@ describe('textures the scene no longer draws with go back to the GPU', () => {
   it('releases the old atlas when new terrain sets replace it — as every document load does — and never uploads a sheet itself', () => {
     const first = terrainSet([0, 255, 0, 255])
     const second = terrainSet([0, 0, 255, 255])
-    const runtime = new RuntimeScene(createMap(4, 4), { terrain: [first], sprites, textures: {} })
+    const runtime = new RuntimeScene(createMap(4, 4), { terrain: [first], sprites, textures: {}, materials: DEFAULT_MATERIALS, filtering: 'nearest' })
     runtime.rebuildAll()
     const sheets = watch(first.image, second.image)
     const material = runtime.terrainMeshes()[0].material as THREE.MeshStandardMaterial
@@ -290,7 +290,7 @@ describe('textures the scene no longer draws with go back to the GPU', () => {
   it('releases the images a new sprite set dropped, and only those', () => {
     const kept = sprites.rock
     const tree: SpriteAsset = { name: 'tree', facings: [solid(4, 6, [0, 128, 0, 255])], widthTiles: 1, heightTiles: 2, emissive: false }
-    const runtime = new RuntimeScene(createMap(4, 4), { terrain: [terrainSet()], sprites: { rock: kept }, textures: {} })
+    const runtime = new RuntimeScene(createMap(4, 4), { terrain: [terrainSet()], sprites: { rock: kept }, textures: {}, materials: DEFAULT_MATERIALS, filtering: 'nearest' })
     const disposed = watch(kept.facings[0], tree.facings[0])
 
     runtime.setSprites({ rock: kept, tree })

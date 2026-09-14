@@ -21,7 +21,7 @@
  * keymap rather than from a string written here.
  */
 
-import { MAX_HEIGHT, maxHeightOf, type ReadonlyMapDoc } from '@papercut/document'
+import { MAX_HEIGHT, maxHeightOf, type MaterialDef, type ReadonlyMapDoc } from '@papercut/document'
 import { chordFor, panels, type OwnerId, type Platform } from '@papercut/registry'
 import { BarDivider, BarLabel, BarScrub, Chip, ColorInput, Field, IconSegmented, Note, Scrub, Verb } from '@papercut/ui'
 
@@ -30,6 +30,8 @@ import type { TerrainParams } from './verbs'
 
 export interface TerrainPanelProps {
   readonly doc: ReadonlyMapDoc
+  /** The project's material library, in priority order: the chips the bar offers. */
+  readonly materials: readonly MaterialDef[]
   readonly params: TerrainParams
   /** A parameter change, as the partial the tools actor takes. */
   readonly set: (changes: Partial<TerrainParams>) => void
@@ -154,7 +156,7 @@ export function TerrainBar(props: TerrainPanelProps) {
           />
           <BarDivider />
           {params.paintVerb === 'material'
-            ? props.doc.materials.map((material) => (
+            ? props.materials.map((material) => (
                 <Chip key={material.id} title={`${material.name} · ${material.role}`} swatch={cssColor(material.color)} active={material.id === params.material} onClick={() => set({ material: material.id })} />
               ))
             : null}

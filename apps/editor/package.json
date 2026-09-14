@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {},
   "papercut": {
-    "minShellApi": 1
+    "minShellApi": 2
   },
   "scripts": {
     "dev": "vite",
@@ -21,7 +21,9 @@
     "@papercut/feature-terrain": "workspace:*",
     "@papercut/fixtures": "workspace:*",
     "@papercut/geometry": "workspace:*",
+    "@papercut/project": "workspace:*",
     "@papercut/registry": "workspace:*",
+    "@papercut/shell-api": "workspace:*",
     "@papercut/runtime": "workspace:*",
     "@papercut/ui": "workspace:*",
     "@papercut/viewport": "workspace:*",

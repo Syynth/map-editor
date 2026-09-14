@@ -37,6 +37,7 @@ import {
   toWorld,
   type DocumentTarget,
   topHeight,
+  type MaterialDef,
 } from '@papercut/document'
 import {
   Character,
@@ -248,6 +249,7 @@ export class Viewport {
   private bloom: UnrealBloomPass
   private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera
   private scene: RuntimeScene
+  private filtering: 'nearest' | 'linear'
   private picker = new Picker()
   /** World height of the current left press's hit — the plane `StrokePick.plane` is measured on. */
   private strokePlaneY: number | null = null
@@ -320,6 +322,7 @@ export class Viewport {
     // The layer view is a clipping plane on the scene's materials (`runtime`'s `section.ts`).
     this.renderer.localClippingEnabled = true
 
+    this.filtering = assets.filtering
     this.scene = new RuntimeScene(reader.doc, assets)
     this.scene.rebuildAll()
     this.drawnGeneration = reader.generation
@@ -478,6 +481,17 @@ export class Viewport {
 
   loadTerrain(sets: LoadedSet[]): void {
     this.scene.refreshTerrain(sets)
+  }
+
+  /** The project's materials: what a voxel's id draws as. Remeshes everything when the list changes. */
+  setMaterials(materials: readonly MaterialDef[]): void {
+    this.scene.setMaterials(materials)
+  }
+
+  /** The project's texture filtering, for every texture the viewport draws. */
+  setFiltering(filtering: 'nearest' | 'linear'): void {
+    this.filtering = filtering
+    this.scene.setFiltering(filtering)
   }
 
   loadSprites(sprites: Record<string, SpriteAsset>): void {
@@ -784,7 +798,7 @@ export class Viewport {
   private viewContext(): ObjectViewContext {
     return {
       rig: this.reader.doc.camera,
-      nearest: this.reader.doc.filtering === 'nearest',
+      nearest: this.filtering === 'nearest',
       facingOverride: null,
     }
   }

@@ -11,6 +11,7 @@
 import { describe, test } from 'vitest'
 
 import {
+  DEFAULT_MATERIALS,
   PLACEHOLDER_SHEET,
   allChunkKeys,
   createMap,
@@ -64,7 +65,7 @@ function hilly(width: number, height: number): MapDoc {
 }
 
 const map128 = hilly(128, 128)
-const look = createTerrainLook(map128.materials, [placeholderSet()])
+const look = createTerrainLook(DEFAULT_MATERIALS, [placeholderSet()])
 const keys128 = allChunkKeys(128, 128)
 const middle = keys128[Math.floor(keys128.length / 2)]
 

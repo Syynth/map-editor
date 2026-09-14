@@ -4,6 +4,7 @@ import { applyPatches, History, inversePatch, patchAddress, type Patch, type Str
 import { createMap, defaultFacing, NO_RAMP, type MapDoc, type MapObject, type ReadonlyMapDoc } from './document'
 import { childrenOf, descendantsOf, outlineOf, type VoxelStructure } from './structure'
 import { deserialize, LoadError, serialize } from './io'
+import { createProject, parseProject, serializeProject, sheetName } from './project'
 import { addObject, addSketchPoint, addStructure, brushCells, clearRampRun, closeSketch, columnPatches, createSketch, deleteSketchPoint, fillCells, flatten, paintFace, placeStructureOnto, raise, rampPlan, rampRun, rampRunBlocked, rampRunLength, removeObject, removeStructure, reparentStructure, setSketch, updateObject } from './ops'
 import { FACE_TOP, countDormant, faceKey, parseFaceKey } from './paint'
 import { EditorStore } from './store'
@@ -556,7 +557,7 @@ describe('io', () => {
     expect(columnHeights(ground(restored))).toEqual(columnHeights(ground(store.reader.doc)))
     expect(ground(restored).paint.faces).toEqual(ground(store.reader.doc).paint.faces)
     expect(ground(restored).paint.faces[faceKey(1, 1, top, FACE_TOP)]).toBe(4)
-    expect(restored.formatVersion).toBe(3)
+    expect(restored.formatVersion).toBe(4)
   })
 
   it('refuses an older format outright: no migrations until data exists', () => {
@@ -784,7 +785,7 @@ describe('structures', () => {
 })
 
 describe('a map file is checked before it is believed', () => {
-  const raw = () => JSON.parse(serialize(createMap(2, 2))) as { structures: Record<string, { voxels: { material: number[]; shape: number[] }; layers: number }>; materials: unknown[] }
+  const raw = () => JSON.parse(serialize(createMap(2, 2))) as { structures: Record<string, { voxels: { material: number[]; shape: number[] }; layers: number }> }
 
   it('refuses a voxel whose material or shape is not one', () => {
     const material = raw()
@@ -795,12 +796,50 @@ describe('a map file is checked before it is believed', () => {
     expect(() => deserialize(JSON.stringify(shape))).toThrow(/shape\[1\] is 99/)
   })
 
-  it('refuses a volume taller than a band level can name, and a map with no materials', () => {
+  it('refuses a volume taller than a band level can name', () => {
     const tall = raw()
     tall.structures.ground.layers = 129
     expect(() => deserialize(JSON.stringify(tall))).toThrow(/at most 128/)
+  })
+})
+
+describe('a project file is checked before it is believed', () => {
+  const raw = () => JSON.parse(serializeProject(createProject('Harbour Town'))) as Record<string, unknown>
+
+  it('round-trips, and starts with the placeholder sheet, the default materials and no maps', () => {
+    const project = createProject('Harbour Town', 32)
+    expect(project.resolution).toEqual({ texelDensity: 32, filtering: 'nearest' })
+    expect(project.sheets).toEqual([{ path: 'sheets/ground.png', tile: 32, terrainSet: 'sheets/ground.terrain.json' }])
+    expect(project.maps).toEqual([])
+    expect(parseProject(serializeProject(project))).toEqual(project)
+    expect(sheetName('sheets/ground.png')).toBe('ground.png')
+  })
+
+  it('refuses another format, an empty material list, a shared id and a path outside the folder', () => {
+    const version = raw()
+    version.formatVersion = 2
+    expect(() => parseProject(JSON.stringify(version))).toThrow(/format 2/)
     const bare = raw()
     bare.materials = []
-    expect(() => deserialize(JSON.stringify(bare))).toThrow(/at least one material/)
+    expect(() => parseProject(JSON.stringify(bare))).toThrow(/at least one material/)
+    const shared = raw()
+    shared.materials = [{ id: 1, top: { sheet: 'g.png', terrain: 'a' } }, { id: 1, top: { sheet: 'g.png', terrain: 'b' } }]
+    expect(() => parseProject(JSON.stringify(shared))).toThrow(/share the id 1/)
+    const outside = raw()
+    outside.maps = ['../elsewhere.map.json']
+    expect(() => parseProject(JSON.stringify(outside))).toThrow(/inside the project/)
+    const twice = raw()
+    twice.sheets = [{ path: 'sheets/a.png', tile: 16 }, { path: 'other/a.png', tile: 16 }]
+    expect(() => parseProject(JSON.stringify(twice))).toThrow(/both called a.png/)
+    expect(() => parseProject('nope')).toThrow(LoadError)
+  })
+
+  it('defaults what a sparse file leaves out, and never a sheet without a tile size', () => {
+    const sparse = parseProject(JSON.stringify({ formatVersion: 1, name: 'Sparse' }))
+    expect(sparse.resolution).toEqual({ texelDensity: 16, filtering: 'nearest' })
+    expect(sparse.materials.length).toBeGreaterThan(0)
+    expect(sparse.sheets).toEqual([])
+    expect(sparse.maps).toEqual([])
+    expect(() => parseProject(JSON.stringify({ formatVersion: 1, sheets: [{ path: 'sheets/a.png' }] }))).toThrow(/no tile size/)
   })
 })

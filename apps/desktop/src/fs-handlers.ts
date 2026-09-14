@@ -1,5 +1,6 @@
 import { watch as watchPath, type FSWatcher } from 'node:fs'
 import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { dirname, basename } from 'node:path'
 import { join } from 'node:path'
 import type { DirEntry, EntryKind, FileStat, WatchEvent } from '@papercut/shell-api'
 import { BrowserWindow, dialog, ipcMain, shell, type IpcMainInvokeEvent, type WebContents } from 'electron'
@@ -49,7 +50,12 @@ export function registerShellHandlers(
   handle(CHANNEL.readTextFile, async (_event, path: unknown) => readFile(await grants.resolve(asString(path)), 'utf8'))
   handle(CHANNEL.writeFile, async (_event, path: unknown, data: unknown) => {
     if (typeof data !== 'string' && !(data instanceof Uint8Array)) throw invalid('data must be a string or Uint8Array')
-    await writeFile(await grants.resolve(asString(path)), data)
+    // Whole-file and atomic: written beside the target, then renamed over it, so a crash mid-write leaves the file
+    // that was there rather than a truncated one — the map is the only copy.
+    const target = await grants.resolve(asString(path))
+    const temp = join(dirname(target), `.${basename(target)}.${process.pid}.tmp`)
+    await writeFile(temp, data)
+    await rename(temp, target)
   })
   handle(CHANNEL.readDir, async (_event, path: unknown): Promise<DirEntry[]> => {
     const entries = await readdir(await grants.resolve(asString(path)), { withFileTypes: true })

@@ -71,12 +71,14 @@ import {
   groundedPosition,
   structureOf,
   toLocal,
+  createProject,
   type Cell,
   type DocumentActorLogic,
   type DocumentReader,
   type DocumentSource,
   type Frame,
   type Patch,
+  type ProjectDoc,
   type ReadonlyMapDoc,
 } from '@papercut/document'
 import {
@@ -111,6 +113,7 @@ import {
 
 import { gestureLogic, type Gesture, type GestureLogic, type PointerMotion, type PointerPress, type PointerRelease } from './gesture'
 import { playLogic, type PlayLogic } from './play'
+import { PROJECT_OWNER, projectKeys, projectLogicWith, type ProjectLogic } from './project'
 import { createStrokeHandler, type PickSample, type PointerModifiers, type StrokeDeps, type StrokeSample } from './strokes'
 import { TOOLS_OWNER, toolKeys, toolsLogicWith, type FeatureParams, type ToolsLogic } from './tools'
 import { VIEW_OWNER, viewKeys, viewLogic, type Selection, type ViewLogic } from './view'
@@ -278,6 +281,8 @@ export interface HostOptions {
    * `packages/document` any more.
    */
   readonly document: DocumentSource
+  /** The project the document belongs to: its materials, resolution and sheets. A fresh one with the defaults when absent. */
+  readonly project?: ProjectDoc
   /** Time is injected (#10). Absent means xstate's real clock. */
   readonly clock?: Clock
   readonly features?: readonly Feature[]
@@ -306,7 +311,7 @@ function contractFor(instances: Map<OwnerId, EditorFeatureInstance>, toolId: str
   return owner === undefined ? undefined : instances.get(owner)?.tools?.[toolId]
 }
 
-function hostLogic(source: DocumentSource, features: readonly Feature[], instances: Map<OwnerId, EditorFeatureInstance>) {
+function hostLogic(source: DocumentSource, project: ProjectDoc, features: readonly Feature[], instances: Map<OwnerId, EditorFeatureInstance>) {
   const { reader } = source
 
   return setup({
@@ -325,6 +330,7 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
     // logic with no `initialTransition` and the child starts in `error`.
     context: ({ spawn }) => {
       const document = spawn(source.logic, { id: 'document' })
+      const projectRef = spawn(projectLogicWith(project), { id: 'project' })
       const tools = spawn(toolsLogicWith(Object.fromEntries(features.map((feature) => [feature.owner, (feature.params ?? {}) as FeatureParams]))), { id: 'tools' })
       const view = spawn(viewLogic, { id: 'view' })
       const viewport = spawn(viewportLogic, { id: 'viewport' })
@@ -377,6 +383,7 @@ function hostLogic(source: DocumentSource, features: readonly Feature[], instanc
       return {
         children: {
           [DOCUMENT_OWNER]: document,
+          [PROJECT_OWNER]: projectRef,
           [TOOLS_OWNER]: tools,
           [VIEW_OWNER]: view,
           [VIEWPORT_OWNER]: viewport,
@@ -509,6 +516,8 @@ export type HostActor = Actor<HostLogic>
 
 export interface HostChildren {
   readonly document: ActorRefFrom<DocumentActorLogic>
+  /** The project the document belongs to (`project.ts`): materials, resolution, sheets, the map list. */
+  readonly project: ActorRefFrom<ProjectLogic>
   readonly tools: ActorRefFrom<ToolsLogic>
   readonly view: ActorRefFrom<ViewLogic>
   /** What the viewport reports back: hover, brush cells, camera, frame stats (`viewport.ts`). */
@@ -578,7 +587,7 @@ export interface Host {
   stop(): void
 }
 
-export function createHost({ document: source, clock, features = [] }: HostOptions): Host {
+export function createHost({ document: source, project = createProject(), clock, features = [] }: HostOptions): Host {
   const deadLetters: DeadLetter[] = []
   // Built by `create` beside each spawned ref, and replaced wholesale when a
   // hot re-import re-mints the owner.
@@ -594,13 +603,14 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
     deadLetters.push({ reason: event.reason, target, event: event.event })
   }
 
-  const actor = createActor(hostLogic(source, features, instances), clock ? { clock, inspect } : { inspect })
+  const actor = createActor(hostLogic(source, project, features, instances), clock ? { clock, inspect } : { inspect })
   actor.start()
 
   const { reader } = source
   const initial = actor.getSnapshot().context.children
   const children: HostChildren = {
     document: initial[DOCUMENT_OWNER] as ActorRefFrom<DocumentActorLogic>,
+    project: initial[PROJECT_OWNER] as ActorRefFrom<ProjectLogic>,
     tools: initial[TOOLS_OWNER] as ActorRefFrom<ToolsLogic>,
     view: initial[VIEW_OWNER] as ActorRefFrom<ViewLogic>,
     viewport: initial[VIEWPORT_OWNER] as ActorRefFrom<ViewportLogic>,
@@ -652,6 +662,7 @@ export function createHost({ document: source, clock, features = [] }: HostOptio
       [toolKeys.tool.id]: tools.context.tool,
       [viewKeys.hasSelection.id]: view.context.selection !== null,
       [viewKeys.gameCamera.id]: view.context.gameCamera,
+      [projectKeys.open.id]: children.project.getSnapshot().context.folder !== null,
       [documentKeys.canUndo.id]: reader.canUndo(),
       [documentKeys.canRedo.id]: reader.canRedo(),
     }

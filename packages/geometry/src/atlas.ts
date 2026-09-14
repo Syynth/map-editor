@@ -81,7 +81,15 @@ export class TerrainAtlas {
    * higher number draws over a lower one in a composite. Unknown terrains
    * count as lowest.
    */
-  constructor(sets: readonly LoadedSet[], private readonly priority: (key: TerrainKey) => number) {
+  /**
+   * @param colorOf The flat colour (0xRRGGBB) a terrain falls back to when its set is not loaded — its material's
+   * swatch — or `null` for a terrain nothing names, which draws magenta so the hole is seen rather than missed.
+   */
+  constructor(
+    sets: readonly LoadedSet[],
+    private readonly priority: (key: TerrainKey) => number,
+    private readonly colorOf: (key: TerrainKey) => number | null = () => null,
+  ) {
     const tile = sets[0]?.set.tile ?? 16
     for (const loaded of sets) {
       if (loaded.set.tile !== tile) throw new Error(`Terrain set ${loaded.set.sheet} has ${loaded.set.tile} px tiles; the atlas is ${tile} px.`)
@@ -204,10 +212,14 @@ export class TerrainAtlas {
       const sheet = key.slice(0, key.lastIndexOf('/'))
       const terrain = key.slice(key.lastIndexOf('/') + 1)
       const loaded = this.sets.get(sheet)
-      if (!loaded) return
-      const edge = edgeTile(loaded.set, terrain, mask)
-      const source = edge ?? exactTile(loaded.set, templateTags(15, null, terrain))
-      if (source === null) return
+      const edge = loaded ? edgeTile(loaded.set, terrain, mask) : null
+      const source = loaded ? (edge ?? exactTile(loaded.set, templateTags(15, null, terrain))) : null
+      if (!loaded || source === null) {
+        // No sheet, or no tile for it in the sheet: the material's colour fills the terrain's corners, so a
+        // material pointing at a sheet the folder lacks is a flat face rather than a hole in the ground.
+        this.fill(tile, mask, this.colorOf(key) ?? 0xff00ff)
+        return
+      }
       const sx = (source % loaded.set.columns) * this.tile
       const sy = Math.floor(source / loaded.set.columns) * this.tile
       this.blit(loaded.image, sx, sy, tile, edge === null ? mask : null, true)
@@ -222,6 +234,26 @@ export class TerrainAtlas {
   private allocate(): number {
     if (this.next >= ATLAS_COLUMNS * ATLAS_ROWS) throw new Error(`The terrain atlas is full: ${ATLAS_COLUMNS * ATLAS_ROWS} tiles. Author transitions instead of compositing them.`)
     return this.next++
+  }
+
+  /** Paint the quadrants in `mask` of atlas tile `tile` a flat colour, over whatever is there. */
+  private fill(tile: number, mask: number, color: number): void {
+    const t = this.tile
+    const dx = (tile % ATLAS_COLUMNS) * t
+    const dy = Math.floor(tile / ATLAS_COLUMNS) * t
+    const width = ATLAS_COLUMNS * t
+    const half = t / 2
+    for (let y = 0; y < t; y++) {
+      for (let x = 0; x < t; x++) {
+        if (!(mask & CORNER_BITS[(y >= half ? 2 : 0) + (x >= half ? 1 : 0)])) continue
+        const di = ((dy + y) * width + dx + x) * 4
+        this.buffer[di] = (color >> 16) & 0xff
+        this.buffer[di + 1] = (color >> 8) & 0xff
+        this.buffer[di + 2] = color & 0xff
+        this.buffer[di + 3] = 255
+      }
+    }
+    this.version += 1
   }
 
   /** Copy one tile of `source` at (`sx`, `sy`) onto atlas tile `tile`: the quadrants in `mask` only (all when null), source-over when `over`. */

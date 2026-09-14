@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { PLACEHOLDER_SHEET, createMap, defaultFacing, type RgbaImage, type SpriteAsset } from '@papercut/document'
+import { DEFAULT_MATERIALS, PLACEHOLDER_SHEET, createMap, defaultFacing, type RgbaImage, type SpriteAsset } from '@papercut/document'
 import { addTerrain, createTerrainSet, stampTemplate, type LoadedSet } from '@papercut/geometry'
 import { buildExportScene, exportGltf, type ExportOptions } from './export'
 
@@ -70,6 +70,8 @@ function options(overrides: Partial<ExportOptions> = {}): ExportOptions {
     textures: {},
     merge: false,
     terrain: [terrainSet()],
+    materials: DEFAULT_MATERIALS,
+    resolution: { texelDensity: 16, filtering: 'nearest' },
     sprites,
     encodePng: () => Promise.resolve(new Uint8Array([0x89, 0x50, 0x4e, 0x47])),
     ...overrides,

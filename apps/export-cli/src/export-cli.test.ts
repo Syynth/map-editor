@@ -17,9 +17,11 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 
 import { serialize } from '@papercut/document'
-import { createSampleMap } from '@papercut/fixtures'
+import { createSampleMap, generatePlaceholderTerrainSet } from '@papercut/fixtures'
+import { createProjectFolder } from '@papercut/project'
 
 import { exportMapFile } from './index'
+import { fastPngCodec, findProjectFolder, nodeFs } from './project-fs'
 
 async function exportSampleMap(): Promise<Buffer> {
   const dir = await mkdtemp(join(tmpdir(), 'papercut-export-'))
@@ -73,6 +75,23 @@ it('embeds its textures as real PNGs, decoded from the checked-in bake', async (
     expect(png.readUInt32BE(16)).toBeGreaterThan(0)
     expect(png.readUInt32BE(20)).toBeGreaterThan(0)
   }
+})
+
+it('exports a map under the project above it, reading the sheets from the folder', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'papercut-export-'))
+  const folder = join(dir, 'harbour')
+  const created = await createProjectFolder(nodeFs, folder, { name: 'Harbour', texelDensity: 16, placeholder: generatePlaceholderTerrainSet(16), firstMap: createSampleMap() }, fastPngCodec)
+  const mapPath = join(folder, created.project.maps[0])
+  expect(await findProjectFolder(mapPath)).toBe(folder)
+  expect(await findProjectFolder(join(dir, 'loose.json'))).toBeNull()
+  // The sheet written on creation reads back through fast-png as the pixels that were written.
+  const sheet = await fastPngCodec.decode(await nodeFs.readFile(join(folder, 'sheets/ground.png')))
+  expect([sheet.width, sheet.height]).toEqual([created.sets[0].image.width, created.sets[0].image.height])
+  expect(sheet.data).toEqual(created.sets[0].image.data)
+
+  const result = await exportMapFile(mapPath, join(dir, 'harbour.glb'), { merge: false })
+  expect(result).toMatchObject({ name: 'Sample Valley', project: folder, warnings: [] })
+  expect(result.bytes).toBeGreaterThan(0)
 })
 
 it('rejects a map its own loader cannot read, without writing a partial file', async () => {
