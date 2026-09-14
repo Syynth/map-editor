@@ -42,7 +42,15 @@
  * note above describes, one file more. Still an order of magnitude over the
  * suite's own work.
  */
-const BUDGET_MS = 30_000
+/*
+ * Moved from 30 s to 40 s when the terrain round and the project round
+ * landed (2026-09-14): the sheet, atlas, project-folder, native-menu and
+ * session tests brought the suite to 541 tests / 58 files, measured at
+ * 30.5 s and 31.7 s on the cold runner — and `main` itself at 30.6 s after
+ * the terrain merge, so the ceiling had already been crossed by growth
+ * alone. Same per-file cost as the two notes above; same honest fix.
+ */
+const BUDGET_MS = 40_000
 
 export default function setup(): () => void {
   const start = performance.now()
