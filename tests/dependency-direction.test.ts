@@ -106,6 +106,7 @@ const PLACEMENT: Record<string, Placement> = {
 
   '@papercut/editor': { kind: 'app' },
   '@papercut/export-cli': { kind: 'app' },
+  '@papercut/desktop': { kind: 'app' },
 }
 
 interface PackageJson {
