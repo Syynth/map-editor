@@ -9,18 +9,15 @@
  * happened through the view actor's `notice`, which the inspector shows.
  */
 
-import { useState, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 
 import type { ReadonlyMapDoc, ReadonlyProjectDoc } from '@papercut/document'
 import { useDocumentSelector, useHost, useHostSelector, useProject, useProjectSelector, useViewSelector } from '@papercut/editor-host'
 import { chordFor, type Platform } from '@papercut/registry'
-import { exportGltf } from '@papercut/runtime/export'
-import { Action, Brand, Dialog, Field, Menu, MenuDivider, MenuItem, MenuLabel, TextInput, TopButton, TopCrumb, TopGroup, TopGrow, TopSep } from '@papercut/ui'
+import { Brand, Menu, MenuDivider, MenuItem, MenuLabel, TopButton, TopCrumb, TopGroup, TopGrow, TopSep } from '@papercut/ui'
 
-import { artFor } from './art'
 import { run } from './commands'
-import { encodePngWithCanvas } from './rgba'
-import { closeProject, newMapIn, openMapAt, saveNow, type Session } from './session'
+import { closeProject, exportCurrentMap, openMapAt, saveNow, type Session } from './session'
 
 const nameOf = (doc: ReadonlyMapDoc): string => doc.name
 const projectNameOf = (project: ReadonlyProjectDoc): string => project.name
@@ -28,17 +25,6 @@ const mapsOf = (project: ReadonlyProjectDoc): readonly string[] => project.maps
 /** A map's name as the menu lists it, from its path: `maps/harbour-road.map.json` → `harbour-road`. */
 const mapLabel = (path: string): string => path.slice(path.lastIndexOf('/') + 1).replace(/\.map\.json$/, '')
 
-/** Hand the browser a file to save. */
-function download(blob: Blob, name: string): void {
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = name
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
-const slug = (name: string): string => name.replace(/\s+/g, '-').toLowerCase()
 const isPlaying = (snapshot: { value: unknown }): boolean => snapshot.value === 'play'
 
 export function TopBar({ platform, session }: { platform: Platform; session: Session }) {
@@ -48,7 +34,6 @@ export function TopBar({ platform, session }: { platform: Platform; session: Ses
   const projectName = useProject(projectNameOf)
   const maps = useProject(mapsOf)
   const current = useProjectSelector((snapshot) => snapshot.context.map)
-  const [naming, setNaming] = useState<string | null>(null)
   const canUndo = useSyncExternalStore(reader.subscribe, () => reader.canUndo())
   const canRedo = useSyncExternalStore(reader.subscribe, () => reader.canRedo())
   const showGrid = useViewSelector((snapshot) => snapshot.context.showGrid)
@@ -61,28 +46,10 @@ export function TopBar({ platform, session }: { platform: Platform; session: Ses
   }
 
   const onSave = (): void => attempt(saveNow(host, session), 'Saved')
-  const onNewMap = (): void => {
-    const mapName = naming?.trim()
-    setNaming(null)
-    if (mapName) attempt(newMapIn(host, session, mapName), `New map ${mapName}`)
-  }
 
-  const onExport = async (): Promise<void> => {
+  const onExport = (): void => {
     notify('Exporting…')
-    try {
-      const doc = reader.doc
-      const project = host.children.project.getSnapshot().context.project
-      // The generated terrain set, as before #47 when the exporter generated its own: an artist's loaded set still
-      // previews but does not export.
-      const art = artFor(project)
-      const bytes = await exportGltf(doc, { merge: false, textures: art.textures, terrain: art.generatedTerrain, materials: project.materials, resolution: project.resolution, sprites: art.sprites, encodePng: encodePngWithCanvas })
-      const blob = new Blob([bytes], { type: 'model/gltf-binary' })
-      const file = `${slug(doc.name)}.glb`
-      download(blob, file)
-      notify(`Exported ${file} (${(blob.size / 1024).toFixed(0)} KB)`)
-    } catch (error) {
-      notify(`Export failed: ${String(error)}`)
-    }
+    attempt(exportCurrentMap(host).then((done) => notify(done)), 'Exported')
   }
 
   return (
@@ -94,28 +61,12 @@ export function TopBar({ platform, session }: { platform: Platform; session: Ses
           <MenuItem key={path} icon="map" title={mapLabel(path)} active={path === current} meta={path === current ? 'open' : undefined} onClick={() => attempt(openMapAt(host, session, path), `Opened ${mapLabel(path)}`)} />
         ))}
         <MenuDivider />
-        <MenuItem icon="plus" title="New map…" onClick={() => setNaming('')} />
+        <MenuItem icon="plus" title="New map…" onClick={() => run(host, 'view.set', { dialog: 'new-map' })} />
         <MenuDivider />
           <MenuItem icon="settings" title="Project settings…" kbd={chordFor('view.set', { settings: 'general' }, platform)} onClick={() => run(host, 'view.set', { settings: 'general' })} />
           <MenuItem icon="close" title="Close project" onClick={() => attempt(closeProject(host, session), 'Closed')} />
         </Menu>
       </Brand>
-      <Dialog
-        opened={naming !== null}
-        onClose={() => setNaming(null)}
-        title="New map"
-        description="An empty 32 × 32 map, listed after the others and opened."
-        footer={
-          <>
-            <Action title="Cancel" onClick={() => setNaming(null)} />
-            <Action title="Create map" tone="accent" disabled={!naming?.trim()} onClick={onNewMap} />
-          </>
-        }
-      >
-        <Field label="Name">
-          <TextInput value={naming ?? ''} onChange={setNaming} placeholder="Harbour Road" />
-        </Field>
-      </Dialog>
       <TopGrow />
       <TopGroup>
         <TopButton icon="undo" title="Undo" kbd={chordFor('undo', undefined, platform)} disabled={!canUndo} onClick={() => run(host, 'undo')} />
@@ -136,7 +87,7 @@ export function TopBar({ platform, session }: { platform: Platform; session: Ses
       <TopGrow />
       <TopGroup>
         <TopButton icon="save" title="Save" labelled onClick={onSave} />
-        <TopButton icon="export" title="Export glTF" labelled onClick={() => void onExport()} />
+        <TopButton icon="export" title="Export glTF" labelled onClick={onExport} />
       </TopGroup>
       <TopButton
         icon={playing ? 'stop' : 'play'}

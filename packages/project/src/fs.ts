@@ -20,6 +20,11 @@ export interface DirEntry {
   readonly kind: EntryKind
 }
 
+export interface WatchEvent {
+  readonly kind: 'rename' | 'change'
+  readonly path: string | null
+}
+
 export interface ProjectFs {
   readTextFile(path: string): Promise<string>
   readFile(path: string): Promise<Uint8Array>
@@ -28,6 +33,8 @@ export interface ProjectFs {
   readDir(path: string): Promise<DirEntry[]>
   exists(path: string): Promise<boolean>
   mkdir(path: string, options?: { recursive?: boolean }): Promise<void>
+  /** Notice changes under a path, when the filesystem can: the shell's does, the memory tree does not. Resolves once watching; call the result to stop. */
+  watch?(path: string, listener: (event: WatchEvent) => void, options?: { recursive?: boolean }): Promise<() => void>
 }
 
 /** Join path segments with `/`, collapsing doubled and trailing slashes; a segment is never `..`-resolved here. */

@@ -21,6 +21,10 @@ export const CHANNEL = {
   saveFile: 'shell:dialogs:saveFile',
   listGrants: 'shell:grants:list',
   revokeGrant: 'shell:grants:revoke',
+  setRecents: 'shell:menu:setRecents',
+  setMenuState: 'shell:menu:setState',
 } as const
 
 export const WATCH_EVENT = 'shell:fs:watch-event'
+/** Pushed to the page when a native menu item is chosen. */
+export const MENU_COMMAND = 'shell:menu:command'

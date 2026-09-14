@@ -9,10 +9,11 @@
 
 import { useEffect, useState } from 'react'
 
-import { useHost } from '@papercut/editor-host'
+import { useHost, useViewSelector } from '@papercut/editor-host'
 import { slugOf } from '@papercut/project'
 import { Action, Checkbox, Dialog, DialogManifest, Door, Doors, ErrorLine, Field, RecentList, RecentRow, Segmented, StartupScreen, StartupSection, TextInput } from '@papercut/ui'
 
+import { run } from './commands'
 import { MEMORY_PROJECTS_DIR, createProjectAt, memoryProjects, openProjectAt, recents, reopenLast, setReopenLast, type Session } from './session'
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -27,7 +28,6 @@ export function Startup({ session }: { session: Session }) {
   const [list, setList] = useState(recents)
   const [reopen, setReopen] = useState(reopenLast)
   const [error, setError] = useState<string | null>(null)
-  const [creating, setCreating] = useState(false)
   const [choosing, setChoosing] = useState<Array<{ folder: string; name: string }> | null>(null)
 
   const open = async (folder: string): Promise<void> => {
@@ -52,7 +52,7 @@ export function Startup({ session }: { session: Session }) {
   return (
     <StartupScreen name="papercut" tagline="Open a project to begin.">
       <Doors>
-        <Door tone="ok" title="New Project…" body="Pick a folder. Creates papercut.json, a first map and the placeholder sheet." onClick={() => setCreating(true)} />
+        <Door tone="ok" title="New Project…" body="Pick a folder. Creates papercut.json, a first map and the placeholder sheet." onClick={() => run(host, 'view.set', { dialog: 'new-project' })} />
         <Door tone="accent" title="Open…" body="Open a project folder — the one papercut.json sits in." onClick={() => void onOpen()} />
       </Doors>
       {error ? <ErrorLine>{error}</ErrorLine> : null}
@@ -72,7 +72,6 @@ export function Startup({ session }: { session: Session }) {
       >
         Reopen last project on launch
       </Checkbox>
-      <NewProjectDialog session={session} opened={creating} onClose={() => setCreating(false)} />
       <Dialog opened={choosing !== null} onClose={() => setChoosing(null)} title="Open a project" description="The projects this browser holds. The desktop app opens any folder.">
         <RecentList empty="No projects here yet.">
           {(choosing ?? []).map((p) => (
@@ -98,8 +97,11 @@ const DENSITIES = [
   { value: 8, label: '8 px' },
 ]
 
-export function NewProjectDialog({ session, opened, onClose }: { session: Session; opened: boolean; onClose: () => void }) {
+/** The New Project dialog, open while the view's dialog is `new-project`: from the startup door, the project menu or the shell's menu. */
+export function NewProjectDialog({ session }: { session: Session }) {
   const host = useHost()
+  const opened = useViewSelector((snapshot) => snapshot.context.dialog) === 'new-project'
+  const onClose = (): void => run(host, 'view.set', { dialog: null })
   const [name, setName] = useState('')
   const [folder, setFolder] = useState('')
   const [texelDensity, setDensity] = useState(16)

@@ -27,7 +27,8 @@ import { Rail } from './rail'
 import { saveNow, type Session } from './session'
 import { ProjectSettings } from './settings'
 import { Stage } from './stage'
-import { Startup } from './startup'
+import { NewMapDialog } from './dialogs'
+import { NewProjectDialog, Startup } from './startup'
 import { StatusBar } from './status'
 import { TopBar } from './top'
 
@@ -81,10 +82,19 @@ export default function App({ session }: { session: Session }) {
     }
   }, [host, session, folder])
 
-  if (folder === null) return <Startup session={session} />
+  if (folder === null) {
+    return (
+      <>
+        <NewProjectDialog session={session} />
+        <Startup session={session} />
+      </>
+    )
+  }
 
   return (
     <>
+      <NewProjectDialog session={session} />
+      <NewMapDialog session={session} />
       <ProjectSettings session={session} />
       <Frame
         top={<TopBar platform={platform} session={session} />}

@@ -1,6 +1,6 @@
-import { SHELL_API_VERSION, SHELL_GLOBAL, type ShellApi, type WatchEvent } from '@papercut/shell-api'
+import { SHELL_API_VERSION, SHELL_GLOBAL, type MenuCommand, type ShellApi, type WatchEvent } from '@papercut/shell-api'
 import { contextBridge, ipcRenderer } from 'electron'
-import { CHANNEL, WATCH_EVENT } from './ipc'
+import { CHANNEL, MENU_COMMAND, WATCH_EVENT } from './ipc'
 
 /**
  * `ShellApi` (`@papercut/shell-api`), forwarded to the main process.
@@ -50,6 +50,15 @@ const api: ShellApi = {
   grants: {
     list: () => invoke(CHANNEL.listGrants),
     revoke: (path) => invoke(CHANNEL.revokeGrant, path),
+  },
+  menu: {
+    onCommand: (listener) => {
+      const handler = (_event: unknown, command: MenuCommand) => listener(command)
+      ipcRenderer.on(MENU_COMMAND, handler)
+      return () => ipcRenderer.off(MENU_COMMAND, handler)
+    },
+    setRecents: (recents) => invoke(CHANNEL.setRecents, recents),
+    setState: (state) => invoke(CHANNEL.setMenuState, state),
   },
 }
 

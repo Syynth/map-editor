@@ -9,7 +9,7 @@
  */
 
 export { FsError, MemoryFs, joinPath, parentPath } from './fs'
-export type { DirEntry, EntryKind, ProjectFs } from './fs'
+export type { DirEntry, EntryKind, ProjectFs, WatchEvent } from './fs'
 export { rawImageCodec } from './codec'
 export type { ImageCodec } from './codec'
 export { addMap, addSheet, createProjectFolder, mapPathFor, openProject, readMap, slugOf, writeMap, writeProject } from './folder'

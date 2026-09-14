@@ -45,6 +45,8 @@ const viewSettings = z
     notice: z.string().min(1).nullable().exactOptional(),
     /** The Project settings section that is open, or `null` while the modal is closed. */
     settings: z.enum(SETTINGS_SECTIONS).nullable().exactOptional(),
+    /** The dialog that is open — New Project, New Map — or `null`; the startup doors, the menu and the shell's menu all open the same one. */
+    dialog: z.enum(['new-project', 'new-map']).nullable().exactOptional(),
   })
   .strict()
 
@@ -107,7 +109,7 @@ export const viewLogic = setup({
   },
 }).createMachine({
   id: 'view',
-  context: { showGrid: true, showMissing: false, gameCamera: false, projection: 'perspective', inspector: 'properties', layers: null, levelOpen: false, notice: null, settings: null, selection: null, selectedObjectId: null },
+  context: { showGrid: true, showMissing: false, gameCamera: false, projection: 'perspective', inspector: 'properties', layers: null, levelOpen: false, notice: null, settings: null, dialog: null, selection: null, selectedObjectId: null },
   initial: 'ready',
   states: {
     ready: {

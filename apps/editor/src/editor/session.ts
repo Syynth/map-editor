@@ -20,9 +20,11 @@ import type { Host } from '@papercut/editor-host'
 import { createSampleMap, generatePlaceholderTerrainSet } from '@papercut/fixtures'
 import { parseTerrainSet, serializeTerrainSet, type TerrainSet } from '@papercut/geometry'
 import { MemoryFs, addMap, addSheet, createProjectFolder, forget, joinPath, openProject, parseRecents, readMap, remember, writeMap, writeProject, type ImageCodec, type NewSheet, type OpenedProject, type ProjectFs, type RecentProject } from '@papercut/project'
-import { desktopShell, type ShellDialogs } from '@papercut/shell-api'
+import { exportGltf } from '@papercut/runtime/export'
+import { desktopShell, type MenuCommand, type ShellDialogs, type ShellMenu } from '@papercut/shell-api'
 
-import { refusal } from './commands'
+import { artFor } from './art'
+import { refusal, run } from './commands'
 import { encodePngWithCanvas } from './rgba'
 
 const RECENTS_KEY = 'papercut:recents'
@@ -37,6 +39,10 @@ export interface Session {
   readonly codec: ImageCodec
   /** The shell's native dialogs, or `null` in a browser, where a folder is chosen another way. */
   readonly dialogs: ShellDialogs | null
+  /** The shell's native menu, or `null` in a browser. */
+  readonly menu: ShellMenu | null
+  /** When this session last wrote into the project folder, so a watch can tell its own writes from someone else's. */
+  lastWriteAt: number
 }
 
 /** The browser's PNG codec: the canvas encodes, an `Image` decodes. */
@@ -96,14 +102,14 @@ function memoryFs(): MemoryFs {
 /** The session for this build: the shell's filesystem and dialogs when there is a shell, the memory tree otherwise. */
 export async function createSession(): Promise<Session> {
   const shell = desktopShell()
-  if (shell) return { fs: shell.fs, codec: canvasCodec, dialogs: shell.dialogs }
+  if (shell) return { fs: shell.fs, codec: canvasCodec, dialogs: shell.dialogs, menu: shell.menu ?? null, lastWriteAt: 0 }
   const fs = memoryFs()
   // First run in a browser: the sample project, so there is something to open.
   if (!(await fs.exists(`${SAMPLE_FOLDER}/papercut.json`))) {
     const placeholder = generatePlaceholderTerrainSet(16)
     await createProjectFolder(fs, SAMPLE_FOLDER, { name: 'Sample Valley', texelDensity: 16, placeholder, firstMap: createSampleMap() }, canvasCodec)
   }
-  return { fs, codec: canvasCodec, dialogs: null }
+  return { fs, codec: canvasCodec, dialogs: null, menu: null, lastWriteAt: 0 }
 }
 
 // --- recents ---------------------------------------------------------------
@@ -114,6 +120,7 @@ export function recents(): RecentProject[] {
 
 function saveRecents(list: readonly RecentProject[]): void {
   storage()?.setItem(RECENTS_KEY, JSON.stringify(list))
+  void desktopShell()?.menu?.setRecents(list.map((r) => ({ name: r.name, folder: r.folder }))).catch(() => undefined)
 }
 
 export function reopenLast(): boolean {
@@ -197,6 +204,7 @@ export async function newMapIn(host: Host, session: Session, name: string, width
 /** Write the document to its map file, and the project to its file. What the Save button and the autosave do. */
 export async function saveNow(host: Host, session: Session): Promise<string> {
   const { folder, map } = location(host)
+  session.lastWriteAt = Date.now()
   await writeProject(session.fs, folder, host.children.project.getSnapshot().context.project)
   if (map !== null) await writeMap(session.fs, folder, map, host.reader.doc)
   return map ?? 'papercut.json'
@@ -206,6 +214,7 @@ export async function saveNow(host: Host, session: Session): Promise<string> {
 export async function addSheetTo(host: Host, session: Session, sheet: NewSheet): Promise<void> {
   const { folder } = location(host)
   const project = host.children.project.getSnapshot().context.project
+  session.lastWriteAt = Date.now()
   const next = await addSheet(session.fs, folder, project, sheet)
   host.dispatch('project.sheets.set', { sheets: next.sheets })
   const reopened = await openProject(session.fs, folder, session.codec)
@@ -225,6 +234,7 @@ export async function updateTerrainSet(host: Host, session: Session, sheet: stri
   const entry = project.sheets.find((s) => sheetName(s.path) === sheet)
   if (!entry) throw new Error(`${sheet} is not a sheet of this project.`)
   const sidecar = entry.terrainSet ?? `${SHEETS_DIR}/${sheet.replace(/\.[^.]+$/, '')}.terrain.json`
+  session.lastWriteAt = Date.now()
   await session.fs.writeFile(joinPath(folder, sidecar), serializeTerrainSet({ ...set, sheet }))
   if (entry.terrainSet !== sidecar) {
     const sheets = project.sheets.map((s) => (s === entry ? { ...s, terrainSet: sidecar } : { ...s }))
@@ -279,6 +289,124 @@ export async function closeProject(host: Host, session: Session): Promise<void> 
   host.dispatch('project.close')
   host.children.viewport.send({ type: 'terrain', sets: [], warning: null })
   notify(host, null)
+}
+
+/** The open map as a `.glb`, handed to the browser to save: the top bar's Export and the shell's File › Export. */
+export async function exportCurrentMap(host: Host): Promise<string> {
+  const doc = host.reader.doc
+  const project = host.children.project.getSnapshot().context.project
+  // The generated terrain set, as before #47 when the exporter generated its own: an artist's loaded set still previews but does not export.
+  const art = artFor(project)
+  const bytes = await exportGltf(doc, { merge: false, textures: art.textures, terrain: art.generatedTerrain, materials: project.materials, resolution: project.resolution, sprites: art.sprites, encodePng: encodePngWithCanvas })
+  const blob = new Blob([bytes], { type: 'model/gltf-binary' })
+  const file = `${doc.name.replace(/\s+/g, '-').toLowerCase()}.glb`
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = file
+  link.click()
+  URL.revokeObjectURL(url)
+  return `Exported ${file} (${(blob.size / 1024).toFixed(0)} KB)`
+}
+
+/**
+ * The shell's native menu, wired: its commands become the same session calls the page's own controls make, and it is
+ * told whether a project is open. Recents reach it through `saveRecents`. No-op in a browser.
+ */
+export function installShellMenu(host: Host, session: Session): () => void {
+  const { menu } = session
+  if (!menu) return () => undefined
+  const notify = (notice: string): void => run(host, 'view.set', { notice })
+  const attempt = (work: Promise<unknown>): void => void work.catch((error: unknown) => notify(error instanceof Error ? error.message : String(error)))
+  const onCommand = (command: MenuCommand): void => {
+    switch (command.id) {
+      case 'project.new':
+        run(host, 'view.set', { dialog: 'new-project' })
+        return
+      case 'project.open':
+        attempt(session.dialogs?.openFolder({ title: 'Open a project folder' }).then((folder) => (folder ? openProjectAt(host, session, folder) : undefined)) ?? Promise.resolve())
+        return
+      case 'project.openRecent':
+        attempt(openProjectAt(host, session, command.folder))
+        return
+      case 'project.close':
+        attempt(closeProject(host, session))
+        return
+      case 'map.new':
+        run(host, 'view.set', { dialog: 'new-map' })
+        return
+      case 'file.save':
+        attempt(saveNow(host, session).then(() => notify('Saved')))
+        return
+      case 'file.export':
+        attempt(exportCurrentMap(host).then(notify))
+        return
+      case 'project.settings':
+        run(host, 'view.set', { settings: 'general' })
+        return
+    }
+  }
+  const stopCommands = menu.onCommand(onCommand)
+  void menu.setRecents(recents().map((r) => ({ name: r.name, folder: r.folder }))).catch(() => undefined)
+  let open: boolean | null = null
+  const state = host.children.project.subscribe((snapshot) => {
+    const now = snapshot.context.folder !== null
+    if (now === open) return
+    open = now
+    void menu.setState({ projectOpen: now }).catch(() => undefined)
+  })
+  void menu.setState({ projectOpen: host.children.project.getSnapshot().context.folder !== null }).catch(() => undefined)
+  return () => {
+    stopCommands()
+    state.unsubscribe()
+  }
+}
+
+/** Ignore a watch event this soon after the session's own write into the folder. */
+const OWN_WRITE_WINDOW_MS = 1500
+const WATCH_SETTLE_MS = 400
+
+/**
+ * Watch the open project's `sheets/` for an artist saving a sheet or its sidecar from outside, and reload them when
+ * it settles. Only where the filesystem can watch (the shell's); the memory tree has nothing outside it.
+ */
+export function watchProjectSheets(host: Host, session: Session): () => void {
+  const watch = session.fs.watch?.bind(session.fs)
+  if (!watch) return () => undefined
+  let stop: (() => void) | null = null
+  let watching: string | null = null
+  let settle: ReturnType<typeof setTimeout> | undefined
+  const start = (folder: string): void => {
+    watching = folder
+    watch(joinPath(folder, SHEETS_DIR), () => {
+      if (Date.now() - session.lastWriteAt < OWN_WRITE_WINDOW_MS) return
+      clearTimeout(settle)
+      settle = setTimeout(() => void reloadSheets(host, session, folder).catch(() => undefined), WATCH_SETTLE_MS)
+    })
+      .then((end) => {
+        if (watching === folder) stop = end
+        else end()
+      })
+      .catch(() => undefined)
+  }
+  const end = (): void => {
+    clearTimeout(settle)
+    stop?.()
+    stop = null
+    watching = null
+  }
+  const subscription = host.children.project.subscribe((snapshot) => {
+    const { folder } = snapshot.context
+    if (folder === watching) return
+    end()
+    if (folder !== null) start(folder)
+  })
+  const initial = host.children.project.getSnapshot().context.folder
+  if (initial !== null) start(initial)
+  return () => {
+    subscription.unsubscribe()
+    end()
+  }
 }
 
 /** Every folder under the browser's projects directory that holds a project: what "Open…" offers when there is no shell dialog. */

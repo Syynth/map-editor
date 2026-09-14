@@ -5,7 +5,7 @@
   "type": "module",
   "exports": {},
   "papercut": {
-    "minShellApi": 1
+    "minShellApi": 2
   },
   "scripts": {
     "dev": "vite",
