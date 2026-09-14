@@ -17,7 +17,7 @@ import { chordFor, type Platform } from '@papercut/registry'
 import { Brand, Menu, MenuDivider, MenuItem, MenuLabel, TopButton, TopCrumb, TopGroup, TopGrow, TopSep } from '@papercut/ui'
 
 import { run } from './commands'
-import { closeProject, exportCurrentMap, openMapAt, saveNow, type Session } from './session'
+import { closeProject, exportCurrentMap, openMapAt, revealInFolder, saveNow, type Session } from './session'
 
 const nameOf = (doc: ReadonlyMapDoc): string => doc.name
 const projectNameOf = (project: ReadonlyProjectDoc): string => project.name
@@ -34,6 +34,11 @@ export function TopBar({ platform, session }: { platform: Platform; session: Ses
   const projectName = useProject(projectNameOf)
   const maps = useProject(mapsOf)
   const current = useProjectSelector((snapshot) => snapshot.context.map)
+  const summaries = useSyncExternalStore(session.summaries.subscribe, session.summaries.get)
+  const sizeOf = (path: string): string | undefined => {
+    const s = summaries.find((m) => m.path === path)
+    return s && s.width > 0 ? `${s.width} × ${s.height}` : undefined
+  }
   const canUndo = useSyncExternalStore(reader.subscribe, () => reader.canUndo())
   const canRedo = useSyncExternalStore(reader.subscribe, () => reader.canRedo())
   const showGrid = useViewSelector((snapshot) => snapshot.context.showGrid)
@@ -49,7 +54,7 @@ export function TopBar({ platform, session }: { platform: Platform; session: Ses
 
   const onExport = (): void => {
     notify('Exporting…')
-    attempt(exportCurrentMap(host).then((done) => notify(done)), 'Exported')
+    attempt(exportCurrentMap(host, session).then((done) => notify(done)), 'Exported')
   }
 
   return (
@@ -58,10 +63,11 @@ export function TopBar({ platform, session }: { platform: Platform; session: Ses
         <Menu trigger={<TopCrumb label={projectName} title="The project: its maps and settings" />}>
         <MenuLabel>Maps</MenuLabel>
         {maps.map((path) => (
-          <MenuItem key={path} icon="map" title={mapLabel(path)} active={path === current} meta={path === current ? 'open' : undefined} onClick={() => attempt(openMapAt(host, session, path), `Opened ${mapLabel(path)}`)} />
+          <MenuItem key={path} icon="map" title={mapLabel(path)} active={path === current} meta={path === current ? 'open' : sizeOf(path)} onClick={() => attempt(openMapAt(host, session, path), `Opened ${mapLabel(path)}`)} />
         ))}
         <MenuDivider />
         <MenuItem icon="plus" title="New map…" onClick={() => run(host, 'view.set', { dialog: 'new-map' })} />
+        {session.dialogs ? <MenuItem icon="folder" title="Reveal in Finder" onClick={() => attempt(revealInFolder(host, current ?? 'papercut.json'), 'Revealed')} /> : null}
         <MenuDivider />
           <MenuItem icon="settings" title="Project settings…" kbd={chordFor('view.set', { settings: 'general' }, platform)} onClick={() => run(host, 'view.set', { settings: 'general' })} />
           <MenuItem icon="close" title="Close project" onClick={() => attempt(closeProject(host, session), 'Closed')} />

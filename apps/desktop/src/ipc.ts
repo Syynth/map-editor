@@ -23,6 +23,7 @@ export const CHANNEL = {
   revokeGrant: 'shell:grants:revoke',
   setRecents: 'shell:menu:setRecents',
   setMenuState: 'shell:menu:setState',
+  reveal: 'shell:reveal',
 } as const
 
 export const WATCH_EVENT = 'shell:fs:watch-event'

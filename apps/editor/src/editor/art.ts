@@ -26,20 +26,26 @@ import { generatePlaceholderTerrainSet } from '@papercut/fixtures'
 import { generateSketchTextures, generateSprites } from '@papercut/fixtures/textures'
 import type { LoadedSet } from '@papercut/geometry'
 
-/** The last result for the last inputs: enough, since the project has one texel density at a time. */
-function lastOf<K extends readonly unknown[], V>(make: (...key: K) => V): (...key: K) => V {
-  let last: { key: K; value: V } | null = null
-  return (...key) => {
-    if (last && last.key.length === key.length && last.key.every((part, i) => part === key[i])) return last.value
-    const value = make(...key)
-    last = { key, value }
+/**
+ * One result per density, kept: a density changed and changed back — the Resolution field, a project reopened —
+ * costs nothing the second time, and a sheet at 64 px is a few megabytes, not a concern for the handful a session
+ * sees.
+ */
+function perDensity<V>(make: (density: number) => V): (density: number) => V {
+  const made = new Map<number, V>()
+  return (density) => {
+    let value = made.get(density)
+    if (value === undefined) {
+      value = make(density)
+      made.set(density, value)
+    }
     return value
   }
 }
 
-const terrainFor = lastOf((density: number): LoadedSet[] => [generatePlaceholderTerrainSet(density)])
-const spritesFor = lastOf((density: number): Record<string, SpriteAsset> => generateSprites(density))
-const texturesFor = lastOf((density: number): Record<string, RgbaImage> => generateSketchTextures(density))
+const terrainFor = perDensity((density: number): LoadedSet[] => [generatePlaceholderTerrainSet(density)])
+const spritesFor = perDensity((density: number): Record<string, SpriteAsset> => generateSprites(density))
+const texturesFor = perDensity((density: number): Record<string, RgbaImage> => generateSketchTextures(density))
 
 export interface GeneratedArt {
   /** The placeholder terrain set, which the default materials point into. */

@@ -15,7 +15,7 @@
  * hand the viewport the sheets. Nothing in an actor touches a file.
  */
 
-import { SHEETS_DIR, createMap, serialize, serializeProject, sheetName, type RgbaImage } from '@papercut/document'
+import { AIR, SHEETS_DIR, createMap, serialize, serializeProject, sheetName, type MapDoc, type Patch, type ReadonlyMapDoc, type RgbaImage } from '@papercut/document'
 import type { Host } from '@papercut/editor-host'
 import { createSampleMap, generatePlaceholderTerrainSet } from '@papercut/fixtures'
 import { parseTerrainSet, serializeTerrainSet, type LoadedSet, type TerrainSet } from '@papercut/geometry'
@@ -51,6 +51,54 @@ export interface Session {
   lastWriteAt: number
   /** What the last persistence failure said — the browser's storage refusing the memory tree — or `null`; read and cleared by whoever reports it. */
   persistFailure: string | null
+  /** What is known about every map in the open project without opening it: size and the materials it uses. */
+  readonly summaries: SummaryStore
+}
+
+/** One map of the project, as read off its file: enough for the menu and the Materials section without opening it. */
+export interface MapSummary {
+  readonly path: string
+  readonly name: string
+  readonly width: number
+  readonly height: number
+  /** The material ids its voxels and face overrides hold. */
+  readonly materials: ReadonlySet<number>
+}
+
+/** A tiny external store React subscribes to: replaced whole when the project opens, per map as one is saved. */
+export class SummaryStore {
+  private list: readonly MapSummary[] = []
+  private readonly listeners = new Set<() => void>()
+  get = (): readonly MapSummary[] => this.list
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+  set(list: readonly MapSummary[]): void {
+    this.list = list
+    for (const listener of this.listeners) listener()
+  }
+  put(summary: MapSummary): void {
+    this.set(this.list.some((s) => s.path === summary.path) ? this.list.map((s) => (s.path === summary.path ? summary : s)) : [...this.list, summary])
+  }
+}
+
+/** What a map's file says about it. */
+export function summarise(path: string, doc: ReadonlyMapDoc): MapSummary {
+  const materials = new Set<number>()
+  let width = 0
+  let height = 0
+  for (const id of doc.structureOrder) {
+    const s = doc.structures[id]
+    if (!s || s.kind !== 'voxel') continue
+    if (s.parent === null) {
+      width = Math.max(width, s.size.width)
+      height = Math.max(height, s.size.height)
+    }
+    for (const m of s.voxels.material) if (m !== AIR) materials.add(m)
+    for (const m of Object.values(s.paint.faces)) materials.add(m)
+  }
+  return { path, name: doc.name, width, height, materials }
 }
 
 /** The browser's PNG codec: the canvas encodes, an `Image` decodes. */
@@ -123,8 +171,8 @@ function memoryFs(onFailure: (message: string) => void): MemoryFs {
 /** The session for this build: the shell's filesystem and dialogs when there is a shell, the memory tree otherwise. */
 export async function createSession(): Promise<Session> {
   const shell = desktopShell()
-  if (shell) return { fs: shell.fs, codec: canvasCodec, dialogs: shell.dialogs, menu: shell.menu ?? null, lastWriteAt: 0, persistFailure: null }
-  const session: Session = { fs: new MemoryFs(), codec: canvasCodec, dialogs: null, menu: null, lastWriteAt: 0, persistFailure: null }
+  if (shell) return { fs: shell.fs, codec: canvasCodec, dialogs: shell.dialogs, menu: shell.menu ?? null, lastWriteAt: 0, persistFailure: null, summaries: new SummaryStore() }
+  const session: Session = { fs: new MemoryFs(), codec: canvasCodec, dialogs: null, menu: null, lastWriteAt: 0, persistFailure: null, summaries: new SummaryStore() }
   const fs = memoryFs((message) => {
     session.persistFailure = message
   })
@@ -224,6 +272,29 @@ async function install(host: Host, session: Session, folder: string, opened: Ope
   rememberOpen(folder)
   host.children.viewport.send({ type: 'terrain', sets: opened.sets, warning: opened.warnings.length ? opened.warnings.join('\n') : null })
   saveRecents(remember(recents(), { name: project.name, folder, openedAt: Date.now() }))
+  await refreshSummaries(host, session)
+}
+
+/** Read every listed map's file for its summary; the open map's comes from the document. A map that will not read is left out. */
+export async function refreshSummaries(host: Host, session: Session): Promise<void> {
+  const { folder, map, project } = host.children.project.getSnapshot().context
+  if (folder === null) {
+    session.summaries.set([])
+    return
+  }
+  const list: MapSummary[] = []
+  for (const path of project.maps) {
+    if (path === map) {
+      list.push(summarise(path, host.reader.doc))
+      continue
+    }
+    try {
+      list.push(summarise(path, await readMap(session.fs, folder, path)))
+    } catch {
+      // Reported by the open's warnings; nothing to summarise.
+    }
+  }
+  session.summaries.set(list)
 }
 
 /** Whether an error says the thing is simply not there, as opposed to unreadable. */
@@ -285,6 +356,7 @@ export async function newMapIn(host: Host, session: Session, name: string, width
   const added = await addMap(session.fs, folder, project, createMap(width, height, name))
   host.dispatch('project.maps.set', { maps: added.project.maps })
   await openMapAt(host, session, added.path)
+  session.summaries.put(summarise(added.path, host.reader.doc))
 }
 
 /** Write the document to its map file, and the project to its file. What the Save button and the autosave do. */
@@ -298,6 +370,7 @@ export async function saveNow(host: Host, session: Session): Promise<string> {
     map === null ? Promise.resolve() : queued(joinPath(folder, map), () => writeMap(session.fs, folder, map, doc)),
     queued(joinPath(folder, 'papercut.json'), () => writeProject(session.fs, folder, project)),
   ])
+  if (map !== null) session.summaries.put(summarise(map, doc))
   return map ?? 'papercut.json'
 }
 
@@ -390,20 +463,110 @@ export async function closeProject(host: Host, session: Session): Promise<void> 
   // The document too: a closed project's map must not linger to be written into the next one.
   host.dispatch('document.new', { width: 2, height: 2, name: 'No map' })
   rememberOpen(null)
+  session.summaries.set([])
   host.children.viewport.send({ type: 'terrain', sets: [], warning: null })
   notify(host, null)
 }
 
-/** The open map as a `.glb`, handed to the browser to save: the top bar's Export and the shell's File › Export. */
-export async function exportCurrentMap(host: Host): Promise<string> {
+/** Show a path of the project in the OS's file browser. Nothing in a browser, where there is no folder to show. */
+export async function revealInFolder(host: Host, path: string): Promise<void> {
+  const reveal = desktopShell()?.reveal
+  if (!reveal) throw new Error('There is no folder to show in a browser; the desktop app reveals files.')
+  const { folder } = location(host)
+  await reveal.reveal(joinPath(folder, path))
+}
+
+/**
+ * Replace a listed sheet's image with a picked file — or relink one whose file is missing — keeping its name, its
+ * tile size and its terrain set, so every material and tag pointing at it still holds.
+ */
+export async function replaceSheetImage(host: Host, session: Session, sheet: string, file: File): Promise<void> {
+  const project = host.children.project.getSnapshot().context.project
+  const entry = project.sheets.find((s) => sheetName(s.path) === sheet)
+  if (!entry) throw new Error(`${sheet} is not a sheet of this project.`)
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  const image = await session.codec.decode(bytes)
+  const loaded = host.children.viewport.getSnapshot().context.loadedTerrain.find((s) => s.set.sheet === sheet)
+  const set = loaded ? (loaded.set as TerrainSet) : null
+  if (set && (image.width !== set.columns * set.tile || image.height !== set.rows * set.tile)) {
+    throw new Error(`${file.name} is ${image.width}×${image.height}; ${sheet}'s terrain set describes ${set.columns}×${set.rows} tiles of ${set.tile} px.`)
+  }
+  await addSheetTo(host, session, { name: sheet, bytes, tile: entry.tile, set })
+}
+
+/**
+ * Take a material out of the library, repainting everything that uses it — in the open map through the document,
+ * in every other map through its file — as `to`. The one edit that touches every map, so it is one call.
+ */
+export async function repaintAndDeleteMaterial(host: Host, session: Session, from: number, to: number): Promise<void> {
+  const { folder, map, project } = host.children.project.getSnapshot().context
+  if (folder === null) throw new Error('No project is open.')
+  if (!project.materials.some((m) => m.id === to) || from === to) throw new Error('Pick another material to repaint with.')
+  // The open map: one labelled edit, undoable like any stroke.
+  const doc = host.reader.doc
+  const patches: Patch[] = []
+  for (const id of doc.structureOrder) {
+    const s = doc.structures[id]
+    if (!s || s.kind !== 'voxel') continue
+    s.voxels.material.forEach((m, index) => {
+      if (m === from) patches.push({ t: 'voxel', id, field: 'material', index, value: to })
+    })
+    for (const [key, m] of Object.entries(s.paint.faces)) if (m === from) patches.push({ t: 'voxelPaint', id, layer: 'faces', key, value: to })
+  }
+  if (patches.length > 0) host.children.document.send({ type: 'patch', label: 'Repaint material', patches })
+  // Every other map: read, repaint, write.
+  for (const path of project.maps) {
+    if (path === map) continue
+    let other: MapDoc
+    try {
+      other = await readMap(session.fs, folder, path)
+    } catch {
+      continue
+    }
+    let touched = false
+    for (const id of other.structureOrder) {
+      const s = other.structures[id]
+      if (!s || s.kind !== 'voxel') continue
+      s.voxels.material.forEach((m, index) => {
+        if (m === from) {
+          s.voxels.material[index] = to
+          touched = true
+        }
+      })
+      for (const key of Object.keys(s.paint.faces)) {
+        if (s.paint.faces[key] === from) {
+          s.paint.faces[key] = to
+          touched = true
+        }
+      }
+    }
+    if (touched) {
+      session.lastWriteAt = Date.now()
+      await queued(joinPath(folder, path), () => writeMap(session.fs, folder, path, other))
+      session.summaries.put(summarise(path, other))
+    }
+  }
+  host.dispatch('project.materials.set', { materials: project.materials.filter((m) => m.id !== from).map((m) => ({ ...m })) })
+  await saveNow(host, session)
+}
+
+/** The open map as a `.glb`: into the project's `build/` in the desktop app, handed to the browser to save otherwise. */
+export async function exportCurrentMap(host: Host, session?: Session): Promise<string> {
   const doc = host.reader.doc
   const project = host.children.project.getSnapshot().context.project
   // The same sets the stage draws with — the project's sheets, the generated placeholder standing in — so what is exported is what was seen.
   const art = artFor(project)
   const terrain = drawableTerrain(art.generatedTerrain, host.children.viewport.getSnapshot().context.loadedTerrain as readonly LoadedSet[], project.resolution.texelDensity)
   const bytes = await exportGltf(doc, { merge: false, textures: art.textures, terrain, materials: project.materials, resolution: project.resolution, sprites: art.sprites, encodePng: encodePngWithCanvas })
-  const blob = new Blob([bytes], { type: 'model/gltf-binary' })
   const file = `${doc.name.replace(/\s+/g, '-').toLowerCase()}.glb`
+  const { folder } = host.children.project.getSnapshot().context
+  if (session && desktopShell() && folder !== null) {
+    await session.fs.mkdir(joinPath(folder, 'build'), { recursive: true })
+    session.lastWriteAt = Date.now()
+    await session.fs.writeFile(joinPath(folder, 'build', file), new Uint8Array(bytes))
+    return `Exported build/${file} (${(bytes.byteLength / 1024).toFixed(0)} KB)`
+  }
+  const blob = new Blob([bytes], { type: 'model/gltf-binary' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
@@ -445,7 +608,7 @@ export function installShellMenu(host: Host, session: Session): () => void {
         attempt(saveNow(host, session).then(() => notify('Saved')))
         return
       case 'file.export':
-        attempt(exportCurrentMap(host).then(notify))
+        attempt(exportCurrentMap(host, session).then(notify))
         return
       case 'project.settings':
         run(host, 'view.set', { settings: 'general' })

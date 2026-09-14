@@ -1783,3 +1783,39 @@ body {
 .ui-settings-block-action .ui-btn.is-file {
   min-width: 160px;
 }
+
+.ui-settings-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--ui-line);
+  border-radius: 4px;
+  background: var(--ui-bg);
+  color: var(--ui-ink-3);
+}
+
+.ui-settings-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  color: var(--ui-ink);
+  font: 12px var(--ui-font);
+  outline: none;
+}
+
+.ui-table-td.is-draggable {
+  cursor: grab;
+}
+
+.ui-table-td.is-dropping {
+  box-shadow: inset 0 2px 0 var(--ui-accent);
+}
+
+.ui-table-td .ui-drag-handle {
+  color: var(--ui-line-2);
+  letter-spacing: -2px;
+  user-select: none;
+}

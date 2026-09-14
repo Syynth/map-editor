@@ -45,6 +45,16 @@ export function SettingsScope({ scopes, active, onChange }: { scopes: ReadonlyAr
   )
 }
 
+/** The search over the rail: matches section titles and their keywords. */
+export function SettingsSearch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="ui-settings-search">
+      <Icon name="select" size={12} />
+      <input type="search" value={value} placeholder="Search settings" onChange={(event) => onChange(event.currentTarget.value)} />
+    </label>
+  )
+}
+
 export function SettingsRailNote({ children }: { children: ReactNode }) {
   return <div className="ui-settings-rail-note">{children}</div>
 }
@@ -88,11 +98,24 @@ export function Table({ columns, children }: { columns: ReadonlyArray<{ readonly
   )
 }
 
-export function TableRow({ cells, active, muted, onClick }: { cells: readonly ReactNode[]; active?: boolean; muted?: boolean; onClick?: () => void }) {
+/** `drag` makes the row a drag source and target: `onDrop` gets the row dragged onto this one, by whatever key the caller passes as `drag`. */
+export function TableRow({ cells, active, muted, onClick, drag, onDrop, dropping }: { cells: readonly ReactNode[]; active?: boolean; muted?: boolean; onClick?: () => void; drag?: string; onDrop?: (dragged: string) => void; dropping?: boolean }) {
+  const draggable = drag !== undefined
   return (
     <>
       {cells.map((cell, index) => (
-        <div key={index} className={`ui-table-td ${active ? 'is-active' : ''} ${muted ? 'is-muted' : ''} ${onClick ? 'is-link' : ''}`} onClick={onClick}>
+        <div
+          key={index}
+          className={`ui-table-td ${active ? 'is-active' : ''} ${muted ? 'is-muted' : ''} ${onClick ? 'is-link' : ''} ${draggable ? 'is-draggable' : ''} ${dropping ? 'is-dropping' : ''}`}
+          onClick={onClick}
+          draggable={draggable}
+          onDragStart={draggable ? (event) => event.dataTransfer.setData('text/plain', drag) : undefined}
+          onDragOver={onDrop ? (event) => event.preventDefault() : undefined}
+          onDrop={onDrop ? (event) => {
+            event.preventDefault()
+            onDrop(event.dataTransfer.getData('text/plain'))
+          } : undefined}
+        >
           {cell}
         </div>
       ))}

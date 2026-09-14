@@ -51,6 +51,9 @@ const api: ShellApi = {
     list: () => invoke(CHANNEL.listGrants),
     revoke: (path) => invoke(CHANNEL.revokeGrant, path),
   },
+  reveal: {
+    reveal: (path) => invoke(CHANNEL.reveal, path),
+  },
   menu: {
     onCommand: (listener) => {
       const handler = (_event: unknown, command: MenuCommand) => listener(command)

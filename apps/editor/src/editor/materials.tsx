@@ -13,15 +13,16 @@
  * reorder is as much an edit as a rename.
  */
 
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 
 import { AIR, PLACEHOLDER_SHEET, materialById, nextMaterialId, type MaterialDef, type ReadonlyMapDoc, type ReadonlyProjectDoc, type RgbaImage, type TerrainRef } from '@papercut/document'
 import { useDocumentSelector, useHost, useProject, type SettingsSection } from '@papercut/editor-host'
 import { exactTile, pairAuthored, terrainKey, type LoadedSet } from '@papercut/geometry'
-import { Action, Actions, ColorInput, Field, FieldGrid, Item, List, Note, Row, Section, Segmented, Select, SettingsBlock, Status, Swatch, Table, TableRow, TextInput } from '@papercut/ui'
+import { Action, Actions, ColorInput, Dialog, Field, FieldGrid, Item, List, Note, Row, Section, Segmented, Select, SettingsBlock, Status, Swatch, Table, TableRow, TextInput } from '@papercut/ui'
 
 import { run } from './commands'
 import { rgbaToDataUrl } from './rgba'
+import { repaintAndDeleteMaterial, type Session } from './session'
 
 /** One tile's pixels as a data URL, once per image and tile. */
 const swatches = new WeakMap<RgbaImage, Map<number, string>>()
@@ -107,10 +108,17 @@ export function MaterialsPicker({ active, sets }: { active: number; sets: readon
 }
 
 /** The Project settings' library: the table, and the selected material opened up to edit. */
-export function MaterialsSettings({ selected, onSelect, sets }: { selected: number; onSelect: (id: number) => void; sets: readonly LoadedSet[] }) {
+export function MaterialsSettings({ session, selected, onSelect, sets }: { session: Session; selected: number; onSelect: (id: number) => void; sets: readonly LoadedSet[] }) {
   const host = useHost()
   const materials = useProject(materialsOf)
   const counts = useDocumentSelector(usage, { equal: sameCounts, settled: true })
+  const summaries = useSyncExternalStore(session.summaries.subscribe, session.summaries.get)
+  const currentMap = host.children.project.getSnapshot().context.map
+  // Which maps use a material: the open map by its live document, the others by what their files say.
+  const mapsUsing = (id: number): number => summaries.filter((s) => (s.path === currentMap ? (counts[id] ?? 0) > 0 : s.materials.has(id))).length
+  const [dropping, setDropping] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState<{ from: MaterialDef; to: number } | null>(null)
+  const notify = (notice: string): void => void run(host, 'view.set', { notice })
   const material = materialById(materials, selected) ?? materials[0]
   const active = material?.id ?? -1
   const position = materials.findIndex((m) => m.id === active)
@@ -138,9 +146,24 @@ export function MaterialsSettings({ selected, onSelect, sets }: { selected: numb
     onSelect(id)
   }
   const remove = (): void => {
-    if (!material || materials.length <= 1 || (counts[active] ?? 0) > 0) return
+    if (!material || materials.length <= 1) return
+    if (mapsUsing(active) > 0) {
+      // In use somewhere: ask what to repaint it as, then repaint every map and take it out.
+      setDeleting({ from: material, to: materials.find((m) => m.id !== active)?.id ?? active })
+      return
+    }
     commit(materials.filter((m) => m.id !== active))
     onSelect(materials[position === 0 ? 1 : position - 1].id)
+  }
+  const dropOn = (targetId: number, dragged: string): void => {
+    setDropping(null)
+    const fromAt = materials.findIndex((m) => m.id === Number(dragged))
+    const toAt = materials.findIndex((m) => m.id === targetId)
+    if (fromAt < 0 || toAt < 0 || fromAt === toAt) return
+    const next = [...materials]
+    const [moved] = next.splice(fromAt, 1)
+    next.splice(toAt, 0, moved)
+    commit(next)
   }
 
   // Which of the other materials' top terrains this one has an authored transition to, in its own set.
@@ -177,11 +200,12 @@ export function MaterialsSettings({ selected, onSelect, sets }: { selected: numb
       >
         <Table
           columns={[
+            { title: '', width: '24px' },
             { title: 'Material', width: '1.1fr' },
             { title: 'Role', width: '0.6fr' },
             { title: 'Top', width: '1.2fr' },
             { title: 'Sides', width: '1.2fr' },
-            { title: 'In this map', width: '0.8fr' },
+            { title: 'Used in', width: '0.8fr' },
           ]}
         >
           {materials.map((m) => (
@@ -189,7 +213,11 @@ export function MaterialsSettings({ selected, onSelect, sets }: { selected: numb
               key={m.id}
               active={m.id === active}
               onClick={() => onSelect(m.id)}
+              drag={String(m.id)}
+              dropping={dropping === m.id}
+              onDrop={(dragged) => dropOn(m.id, dragged)}
               cells={[
+                <span className="ui-drag-handle" title="Drag to reorder: higher draws over lower where two meet">⋮⋮</span>,
                 <>
                   <Swatch image={swatchImage(sets, m.top)} color={swatchImage(sets, m.top) ? undefined : cssColor(m.color)} />
                   {m.name}
@@ -197,7 +225,7 @@ export function MaterialsSettings({ selected, onSelect, sets }: { selected: numb
                 m.role,
                 refCell(m.top),
                 refCell(m.side),
-                `${counts[m.id] ?? 0} voxels`,
+                `${mapsUsing(m.id)} ${mapsUsing(m.id) === 1 ? 'map' : 'maps'}`,
               ]}
             />
           ))}
@@ -211,7 +239,7 @@ export function MaterialsSettings({ selected, onSelect, sets }: { selected: numb
               <Action title="Move up" disabled={position <= 0} onClick={() => move(position - 1)} />
               <Action title="Move down" disabled={position >= materials.length - 1} onClick={() => move(position + 1)} />
               <Action title="Duplicate" onClick={() => add(material)} />
-              <Action title="Delete" tone="danger" disabled={materials.length <= 1 || (counts[active] ?? 0) > 0} onClick={remove} />
+              <Action title="Delete" tone="danger" disabled={materials.length <= 1} onClick={remove} />
             </>
           }
         >
@@ -247,9 +275,41 @@ export function MaterialsSettings({ selected, onSelect, sets }: { selected: numb
           <Row label="Id" value={`${material.id} · what a voxel stores, stable, never reused`} muted />
           <Row label="Transitions drawn" value={partners.authored.length ? partners.authored.join(', ') : '—'} />
           <Row label="Not yet drawn" value={partners.missing.length ? partners.missing.join(', ') : '—'} muted />
-          <Note>{(counts[active] ?? 0) > 0 ? `In use on ${counts[active]} voxels and faces of this map, so it cannot be deleted. Renaming and reordering never touch a map.` : 'Renaming and reordering never touch a map: ids are what voxels store.'}</Note>
+          <Note>{mapsUsing(active) > 0 ? `In use in ${mapsUsing(active)} ${mapsUsing(active) === 1 ? 'map' : 'maps'}${(counts[active] ?? 0) > 0 ? `, ${counts[active]} voxels and faces of this one` : ''}; deleting it asks what to repaint them as. Renaming and reordering never touch a map.` : 'Renaming and reordering never touch a map: ids are what voxels store.'}</Note>
         </SettingsBlock>
       ) : null}
+      <Dialog
+        opened={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={deleting ? `Delete ${deleting.from.name}` : ''}
+        description={deleting ? `${deleting.from.name} is painted in ${mapsUsing(deleting.from.id)} ${mapsUsing(deleting.from.id) === 1 ? 'map' : 'maps'}. Every voxel and face that holds it is repainted as the material you pick, in every map, and then it is gone from the library.` : ''}
+        footer={
+          <>
+            <Action title="Cancel" onClick={() => setDeleting(null)} />
+            <Action
+              title="Repaint and delete"
+              tone="danger"
+              onClick={() => {
+                if (!deleting) return
+                const { from, to } = deleting
+                setDeleting(null)
+                repaintAndDeleteMaterial(host, session, from.id, to)
+                  .then(() => {
+                    onSelect(to)
+                    notify(`${from.name} deleted; repainted as ${materialById(materials, to)?.name ?? to}`)
+                  })
+                  .catch((error: unknown) => notify(error instanceof Error ? error.message : String(error)))
+              }}
+            />
+          </>
+        }
+      >
+        {deleting ? (
+          <Field label="Repaint as">
+            <Select value={String(deleting.to)} options={materials.filter((m) => m.id !== deleting.from.id).map((m) => ({ value: String(m.id), label: m.name }))} onChange={(value) => setDeleting({ ...deleting, to: Number(value) })} />
+          </Field>
+        ) : null}
+      </Dialog>
     </>
   )
 }

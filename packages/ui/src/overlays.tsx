@@ -79,9 +79,9 @@ export function MenuItem({ title, meta, kbd, icon, active, disabled, tone = 'def
  * Rendered as a `Menu` trigger, which clones it with a ref and handlers, so
  * whatever else arrives is spread onto the button.
  */
-export function TopCrumb({ label, title, ...rest }: { label: string; title?: string } & ComponentPropsWithRef<'button'>) {
+export function TopCrumb({ label, title, className, ...rest }: { label: string; title?: string } & ComponentPropsWithRef<'button'>) {
   return (
-    <button type="button" className="ui-top-crumb-btn" title={title} {...rest}>
+    <button type="button" {...rest} className={['ui-top-crumb-btn', className].filter(Boolean).join(' ')} title={title}>
       <span className="ui-top-crumb">/</span>
       <b>{label}</b>
       <Icon name="chevronDown" size={12} />

@@ -109,6 +109,11 @@ export function registerShellHandlers(
     if (typeof id === 'number' && watches.get(id)?.contents === event.sender) stopWatch(id)
   })
 
+  // Only a granted path is shown: revealing is reading a location, and the grants say which locations the page may know.
+  handle(CHANNEL.reveal, async (_event, path: unknown) => {
+    shell.showItemInFolder(await grants.resolve(asString(path)))
+  })
+
   handle(CHANNEL.openFolder, async (event, options: unknown) => {
     const { title, defaultPath } = dialogOptions(options)
     const result = await dialog.showOpenDialog(windowOf(event), {

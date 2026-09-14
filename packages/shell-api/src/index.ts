@@ -16,7 +16,7 @@
  * ships a generic, folder-scoped filesystem API as a Developer ID app").
  */
 
-export const SHELL_API_VERSION = 2
+export const SHELL_API_VERSION = 3
 
 export type EntryKind = 'file' | 'directory' | 'symlink' | 'other'
 
@@ -90,6 +90,11 @@ export interface ShellDialogs {
   saveFile(options?: { title?: string; defaultPath?: string; filters?: readonly FileFilter[] }): Promise<string | null>
 }
 
+/** Since API 3: show a granted path in the OS's file browser — Finder, Explorer — selected. */
+export interface ShellReveal {
+  reveal(path: string): Promise<void>
+}
+
 export interface ShellGrants {
   /** Absolute paths, folders and files, as granted. */
   list(): Promise<string[]>
@@ -133,6 +138,8 @@ export interface ShellApi {
   readonly grants: ShellGrants
   /** Since API 2. Absent on an older shell; a bundle that declares `minShellApi: 2` never sees it absent. */
   readonly menu?: ShellMenu
+  /** Since API 3. */
+  readonly reveal?: ShellReveal
 }
 
 /** The name the preload exposes the API under. */

@@ -11,10 +11,10 @@ import { createHost, type Host } from '@papercut/editor-host'
 import { generatePlaceholderTerrainSet } from '@papercut/fixtures'
 import { MemoryFs, createProjectFolder, rawImageCodec } from '@papercut/project'
 
-import { closeProject, createProjectAt, openMapAt, openProjectAt, recents, type Session } from './session'
+import { SummaryStore, closeProject, createProjectAt, newMapIn, openMapAt, openProjectAt, recents, repaintAndDeleteMaterial, type Session } from './session'
 
 function makeSession(): Session & { fs: MemoryFs } {
-  return { fs: new MemoryFs(), codec: rawImageCodec, dialogs: null, menu: null, lastWriteAt: 0, persistFailure: null }
+  return { fs: new MemoryFs(), codec: rawImageCodec, dialogs: null, menu: null, lastWriteAt: 0, persistFailure: null, summaries: new SummaryStore() }
 }
 
 function makeHost(): Host {
@@ -78,6 +78,31 @@ describe('opening a project', () => {
     expect(recents().map((r) => r.folder)).toEqual(['/p/a'])
     await expect(openProjectAt(host, session, '/p/nowhere')).rejects.toThrow(/Could not open/)
     expect(recents().map((r) => r.folder)).toEqual(['/p/a'])
+  })
+})
+
+describe('the map summaries and repainting', () => {
+  it("knows every map's size and materials without opening it, and repaints a deleted material in all of them", async () => {
+    const host = makeHost()
+    const session = makeSession()
+    await createProjectAt(host, session, { folder: '/p/many', name: 'Many', texelDensity: 4 })
+    const ground = host.reader.doc.structures.ground as VoxelStructure
+    host.children.document.send({ type: 'patch', label: 'Paint', patches: [{ t: 'voxel', id: ground.id, field: 'material', index: 0, value: 4 }] })
+    await newMapIn(host, session, 'Second', 8, 6)
+    const second = host.reader.doc.structures.ground as VoxelStructure
+    host.children.document.send({ type: 'patch', label: 'Paint', patches: [{ t: 'voxel', id: second.id, field: 'material', index: 3, value: 4 }] })
+    const summaries = () => session.summaries.get().map((s) => ({ path: s.path, size: `${s.width}×${s.height}`, uses4: s.materials.has(4) }))
+    // A summary is what the FILE says: the first map was saved when the second opened; the second's paint is not saved yet.
+    expect(summaries()).toEqual([
+      { path: 'maps/many.map.json', size: '32×32', uses4: true },
+      { path: 'maps/second.map.json', size: '8×6', uses4: false },
+    ])
+    await repaintAndDeleteMaterial(host, session, 4, 1)
+    expect(host.children.project.getSnapshot().context.project.materials.map((m) => m.id)).toEqual([0, 1, 2, 3])
+    expect(second.voxels.material[3]).toBe(1)
+    const first = deserialize(await session.fs.readTextFile('/p/many/maps/many.map.json'))
+    expect((first.structures.ground as VoxelStructure).voxels.material[0]).toBe(1)
+    expect(summaries().every((s) => !s.uses4)).toBe(true)
   })
 })
 
