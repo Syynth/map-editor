@@ -444,7 +444,6 @@ Each entry:
 - **SCOPE:** minor/local
 - **WHAT:** Wherever the desktop app reports its version (for now, the About panel), it shows both the shell's release version and the web bundle it's serving: the bundle's sequence number and short commit, or "built-in bundle" before any update. For example, `0.1.0 (bundle 25 · 9c649e3)`. It updates when a reload switches bundles.
 - **WHY:** The bundle updates without the shell's version changing, so the shell version alone doesn't tell you which editor is running. Two installs of the same release can be on different bundles, and a bug report or a check that an update landed needs both numbers.
-||||||| parent of e92586b (Terrain tools review: five decisions and the terrain-tools mockup)
 
 ## Terrain paint is dual-grid autotiling over materials, on tops and cliff faces
 - **WHEN:** 2026-09-13
